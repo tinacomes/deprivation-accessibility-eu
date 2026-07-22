@@ -42,7 +42,9 @@ surfaces per city:
    effective time (substitutability bonus); bounds
    `min - ln(n)/κ ≤ t_eff ≤ min` (unit-tested). κ in config
    (`softmin.kappa`), sensitivity-swept.
-3. **Deprivation.** `D_ev(i) = g_DLF(t_eff(i))`.
+3. **Deprivation.** `D_ev(i) = g_DLF(t_eff(i))`, evaluated **per service**
+   before the composite (§2.5), so the deprivation function can carry a
+   per-service threshold.
 
 ### 2.2 Emergency regime (non-substitutable, time-critical)
 
@@ -54,12 +56,52 @@ DCF is where its shape matters most.
 For **both** regimes, the plain nearest-facility travel time is always
 computed and reported as a comparison baseline.
 
-### 2.4 Unreachable cells
+### 2.4 Two meanings of "unreachable" (kept apart)
 
-Cells with no reachable facility of a service within `routing.max_time_min`
-are flagged explicitly and handled by config policy — `cap_at_max_time`
-(default: deprivation at the cutoff time) or `exclude` (NaN, dropped from
-aggregates) — and their population share is always reported.
+"Unreachable" conflates two very different situations, and merging them
+collapses the everyday–emergency divergence (it inflates the everyday mask by
+orders of magnitude and silently promotes far-but-routable cells to maximal
+deprivation). They are therefore split:
+
+1. **No network path** — the cell is genuinely unroutable (disconnected from
+   the network). This is a property of the *cell*, not the service, so it is
+   detected once by a **shared, service- and mode-independent routability
+   probe**: a cell has no network path iff it reaches **zero facilities of any
+   service in any mode**. Because the probe ignores service type and mode, the
+   everyday and emergency no-path sets are **equal by construction**
+   (regression-tested). These are the **only** masked/greyed cells: at the
+   city composite they are set to NaN on both the deprivation surface and the
+   regime travel time, so the choropleths (`viz/`) and the typology
+   (`divergence/`) share **one** mask and can never disagree (the bug where a
+   capped-high value was greyed on the map yet classified as compounding
+   downstream). `unreachable.policy` (`exclude` → NaN; `cap_at_max_time` →
+   value at the cutoff) selects how the *per-service* surface treats them
+   before compositing; either way the composite is masked. Their population
+   share is always reported.
+
+2. **Reachable but service-deprived** — the cell **is** routable but no
+   facility of a given service lies within its cutoff (or its 2SFCA catchment
+   supply is vanishing, which the congestion factor already inflates). This is
+   **not** unreachability; it is a badly deprived cell. It is assigned a
+   large-but-finite effective time (`unreachable.finite_fill_min`, default
+   `routing.max_time_min`) so the DLF saturates near `Lmax` (high everyday
+   deprivation) and the cell **stays on the map**.
+
+The distinction is what keeps a single walking-scale service (green space,
+school) from masking the entire city and being re-read as compounding (HH)
+deprivation downstream.
+
+### 2.5 Composite across everyday services
+
+Per-service DLF surfaces `D_s(i)` are combined into `D_ev(i)` by an
+**equal-weight (config-overridable) population-independent mean over the
+services reachable at cell i**, renormalising the weights per cell so a
+service-deprived layer that was excluded (policy `exclude`) does not NaN the
+composite unless *every* service is missing. The composite **mask is the
+shared no-path mask of §2.4** — never the union (`any`) of the per-service
+service-deprivation flags, which would let one sparse layer mask the city.
+The same rule and mask are applied to the emergency composite over its
+services.
 
 ## 3. Deprivation functions (form transferred, curvature calibrated)
 

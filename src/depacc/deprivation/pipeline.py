@@ -50,6 +50,25 @@ def run_deprivation(cfg: dict, city: str, root: Path,
     surfaces = cells.copy()
     max_time = float(cfg["routing"]["max_time_min"])
     policy = cfg["unreachable"]["policy"]
+    # Large-but-finite effective time for reachable-but-service-deprived cells
+    # (DLF ≈ Lmax, kept on the map); defaults to the absolute cutoff.
+    finite_fill = float(cfg["unreachable"].get("finite_fill_min") or max_time)
+
+    # Shared, service- and mode-independent routability probe (methods.md §2):
+    # a cell has "no network path" iff it reaches ZERO facilities of ANY
+    # service in ANY mode. This single mask is used for BOTH regimes, so their
+    # genuinely-unroutable sets are equal by construction (regression-tested);
+    # everything else that merely lacks a nearby facility of one service is
+    # REACHABLE-but-service-deprived, not unreachable.
+    routable_ids: set = set()
+    for p in out.glob("od_*.parquet"):
+        routable_ids.update(
+            pd.read_parquet(p, columns=["origin"])["origin"].unique().tolist()
+        )
+    routable = pd.Series(cells.index.isin(routable_ids), index=cells.index)
+    no_path = ~routable
+    print(f"routability: {int(no_path.sum())}/{len(cells)} cells have no "
+          f"network path (masked for BOTH regimes)")
 
     for regime, service_key in (("everyday", "everyday_services"),
                                 ("emergency", "emergency_services")):
@@ -78,11 +97,14 @@ def run_deprivation(cfg: dict, city: str, root: Path,
                     reference=cfg["catchment"]["reference"],
                     factor_clip=tuple(cfg["catchment"]["factor_clip"]),
                     policy=policy, max_time_min=max_time,
+                    routable=routable, finite_fill_min=finite_fill,
                 )
                 surfaces[f"t_eff_{service}"] = surf["t_eff"]
             else:
                 surf = emergency_surface(od, cells, g, policy=policy,
-                                         max_time_min=max_time)
+                                         max_time_min=max_time,
+                                         routable=routable,
+                                         finite_fill_min=finite_fill)
             surfaces[f"t_nearest_{service}"] = surf["t_nearest"]
             surfaces[f"deprivation_{service}"] = surf["deprivation"]
             surfaces[f"unreachable_{service}"] = surf["unreachable"]
@@ -106,14 +128,20 @@ def run_deprivation(cfg: dict, city: str, root: Path,
         w = np.array([float(weights.get(s, 1.0)) for s in per_service])
         vals = surfaces[dep_cols].to_numpy(dtype=float)
         surfaces[f"deprivation_{regime}"] = _weighted_row_mean(vals, w)
-        surfaces[f"unreachable_{regime}"] = surfaces[
-            [f"unreachable_{s}" for s in per_service]
-        ].any(axis=1)
         # composite regime travel time = weighted mean over services of the
         # regime-representative per-service times (deprivation-free level).
         t_cols = [f"t_regime_{s}" for s in per_service]
         surfaces[f"t_regime_{regime}"] = _weighted_row_mean(
             surfaces[t_cols].to_numpy(dtype=float), w)
+        # The ONLY masked/greyed cells are the genuinely unroutable ones — the
+        # SHARED no_path mask, identical for both regimes. A single sparse
+        # service can no longer knock a routable cell off the map (the old
+        # `.any()` intersection bug); those cells are finite-filled to high
+        # deprivation instead. Masking here (not just flagging) guarantees the
+        # choropleth (viz) and the typology (divergence) use one mask.
+        surfaces[f"unreachable_{regime}"] = no_path.reindex(surfaces.index)
+        surfaces.loc[no_path.reindex(surfaces.index).fillna(False),
+                     [f"deprivation_{regime}", f"t_regime_{regime}"]] = np.nan
 
     surfaces["deprivation_kind_everyday"] = deprivation_spec(cfg, "everyday").get("kind")
     surfaces["deprivation_kind_emergency"] = deprivation_spec(cfg, "emergency").get("kind")

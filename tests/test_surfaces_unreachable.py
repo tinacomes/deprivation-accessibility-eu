@@ -121,3 +121,54 @@ def test_unknown_policy_rejected():
     cells, od, supply = _setup()
     with pytest.raises(ValueError):
         emergency_surface(od, cells, DCF, policy="pretend_fine")
+
+
+# -- Phase 1: the two meanings of "unreachable" (shared routability mask) ------
+
+def test_reachable_but_service_deprived_stays_on_map():
+    """A routable cell with no facility of THIS service in reach is badly
+    deprived, NOT unreachable: finite-filled to high deprivation, kept on map."""
+    cells, od, supply = _setup()
+    # Cell 3 has no OD row for this service but IS routable (reaches something
+    # else in the city).
+    routable = pd.Series(True, index=cells.index)
+    em = emergency_surface(od, cells, DCF, policy="exclude",
+                           routable=routable, finite_fill_min=120.0)
+    ev = everyday_surface(od, cells, supply, DLF, kappa=0.5, kernel=KERNEL,
+                          gamma=0.5, policy="exclude",
+                          routable=routable, finite_fill_min=120.0)
+    for surf, fn, col in ((em, DCF, "t_nearest"), (ev, DLF, "t_eff")):
+        assert bool(surf.loc[3, "unreachable"]) is False          # not masked
+        assert surf.loc[3, col] == 120.0                          # finite fill
+        assert surf.loc[3, "deprivation"] == pytest.approx(float(fn(120.0)))
+        assert surf.loc[[0, 1, 2], "deprivation"].notna().all()
+
+
+def test_no_network_path_is_masked():
+    """A genuinely unroutable cell (~routable) is the only masked case."""
+    cells, od, supply = _setup()
+    routable = pd.Series([True, True, True, False], index=cells.index)
+    for surf in (
+        emergency_surface(od, cells, DCF, policy="exclude",
+                          routable=routable, finite_fill_min=120.0),
+        everyday_surface(od, cells, supply, DLF, kappa=0.5, kernel=KERNEL,
+                         gamma=0.5, policy="exclude",
+                         routable=routable, finite_fill_min=120.0),
+    ):
+        assert bool(surf.loc[3, "unreachable"]) is True
+        assert np.isnan(surf.loc[3, "deprivation"])
+        assert not surf.loc[[0, 1, 2], "unreachable"].any()
+
+
+def test_shared_routable_gives_equal_unreachable_sets():
+    """Same routability mask -> identical unreachable sets across the two
+    regimes (the Phase 1 cross-regime invariant, at the surface level)."""
+    cells, od, supply = _setup()
+    routable = pd.Series([True, True, False, False], index=cells.index)
+    em = emergency_surface(od, cells, DCF, policy="exclude",
+                           routable=routable, finite_fill_min=120.0)
+    ev = everyday_surface(od, cells, supply, DLF, kappa=0.5, kernel=KERNEL,
+                          gamma=0.5, policy="exclude",
+                          routable=routable, finite_fill_min=120.0)
+    assert (em["unreachable"].to_numpy() == ev["unreachable"].to_numpy()).all()
+    assert (em["unreachable"].to_numpy() == (~routable).to_numpy()).all()

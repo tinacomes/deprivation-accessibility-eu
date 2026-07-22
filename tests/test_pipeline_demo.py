@@ -38,6 +38,21 @@ def test_outputs_exist_and_watermarked(demo_run):
     assert any(c.startswith("t_nearest_") for c in surfaces.columns)
 
 
+def test_genuinely_unroutable_sets_equal_across_regimes(demo_run):
+    """Phase 1 invariant: "no network path" is service- and mode-independent,
+    so both regimes' genuinely-unroutable masks must be identical, and every
+    masked cell is NaN on the composite surface the typology reads (one shared
+    mask for the choropleth and the typology)."""
+    cfg, root = demo_run
+    out = root / cfg["output"]["root"] / "demo"
+    surfaces = pd.read_parquet(out / "surfaces.parquet")
+    ev = surfaces["unreachable_everyday"].to_numpy(bool)
+    em = surfaces["unreachable_emergency"].to_numpy(bool)
+    assert (ev == em).all()
+    assert surfaces.loc[ev, "deprivation_everyday"].isna().all()
+    assert surfaces.loc[em, "deprivation_emergency"].isna().all()
+
+
 def test_everyday_vs_emergency_differ(demo_run):
     cfg, root = demo_run
     out = root / cfg["output"]["root"] / "demo"
