@@ -119,3 +119,69 @@ def deprivation_spec(cfg: Mapping[str, Any], regime: str, alternative: str | Non
     if regime not in dep:
         raise ConfigError(f"Config deprivation section has no '{regime}' spec")
     return dict(dep[regime])
+
+
+def everyday_service_spec(cfg: Mapping[str, Any], service: str,
+                          alternative: str | None = None) -> dict:
+    """Everyday deprivation-function spec for a *specific* service.
+
+    The everyday regime tolerates different travel times per service (a
+    pharmacy is near-daily, a secondary school is not), so ``t0`` (and ``k``)
+    are a per-service mapping rather than a scalar. Behaviour is selected by
+    ``deprivation.everyday.threshold_mode``:
+
+    * ``"uniform"`` (default) — every service uses the base
+      ``deprivation.everyday`` params (the single-``t0`` model; retained as the
+      defended simplification and as the Phase-3 comparison variant).
+    * ``"per_service"`` — a service listed under
+      ``deprivation.everyday.per_service`` overrides ``t0``/``k``/``Lmax`` from
+      its entry (form/kind unchanged); unlisted services fall back to the base.
+
+    Per-service values are TRANSFERRED FROM THE LITERATURE in config and each
+    carries its own ``source`` + ``verify`` flag — nothing is hardcoded here,
+    and null placeholders are still rejected downstream by
+    :func:`require_params`.
+    """
+    base = deprivation_spec(cfg, "everyday", alternative=alternative)
+    if alternative is not None:
+        return base
+    ev = (cfg.get("deprivation") or {}).get("everyday") or {}
+    mode = ev.get("threshold_mode", "uniform")
+    if mode == "uniform":
+        return base
+    if mode != "per_service":
+        raise ConfigError(
+            f"Unknown deprivation.everyday.threshold_mode {mode!r} "
+            "(expected 'uniform' or 'per_service')"
+        )
+    entry = (ev.get("per_service") or {}).get(service)
+    if not entry:
+        return base
+    spec = dict(base)
+    params = dict(base.get("params") or {})
+    for key in ("t0", "k", "Lmax"):
+        if key in entry:
+            params[key] = entry[key]
+    spec["params"] = params
+    if entry.get("source"):
+        spec["source"] = entry["source"]
+    return spec
+
+
+def service_extract_aliases(cfg: Mapping[str, Any]) -> dict:
+    """``{alias_service: parent_service}`` declared via ``extract_alias``.
+
+    A sub-type (e.g. ``school_secondary``) that currently has no OSM extraction
+    of its own reuses a parent's facilities and OD matrices — same facilities,
+    different deprivation threshold — until a distinguishing extraction (e.g.
+    ``isced:level`` for schools, ``min_area_m2`` bands for green space) is
+    wired. This keeps the config split honest without routing identical
+    facilities twice.
+    """
+    out: dict = {}
+    for key in ("everyday_services", "emergency_services"):
+        for svc, spec in (cfg.get(key) or {}).items():
+            parent = (spec or {}).get("extract_alias")
+            if parent:
+                out[svc] = parent
+    return out

@@ -109,7 +109,7 @@ The two regimes use deliberately different shapes (t in **minutes**):
 
 | Regime | Kind | Form | Parameters | Source |
 |---|---|---|---|---|
-| Everyday | DLF (dimensionless) | **logistic** (saturating) `g(t) = Lmax / (1 + e^{−k(t − t0)})` | Lmax = 1.0, t0 = 15 min, k = 0.2 /min | Wang et al. 2017 — logistic S-curve of needs-based severity |
+| Everyday | DLF (dimensionless) | **logistic** (saturating) `g(t) = Lmax / (1 + e^{−k(t − t0)})` | Lmax = 1.0; t0, k **per service** (§3.1; base t0 = 15 min, k = 0.2 /min) | Wang et al. 2017 — logistic S-curve of needs-based severity |
 | Emergency | DCF (monetary) | **Box-Cox** (convex, escalating) `g(t) = scale·((t+shift)^λ − shift^λ)/λ` | λ = 1.8, shift = 1 min, scale = 1.0 (relative) | Cantillo et al. 2018; Delgado-Lindeman 2019 — ambulance / time-to-care DCF |
 
 **Everyday deprivation SATURATES** — everyday services are substitutable and
@@ -146,6 +146,77 @@ Alternative specifications for sensitivity analysis live in
 Cantillo, Serrano, Macea, Holguín-Veras (2018); Delgado-Lindeman et al.
 (2019); anchored in the deprivation-cost-function programme of Holguín-Veras
 et al. (2013).
+
+## 3.1 Per-service everyday thresholds
+
+Tolerated travel time falls as usage frequency rises, and some categories have
+an internal size hierarchy, so a single `t0 = 15` across every everyday service
+is wrong in both directions: too generous for dense, near-daily,
+goods-carrying services, and too coarse for categories that span a size
+gradient. `t0` (and `k`) are therefore a **per-service mapping**
+(`config/deprivation.yaml → deprivation.everyday.per_service`), applied to each
+service's surface **before** the composite (§2.5). The mode is selected by
+`deprivation.everyday.threshold_mode`:
+
+- `uniform` (**default**) — every service uses the base `t0 = 15`, `k = 0.2`.
+  This is the defended simplification and the comparison variant in §7.3.
+- `per_service` — the seeds below override `t0`/`k` per service.
+
+Every seed is **transferred from a named standard but flagged `verify: TODO`**
+in config (confirm against the primary source before treating as settled — the
+values are indicative, not calibrated coefficients):
+
+| Service | Seed t0 (min) | Basis (all `verify: TODO`) |
+|---|---|---|
+| pharmacy | 8 | dense, near-daily, location-regulated (DE Apothekenbetriebsordnung and comparable EU pharmacy-siting rules) |
+| supermarket | 10 | frequent, goods-carrying; food-access "food desert" walking thresholds (USDA ERS; DEFRA/ONS) |
+| gp | 18 | registration-based, less frequent (NL/UK); 15-minute-city baseline (Moreno et al. 2021) plus appointment friction |
+| school — primary | 12 | local, daily; statutory safe-walking-distance norms (e.g. UK DfE lower band; DE Schulweg) |
+| school — secondary | 27 | sparser, wider catchment; statutory secondary walking distance (UK DfE ~3 mi) |
+| green space — local | 5 | Natural England ANGSt / WHO Europe (2017): a site within ~300 m (~5 min) of every home |
+| green space — district | 20 | ANGSt larger-site distance tiers (2 km / 5 km) |
+
+The two hierarchical categories are **split in the config**
+(`config/services.yaml`): `school → school_primary/school_secondary`,
+`green_space → green_space_local/green_space_district`. Until the OSM
+extraction can distinguish them (schools by `isced:level`/level tags; green
+space by `min_area_m2` bands) the second sub-type **reuses the first's
+extraction** via `extract_alias` — the same facilities are routed once and each
+sub-type applies its own threshold; a `composite_weight` of 0.5 on each keeps
+the split category counting once so the five everyday categories stay equally
+weighted.
+
+### 3.1a `t0` acts on the *effective* time, not raw walk time
+
+`t0` is a threshold on the **effective** deprivation time `t_eff` — the
+soft-min over reachable facilities (§2.1 step 2), of travel time already
+inflated by the 2SFCA congestion factor `c_j` (§2.1 step 1) — **not** on a raw
+point-to-point walk time. A published walking standard (ANGSt 300 m ≈ 5 min)
+is a raw single-facility walk time, so it is mapped onto the `t_eff` basis, not
+dropped in raw:
+
+- the soft-min sits at or **below** the nearest raw time (substitutability
+  bonus, bounded by `ln(n)/κ`), so for a lone reachable facility `t_eff ≈`
+  nearest raw time and the raw standard transfers directly;
+- congestion **inflates** it: at the city's reference crowding `c_j ≈ 1`, but a
+  facility with half the reference supply-per-demand carries `c_j = 2^γ`, so
+  the same raw standard corresponds to a *larger* `t_eff` where supply is
+  scarce. The seeds are stated on the (reference-crowding) `t_eff` basis, and
+  the sensitivity of the outputs to this mapping is tracked in §7.3 — it is not
+  asserted to be exact.
+
+### 3.1b Mode
+
+The published standards are **walking** thresholds. The everyday regime is
+evaluated on the **walk** network only (`regimes.everyday.modes: ["walk"]`), so
+a single walking `t0` per service is **mode-consistent** by construction — no
+per-mode `t0` is needed while everyday is walk-only. This is a deliberate
+decision, not an oversight: reaching a pharmacy in 15 min *by car* is a
+different construct from 15 min *on foot*, so **if** `car` were added to the
+everyday regime, `t0` would have to vary by mode (a single `t0` across modes
+would be as questionable as a single `t0` across services). That switch is
+flagged here and gated on the mode set; the emergency regime, which is
+car-based and non-substitutable, keeps its own convex DCF and is unaffected.
 
 ## 3a. Cross-regime standardisation (mandatory)
 

@@ -15,6 +15,24 @@ def derived_dir(cfg: dict, city: str, root: Path) -> Path:
     return d
 
 
+def _materialise_aliases(cfg: dict, out: Path) -> None:
+    """Copy each alias service's facilities from its ``extract_alias`` parent.
+
+    A sub-type service (e.g. ``school_secondary``) with no extraction of its
+    own reuses the parent's facilities so downstream stages (access,
+    deprivation) read the same facilities but apply the sub-type's own
+    threshold. Routing is not duplicated — access aliases the OD too."""
+    from depacc.config import service_extract_aliases
+
+    for alias, parent in service_extract_aliases(cfg).items():
+        parent_path = out / f"facilities_{parent}.parquet"
+        alias_path = out / f"facilities_{alias}.parquet"
+        if parent_path.exists():
+            fac = pd.read_parquet(parent_path)
+            fac.to_parquet(alias_path)
+            print(f"facilities[{alias}] aliased from '{parent}': {len(fac)}")
+
+
 def run_ingest(cfg: dict, city: str, root: Path) -> None:
     out = derived_dir(cfg, city, root)
 
@@ -29,6 +47,7 @@ def run_ingest(cfg: dict, city: str, root: Path) -> None:
         for service, fac in facilities.items():
             fac["synthetic"] = True
             fac.to_parquet(out / f"facilities_{service}.parquet")
+        _materialise_aliases(cfg, out)
         print(f"cells: {len(cells)} populated; facilities: "
               f"{ {s: len(f) for s, f in facilities.items()} }")
         return
@@ -54,7 +73,12 @@ def run_ingest(cfg: dict, city: str, root: Path) -> None:
         print(f"cells: {len(cells)} populated, "
               f"{cells.population.sum() / 1e6:.2f}M people")
 
+    from depacc.config import service_extract_aliases
+
+    aliases = service_extract_aliases(cfg)
     services = {**cfg.get("everyday_services", {}), **cfg.get("emergency_services", {})}
+    # Alias services reuse a parent's extraction — never extracted directly.
+    services = {s: spec for s, spec in services.items() if s not in aliases}
     facilities_source = (cfg.get("sources", {}).get("facilities")
                          or ("overpass" if cfg["routing"].get("engine") == "friction"
                              else "pbf"))
@@ -92,6 +116,8 @@ def run_ingest(cfg: dict, city: str, root: Path) -> None:
             for service, fac in facilities.items():
                 fac.to_parquet(out / f"facilities_{service}.parquet")
                 print(f"facilities[{service}]: {len(fac)}")
+
+    _materialise_aliases(cfg, out)
 
     modes = cfg["routing"].get("modes") or []
     # GTFS is only needed for transit routing (r5). The friction fast path

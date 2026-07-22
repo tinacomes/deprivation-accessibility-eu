@@ -167,6 +167,10 @@ def extract_facilities_overpass(cfg: dict, fua, root: Path, city: str) -> dict[s
     services = {**cfg.get("everyday_services", {}), **cfg.get("emergency_services", {})}
     out = {}
     for service, spec in services.items():
+        # Alias sub-types reuse a parent's extraction (handled by the ingest
+        # orchestrator); they have no OSM tags of their own.
+        if (spec or {}).get("extract_alias"):
+            continue
         fac = fetch_service(service, spec, bbox, cfg, root, city)
         if fac.empty:
             out[service] = fac.assign(x=pd.NA, y=pd.NA)

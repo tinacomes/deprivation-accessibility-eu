@@ -41,9 +41,12 @@ def run_access(cfg: dict, city: str, root: Path) -> None:
             f"miss on the first staged run). Re-dispatch stage 'ingest' (or "
             f"stage 'all') for '{city}', then 'access'."
         )
+    from depacc.config import service_extract_aliases
+
     cells = pd.read_parquet(cells_path)
     modes = cfg["routing"].get("modes") or cfg["tiers"]["tier1"]["modes"]
     services = list(cfg.get("everyday_services", {})) + list(cfg.get("emergency_services", {}))
+    aliases = service_extract_aliases(cfg)
     k = int(cfg["routing"].get("k_nearest", 30))
 
     synthetic = bool(cfg["city"].get("synthetic"))
@@ -51,6 +54,19 @@ def run_access(cfg: dict, city: str, root: Path) -> None:
     network = None
     fua = None
     for service in services:
+        # Alias sub-types reuse the parent's OD matrices (same facilities) — no
+        # re-routing. The parent is listed first, so its OD already exists.
+        if service in aliases:
+            parent = aliases[service]
+            for mode in modes:
+                dst = out / f"od_{service}_{mode}.parquet"
+                src = out / f"od_{parent}_{mode}.parquet"
+                if dst.exists():
+                    continue
+                if src.exists():
+                    pd.read_parquet(src).to_parquet(dst)
+                    print(f"od[{service},{mode}]: aliased from '{parent}'")
+            continue
         fac_path = out / f"facilities_{service}.parquet"
         if not fac_path.exists():
             print(f"WARNING: no facilities for '{service}'; skipping")

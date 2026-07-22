@@ -17,7 +17,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from depacc.config import deprivation_spec
+from depacc.config import deprivation_spec, everyday_service_spec
 from depacc.deprivation.functions import DeprivationFunction
 from depacc.deprivation.surfaces import emergency_surface, everyday_surface
 from depacc.ingest.pipeline import derived_dir
@@ -72,8 +72,9 @@ def run_deprivation(cfg: dict, city: str, root: Path,
 
     for regime, service_key in (("everyday", "everyday_services"),
                                 ("emergency", "emergency_services")):
-        spec = deprivation_spec(cfg, regime, alternative=alternative)
-        g = DeprivationFunction.from_spec(spec, context=f"{regime} deprivation")
+        g = DeprivationFunction.from_spec(
+            deprivation_spec(cfg, regime, alternative=alternative),
+            context=f"{regime} deprivation")
         rcfg = cfg["regimes"][regime]
         modes = rcfg["modes"]
         per_service = []
@@ -89,8 +90,14 @@ def run_deprivation(cfg: dict, city: str, root: Path,
                     "type": cfg["catchment"]["kernel"]["type"],
                     "bandwidth": cfg["catchment"]["kernel"]["bandwidth_min"][modes[0]],
                 }
+                # Per-service DLF: t0/k may vary by service (see config
+                # deprivation.everyday.threshold_mode). Applied here, per
+                # service, BEFORE the composite.
+                g_service = DeprivationFunction.from_spec(
+                    everyday_service_spec(cfg, service, alternative=alternative),
+                    context=f"everyday deprivation [{service}]")
                 surf = everyday_surface(
-                    od, cells, supply, g,
+                    od, cells, supply, g_service,
                     kappa=float(cfg["softmin"]["kappa"]),
                     kernel=kernel,
                     gamma=float(cfg["catchment"]["gamma"]),

@@ -112,6 +112,16 @@ regimes:
     # Composite across everyday services: equal-weight mean of the
     # per-service deprivation surfaces (weights overridable per city).
     composite: "mean"
+    # The two hierarchical categories are split into two sub-type services
+    # each (school_primary/secondary, green_space_local/district). Half-weight
+    # each sub-type so a split category still counts once overall, keeping the
+    # five everyday categories equally weighted (gp, pharmacy, supermarket,
+    # school, green space). Services not listed default to weight 1.
+    composite_weights:
+      school_primary: 0.5
+      school_secondary: 0.5
+      green_space_local: 0.5
+      green_space_district: 0.5
   emergency:
     modes: ["car"]
     composite: "mean"
