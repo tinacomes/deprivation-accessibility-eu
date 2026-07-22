@@ -60,8 +60,31 @@ depacc run --city hamburg --stage access
 depacc make-city --fua-code DE002F --name Hamburg --country DE   # codes from `depacc list-fuas`
                                         # generate a Tier-1 fast-path config
 depacc cross                            # cross-city clustering + size gradient
+depacc sensitivity                      # deprivation-assumption robustness sweep
 pytest                                  # unit tests (no downloads needed)
 ```
+
+### Per-city outputs (`data/derived/<city>/`)
+
+Beyond the composite deprivation surfaces and the compounding map, each run
+writes the **intermediary evidence** and **city-level indicators**:
+
+- `accessibility_by_service.csv` / `accessibility_by_regime.csv` +
+  `figures/accessibility_by_service.png` — per-infrastructure travel-time
+  accessibility (facility counts, pop-weighted median/p90 minutes, shares
+  beyond policy thresholds, unreachable share). Deprivation-function-free.
+- `figures/percentile_{everyday,emergency}.png` — the population-weighted rank
+  surfaces the co-location split actually cuts (bridge the magnitude maps and
+  the class map).
+- `figures/compounding_map_{50,75}.png` — median-split and acute-compounding
+  maps, each with the class **population shares** on the legend. Note the map
+  is area-weighted while the shares are population-weighted (methods §4.1).
+- `sensitivity/<city>_deprivation_sensitivity.csv` +
+  `figures/sensitivity_deprivation.png` — how the result moves with the
+  deprivation-function curvature (Gins move; the rank-based typology does not)
+  and with the "high" threshold. See methods §7a.
+- `cityplane_row.csv` — the one-row city indicator sheet (Ginis, ρ,
+  `divergence_gap`, compounding/Jaccard shares, level features).
 
 ## Running on GitHub (no local setup)
 

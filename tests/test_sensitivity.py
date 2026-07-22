@@ -8,6 +8,7 @@ from depacc.config import load_config
 from depacc.sensitivity.harness import (
     Variant,
     city_stable_targets,
+    city_variant_table,
     expand_variants,
     flip_cells,
 )
@@ -59,6 +60,30 @@ def test_curvature_preserves_city_rankings():
     from scipy.stats import spearmanr
     rho = spearmanr(gaps_base, gaps_var).correlation
     assert rho > 0.8  # rankings survive the curvature change
+
+
+def test_city_variant_table_curvature_invariant_typology():
+    """The co-location typology is rank-based, so curvature variants leave the
+    class shares identical while the within-regime Ginis move; the threshold
+    sweep, by contrast, moves the shares."""
+    cfg = load_config()
+    grid = {"everyday": {"k": [0.1, 0.2, 0.3]}, "emergency": {"lam": [1.4, 1.8, 2.2]}}
+    variants = expand_variants(cfg, grid)
+    rng = np.random.default_rng(3)
+    n = 400
+    t_ev = rng.uniform(0, 40, n)
+    t_em = rng.uniform(0, 90, n)
+    pop = rng.uniform(1, 500, n)
+    tbl = city_variant_table(t_ev, t_em, pop, variants, "c")
+    cur = tbl[tbl.axis == "curvature"]
+    # Class shares invariant across curvature variants (rank-based typology).
+    for cls in ("LL", "LH", "HL", "HH"):
+        assert cur[f"share_{cls}"].nunique() == 1
+    # But the everyday Gini genuinely moves with curvature.
+    assert cur["gini_everyday"].max() - cur["gini_everyday"].min() > 1e-3
+    # Threshold sweep changes the compounding (HH) share monotonically down.
+    thr = tbl[tbl.axis == "threshold"].sort_values("threshold")
+    assert thr["share_HH"].is_monotonic_decreasing
 
 
 def test_flip_cells():

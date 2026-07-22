@@ -61,6 +61,20 @@ are flagged explicitly and handled by config policy — `cap_at_max_time`
 (default: deprivation at the cutoff time) or `exclude` (NaN, dropped from
 aggregates) — and their population share is always reported.
 
+**Travel-time summaries are reachable-only.** A cell handled by
+`cap_at_max_time` carries the cutoff as its travel time (a placeholder, not a
+measured time); under `exclude` it is `NaN`. Either value would distort the
+travel-time distribution — the cap in particular floods the upper tail, so a
+naive p90 collapses onto the cutoff whenever the unreachable share exceeds
+10%. The accessibility indicators (§4.2) therefore compute the
+population-weighted mean / median / p90 over **reachable cells only**, and
+report the reachable p90 as `pop_p90_time_min_reachable` **alongside** the
+`unreachable_pop_share`. The two are complementary and must be read together:
+the reachable p90 says how far the served population travels, the unreachable
+share says how much of the population is not served at all. The
+`pop_share_beyond_<t>min` columns count an unreachable cell as beyond every
+finite threshold (it is, by definition), over the whole population.
+
 ## 3. Deprivation functions (form transferred, curvature calibrated)
 
 The two regimes use deliberately different shapes (t in **minutes**):
@@ -138,6 +152,79 @@ empty/unreachable cells are excluded from weights.
    test whether everyday and emergency deprivation/inequity co-evolve or
    diverge with size. Cross-sectional (space-for-time) inference only.
 
+### 4.1 Reading the compounding map (area vs. population)
+
+The bivariate co-location map (`figures/compounding_map_<pct>.png`) is drawn on
+the **population-weighted percentile** surfaces, and the class thresholds are
+population-weighted. Two consequences matter when reading it:
+
+- The **map is area-weighted** while the **class shares are population-
+  weighted**. A dense, low-deprivation core holds many people in few cells, so
+  `LL`/`HL` can be a large *population* share yet occupy little *map area*, and
+  the sparse periphery (`HH`) can dominate the picture at a modest population
+  share. The on-figure legend prints each class's population share, and
+  `typology_summary_<pct>.csv` gives the exact numbers — read those, not the
+  coloured area, for "how many people".
+- **The four median-split shares are not four independent numbers — they are
+  an accounting identity with a single degree of freedom.** At a
+  population-weighted *median* split each axis is cut at its own weighted
+  median, so by construction `P(everyday high) = P(emergency high) = 0.5`.
+  Writing the marginals out, `HL + HH = 0.5` and `LH + HH = 0.5`, which forces
+
+  > `HL = LH = 0.5 − HH`   and   `LL = HH`.
+
+  The whole 2×2 table is therefore fixed by the single compounding share
+  `HH`. For Hamburg `HH ≈ 30.8%`, which *mechanically* gives
+  `LL ≈ 30.8% · HL = LH ≈ 19.2%` — exactly the observed
+  `LL 30.7% · HL 19.2% · LH 19.2% · HH 30.8%`. The apparent "balance"
+  (`LL ≈ HH`, `HL ≈ LH`) is thus a property of the median split, **not** a
+  finding about Hamburg; reading it as "an even spread across the four
+  quadrants" is a mistake.
+- **The informative scalars are the `HH` (compounding) share, the Jaccard
+  index of the two high-deprivation sets, and the Spearman `ρ` between the
+  two percentile surfaces** — these measure genuine co-location *beyond* the
+  marginal identity (statistical independence would give `HH = 0.25`, so
+  `HH − 0.25` is the excess co-location; `HH = 30.8%` signals positive
+  co-location). All three are reported in `cityplane_row.csv`. The raw
+  `LL/HL/LH` shares add nothing once `HH` is known and should not be
+  interpreted as independent evidence.
+- Each cell is rendered **exactly once**, sized to the grid pitch. (An earlier
+  per-class draw loop with oversized markers let the last-drawn class overplot
+  the others at high cell counts, so Hamburg's map showed ~80% `HH` regardless
+  of the true ~31% share; that artifact is fixed.)
+- The **percentile choropleths** (`figures/percentile_{everyday,emergency}.png`)
+  show the continuous rank surfaces the split cuts. They are the bridge between
+  the magnitude maps (which, under a saturating DLF, push most cells toward the
+  ceiling and look uniformly dark) and the categorical map.
+
+### 4.2 Intermediary accessibility indicators (the evidence layer)
+
+Under the deprivation surfaces sit **deprivation-function-free** accessibility
+indicators, written by the deprivation stage and directly interpretable in
+minutes (no DLF/DCF calibration needed):
+
+- `accessibility_by_service.csv` — one row per infrastructure (GP, pharmacy,
+  supermarket, school, green space, ED hospital, ambulance): facility count,
+  population-weighted mean / median of the regime-representative travel time
+  and the reachable p90 (`pop_p90_time_min_reachable`), population share
+  beyond each policy threshold, unreachable share (`unreachable_pop_share`),
+  and mean deprivation. All travel-time quantiles are reachable-only (§2.4).
+  `figures/accessibility_by_service.png` maps the same.
+- `accessibility_by_regime.csv` — the composite everyday / emergency rollup.
+
+These are the per-infrastructure justification for the composite surfaces, and
+they are city-level indicators in their own right.
+
+### 4.3 Where the city-level indicators live
+
+| indicator | file |
+| --- | --- |
+| Ginis, Spearman ρ, `divergence_gap`, compounding & Jaccard shares, level features | `cityplane_row.csv` (this city) / `cityplane.csv` (all cities) |
+| class population shares per threshold | `typology_summary_<pct>.csv` |
+| per-regime mean/Gini/concentration index; gradient regressions | `equity_indices.csv`, `equity_regressions.csv` |
+| per-infrastructure accessibility | `accessibility_by_service.csv`, `accessibility_by_regime.csv` |
+| deprivation-assumption sensitivity | `sensitivity/<city>_deprivation_sensitivity.csv` |
+
 ## 5. Travel times
 
 Two engines, selected per city config (`routing.engine`):
@@ -194,6 +281,30 @@ versus baseline.
 **Framing:** this is a *structured robustness check over a defensible
 parameter envelope*, NOT a probabilistic uncertainty quantification — it is
 not presented as a posterior.
+
+**Single-city view (`sensitivity/<city>_deprivation_sensitivity.csv`,
+`figures/sensitivity_deprivation.png`).** The cross-city rank-agreement and
+cluster-agreement targets need the multi-city sample; for one city the sweep
+still reports the two things that *are* well-defined:
+
+- *Curvature axis.* Across the deprivation-function curvature variants the
+  within-regime **Ginis move** (they are computed on raw magnitudes), but the
+  **co-location typology does not**: it is built on population-weighted ranks,
+  and every admissible `g(t)` is strictly increasing, so the ranks — and hence
+  the `LL/HL/LH/HH` classes and their shares — are **invariant by
+  construction**. The table makes this explicit (Gini columns spread, class-
+  share columns constant); it is the scale-free property, not a null result.
+- *Threshold axis.* "How high is high" is a genuine assumption, so the `HH`
+  (compounding) share is swept over several percentile cut-offs (0.40–0.75).
+  This is where the headline number actually moves, and it is reported so the
+  reader can see the split's leverage.
+
+It follows that the assumptions which move the **spatial** result are the
+**accessibility** ones (Layer 3: supply model, mode, `softmin.kappa`,
+`catchment.gamma`, bandwidth, `k_nearest`) — because they change the travel
+times and therefore the ranks — not the deprivation-function curvature. Those
+require per-variant re-runs of the access+deprivation stages; the harness is
+staged to accept them.
 
 ## 8. Reproducibility
 

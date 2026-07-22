@@ -31,6 +31,28 @@ def _make_city(derived: Path, city: str, pop: float, ge: float, gm: float,
     pd.DataFrame([{"term": "const", "coef": 1.0, "model": "density",
                    "regime": "everyday"}]).to_csv(d / "equity_regressions.csv",
                                                   index=False)
+    # Per-threshold typology summaries (variable suffix -> glob) and the
+    # travel-time accessibility indicator tables.
+    for pct in (50, 75):
+        pd.DataFrame([{"class": "HH", "population_share": 0.3}]).to_csv(
+            d / f"typology_summary_{pct}.csv", index=False)
+    pd.DataFrame([{"service": "gp", "pop_p90_time_min_reachable": 12.0}]).to_csv(
+        d / "accessibility_by_service.csv", index=False)
+    pd.DataFrame([{"regime": "everyday", "unreachable_pop_share": 0.0}]).to_csv(
+        d / "accessibility_by_regime.csv", index=False)
+
+
+def _make_sensitivity(derived: Path, cities: list[str]) -> None:
+    """Robustness-harness outputs under data/derived/sensitivity/."""
+    d = derived / "sensitivity"
+    d.mkdir(parents=True, exist_ok=True)
+    for city in cities:
+        pd.DataFrame([{"city": city, "axis": "curvature", "share_HH": 0.3}]).to_csv(
+            d / f"{city}_deprivation_sensitivity.csv", index=False)
+    for name in ("rank_agreement.csv", "flip_cells.csv",
+                 "typology_share_envelope.csv"):
+        pd.DataFrame([{"variant": "everyday_k0.1", "value": 0.9}]).to_csv(
+            d / name, index=False)
 
 
 def test_export_skips_synthetic(tmp_path):
@@ -39,6 +61,30 @@ def test_export_skips_synthetic(tmp_path):
     _make_city(derived, "demo", 7e4, 0.2, 0.1, synthetic=True)
     persist.cmd_export(results, derived)
     assert {p.name for p in (results / "cities").iterdir()} == {"hamburg"}
+
+
+def test_export_persists_typology_glob_and_accessibility(tmp_path):
+    derived, results = tmp_path / "d", tmp_path / "r"
+    _make_city(derived, "hamburg", 3.2e6, 0.18, 0.11)
+    persist.cmd_export(results, derived)
+    names = {p.name for p in (results / "cities" / "hamburg").iterdir()}
+    # Both per-threshold typology summaries land via the glob.
+    assert {"typology_summary_50.csv", "typology_summary_75.csv"} <= names
+    # Both accessibility indicator tables are persisted.
+    assert {"accessibility_by_service.csv", "accessibility_by_regime.csv"} <= names
+
+
+def test_export_passes_through_sensitivity(tmp_path):
+    derived, results = tmp_path / "d", tmp_path / "r"
+    _make_city(derived, "hamburg", 3.2e6, 0.18, 0.11)
+    _make_sensitivity(derived, ["hamburg"])
+    persist.cmd_export(results, derived)
+    sens = {p.name for p in (results / "sensitivity").iterdir()}
+    assert sens == {
+        "hamburg_deprivation_sensitivity.csv", "rank_agreement.csv",
+        "flip_cells.csv", "typology_share_envelope.csv"}
+    # The sensitivity directory is not mistaken for a city.
+    assert "sensitivity" not in {p.name for p in (results / "cities").iterdir()}
 
 
 def test_import_rebuilds_union_and_dedups(tmp_path):

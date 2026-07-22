@@ -121,6 +121,13 @@ def run_deprivation(cfg: dict, city: str, root: Path,
     print(f"surfaces.parquet: {len(surfaces)} cells, "
           f"{surfaces.population.sum() / 1e3:.1f}k people")
 
+    # Intermediary, deprivation-function-FREE accessibility indicators per
+    # infrastructure (travel-time based) — the evidence layer under the
+    # deprivation surfaces, for justification and city-level reporting.
+    from depacc.access.summary import write_accessibility_summary
+
+    write_accessibility_summary(surfaces, cfg, out)
+
 
 def _weighted_row_mean(vals: np.ndarray, w: np.ndarray) -> np.ndarray:
     """Row mean over available (non-NaN) services with weights renormalised

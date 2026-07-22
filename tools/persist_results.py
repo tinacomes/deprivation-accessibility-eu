@@ -5,11 +5,17 @@ The results branch is an orphan branch holding only small CSV summaries and
 cross-city figures:
 
     cities/<city>/cityplane_row.csv        one-row city summary
-    cities/<city>/typology_summary.csv     compounding population shares
+    cities/<city>/typology_summary_*.csv   compounding population shares (per
+                                           percentile threshold)
     cities/<city>/equity_indices.csv       weighted mean / Gini / CI
     cities/<city>/equity_regressions.csv   density + SES gradients
+    cities/<city>/accessibility_by_*.csv   per-service / per-regime travel-time
+                                           accessibility indicators
     cross/                                 union cityplane, cityvector,
                                            scaling, size gradient, figures
+    sensitivity/                           per-city deprivation-sensitivity
+                                           tables + cross-city rank agreement,
+                                           flip cells, typology-share envelope
 
 Two commands, both idempotent:
 
@@ -33,11 +39,18 @@ from pathlib import Path
 
 import pandas as pd
 
+# Fixed per-city summary file names copied into cities/<city>/.
 SUMMARY_FILES = (
     "cityplane_row.csv",
-    "typology_summary.csv",
     "equity_indices.csv",
     "equity_regressions.csv",
+    "accessibility_by_service.csv",
+    "accessibility_by_regime.csv",
+)
+# Per-city summaries whose name carries a variable suffix (one file per
+# percentile threshold, e.g. typology_summary_50.csv / typology_summary_75.csv).
+SUMMARY_GLOBS = (
+    "typology_summary_*.csv",
 )
 CROSS_FILES = (
     "cityplane.csv",
@@ -46,6 +59,17 @@ CROSS_FILES = (
     "scaling.csv",
     "size_gradient.csv",
     "regime_slope_difference.csv",
+)
+# Robustness-harness outputs (data/derived/sensitivity/*), passed through
+# verbatim into results/sensitivity/. The per-city deprivation-sensitivity
+# table carries a <city> prefix; the rest are cross-city rollups.
+SENSITIVITY_FILES = (
+    "rank_agreement.csv",
+    "flip_cells.csv",
+    "typology_share_envelope.csv",
+)
+SENSITIVITY_GLOBS = (
+    "*_deprivation_sensitivity.csv",
 )
 
 
@@ -90,6 +114,27 @@ def cmd_import(results: Path, derived: Path) -> None:
     rebuild_cityplane(derived)
 
 
+def _export_sensitivity(results: Path, derived: Path) -> None:
+    """Pass the robustness-harness outputs (data/derived/sensitivity/*) through
+    to results/sensitivity/ verbatim. No-op when the sweep has not been run."""
+    src_dir = derived / "sensitivity"
+    if not src_dir.exists():
+        return
+    dest_dir = results / "sensitivity"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    copied = 0
+    for name in SENSITIVITY_FILES:
+        src = src_dir / name
+        if src.exists():
+            shutil.copy2(src, dest_dir / name)
+            copied += 1
+    for pattern in SENSITIVITY_GLOBS:
+        for src in sorted(src_dir.glob(pattern)):
+            shutil.copy2(src, dest_dir / src.name)
+            copied += 1
+    print(f"exported {copied} sensitivity file(s) to {dest_dir}")
+
+
 def cmd_export(results: Path, derived: Path) -> None:
     exported = 0
     (results / "cities").mkdir(parents=True, exist_ok=True)
@@ -105,7 +150,11 @@ def cmd_export(results: Path, derived: Path) -> None:
             src = cdir / name
             if src.exists():
                 shutil.copy2(src, dest / name)
+        for pattern in SUMMARY_GLOBS:
+            for src in sorted(cdir.glob(pattern)):
+                shutil.copy2(src, dest / src.name)
         exported += 1
+    _export_sensitivity(results, derived)
     cross = results / "cross"
     cross.mkdir(exist_ok=True)
     for name in CROSS_FILES:

@@ -84,6 +84,20 @@ jobs:
       - name: Run pipeline
         run: depacc run --city "${{ inputs.city }}" --stage "${{ inputs.stage }}"
 
+      # Robustness sweep over the deprivation-function assumptions (curvature +
+      # split threshold) for every city accumulated in cityplane.csv, then
+      # refresh this city's figures so the sensitivity panel is included. No-ops
+      # cleanly on an ingest/access-only run (no surfaces yet).
+      - name: Deprivation-assumption sensitivity sweep (+ refresh figures)
+        if: always() && inputs.city != 'demo'
+        run: |
+          if [ -f "data/derived/${{ inputs.city }}/surfaces.parquet" ]; then
+            depacc sensitivity
+            depacc run --city "${{ inputs.city }}" --stage viz
+          else
+            echo "skip sensitivity: surfaces.parquet not present yet"
+          fi
+
       # Accumulate this city onto the depacc-results branch and refresh the
       # cross-city table. Only meaningful once divergence has produced a city
       # summary (full run or stage=divergence/equity/viz); the script no-ops
@@ -100,5 +114,6 @@ jobs:
           path: |
             data/derived/${{ inputs.city }}
             data/derived/cityplane.csv
+            data/derived/sensitivity
           if-no-files-found: warn
           retention-days: 90

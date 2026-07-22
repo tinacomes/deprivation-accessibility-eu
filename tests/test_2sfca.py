@@ -6,6 +6,7 @@ import pytest
 
 from depacc.deprivation.catchment import (
     congestion_factor,
+    facility_weighted_demand,
     kernel_weight,
     supply_demand_ratio,
 )
@@ -84,6 +85,33 @@ def test_unreached_facility_gets_nan_ratio_and_unit_factor():
     assert np.isnan(ratio["f_far"])
     c = congestion_factor(ratio, gamma=0.5)
     assert c["f_far"] == 1.0
+
+
+def test_weighted_demand_is_ratio_denominator():
+    """facility_weighted_demand equals sum_i P_i K(t_ij) and reproduces the
+    2SFCA ratio as supply / demand (the ratio's denominator)."""
+    od, population, supply = _uniform_setup(n_cells=4, n_fac=3)
+    population.loc[0] = 500.0
+    demand = facility_weighted_demand(od, population, supply, BINARY)
+    # Uniform reach at 10 min (<= bandwidth) -> every cell counts fully.
+    expected = float(population.sum())  # each facility reached by all cells
+    assert np.allclose(demand.to_numpy(), expected)
+    ratio = supply_demand_ratio(od, population, supply, BINARY)
+    assert np.allclose(ratio.to_numpy(), (supply / demand).to_numpy())
+
+
+def test_reference_weights_shift_the_reference_median():
+    """Weighting the reference median by facility demand moves it toward the
+    high-demand facilities, changing the resulting congestion factors."""
+    ratio = pd.Series([1.0, 2.0, 4.0], index=["a", "b", "c"])
+    # Nearly all demand sits on the low-ratio (crowded) facility 'a'.
+    weights = pd.Series([100.0, 1.0, 1.0], index=["a", "b", "c"])
+    c_unw = congestion_factor(ratio, gamma=1.0)  # unweighted median ref = 2.0
+    c_w = congestion_factor(ratio, gamma=1.0, reference_weights=weights)
+    # Weighted reference is pulled down to ~1.0 (facility 'a'), so every factor
+    # shrinks relative to the unweighted case.
+    assert (c_w <= c_unw + 1e-9).all()
+    assert c_w["a"] < c_unw["a"]  # 1.0 vs 2.0
 
 
 def test_invalid_inputs():

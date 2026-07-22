@@ -91,6 +91,58 @@ def city_stable_targets(t_everyday: np.ndarray, t_emergency: np.ndarray,
     }
 
 
+def city_variant_table(t_everyday: np.ndarray, t_emergency: np.ndarray,
+                       population: np.ndarray, variants: list["Variant"],
+                       city_id: str, thresholds=(0.4, 0.5, 0.6, 0.75)) -> pd.DataFrame:
+    """Per-city, per-variant robustness table — informative for a SINGLE city.
+
+    Two axes are reported side by side:
+
+      * DEPRIVATION-FUNCTION curvature (each ``variant``): within-regime Ginis
+        move, but the co-location typology does NOT — it is computed on
+        population-weighted ranks, and every g(t) here is strictly increasing,
+        so ranks (and therefore the LL/HL/LH/HH classes) are invariant by
+        construction. The table makes that explicit: the Gini columns spread
+        while the class-share columns stay put across curvature variants.
+      * THRESHOLD (the split choice): the compounding (HH) share is swept over
+        several percentile cut-offs, since "how high is high" is an assumption.
+    """
+    rows = []
+    for v in variants:
+        tgt = city_stable_targets(t_everyday, t_emergency, population,
+                                  v.everyday, v.emergency, city_id, threshold=0.5)
+        rows.append({
+            "city": city_id, "axis": "curvature", "variant": v.name,
+            "layer": v.layer, "threshold": 0.5,
+            "gini_everyday": tgt["gini_everyday"],
+            "gini_emergency": tgt["gini_emergency"],
+            "divergence_gap": tgt["divergence_gap"],
+            **{f"share_{c}": tgt[f"share_{c}"] for c in ("LL", "LH", "HL", "HH")},
+        })
+    # Threshold sweep on the BASELINE specs.
+    base = variants[0]
+    g_ev = _dep_fn(base.everyday, "everyday")
+    g_em = _dep_fn(base.emergency, "emergency")
+    ev_p = to_percentile(RegimeSurface(g_ev(t_everyday), population, "everyday", city_id, "raw")).values
+    em_p = to_percentile(RegimeSurface(g_em(t_emergency), population, "emergency", city_id, "raw")).values
+    for thr in thresholds:
+        labels = classify(ev_p, em_p, thr)
+        shares = class_shares(labels, population)["population_share"].to_dict()
+        rows.append({
+            "city": city_id, "axis": "threshold", "variant": f"threshold_{thr}",
+            "layer": "threshold", "threshold": thr,
+            "gini_everyday": np.nan, "gini_emergency": np.nan, "divergence_gap": np.nan,
+            **{f"share_{c}": shares.get(c, np.nan) for c in ("LL", "LH", "HL", "HH")},
+        })
+    return pd.DataFrame(rows)
+
+
+def _dep_fn(spec: dict, context: str):
+    from depacc.deprivation.functions import DeprivationFunction
+
+    return DeprivationFunction.from_spec(spec, context=context)
+
+
 def flip_cells(baseline_labels: np.ndarray, variant_label_sets: list[np.ndarray],
                population: np.ndarray) -> dict:
     """Cells whose typology class changes under ANY variant vs baseline.
@@ -169,6 +221,19 @@ def run_sensitivity(cfg: dict, grid: dict, root: Path) -> None:
             flip_records.append({"city": city,
                                  "sensitive_pop_share": fc["sensitive_pop_share"],
                                  "stable_pop_share": fc["stable_pop_share"]})
+        # Per-city table (curvature Gini movement + threshold sweep) — the
+        # single-city-meaningful view of deprivation-assumption sensitivity.
+        out_city = derived / "sensitivity"
+        out_city.mkdir(parents=True, exist_ok=True)
+        cvt = city_variant_table(t_ev, t_em, pop, variants, city)
+        cvt.to_csv(out_city / f"{city}_deprivation_sensitivity.csv", index=False)
+        cur = cvt[cvt.axis == "curvature"]
+        g_ev_rng = cur.gini_everyday.max() - cur.gini_everyday.min()
+        g_em_rng = cur.gini_emergency.max() - cur.gini_emergency.min()
+        hh_rng = cur.share_HH.max() - cur.share_HH.min()
+        print(f"  {city}: across curvature variants — gini_everyday range "
+              f"{g_ev_rng:.3f}, gini_emergency range {g_em_rng:.3f}; "
+              f"HH-share range {hh_rng:.4f} (typology is rank-based → ~0)")
 
     frames = {name: pd.DataFrame(d).T for name, d in per_variant.items()}
     if "baseline" not in frames:
