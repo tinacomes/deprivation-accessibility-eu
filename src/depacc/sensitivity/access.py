@@ -220,12 +220,29 @@ def available_od_modes(out: Path, services: list[str]) -> set[str]:
     return modes
 
 
-def everyday_t_regime(cfg: dict, out: Path, cells: pd.DataFrame,
-                      params: dict) -> np.ndarray | None:
+def routable_mask(out: Path, cells: pd.DataFrame) -> pd.Series:
+    """Shared, service- and mode-independent routability probe (methods.md §2),
+    reproduced from the SAVED OD: a cell has a network path iff it reaches at
+    least one facility of ANY service in ANY mode. This is what the deprivation
+    stage uses to split genuinely-unroutable (masked) cells from reachable-but-
+    service-deprived ones, so the sweep must use the SAME mask to stay
+    consistent with the baseline surfaces."""
+    routable_ids: set = set()
+    for p in out.glob("od_*.parquet"):
+        routable_ids.update(
+            pd.read_parquet(p, columns=["origin"])["origin"].unique().tolist())
+    return pd.Series(cells.index.isin(routable_ids), index=cells.index)
+
+
+def everyday_t_regime(cfg: dict, out: Path, cells: pd.DataFrame, params: dict,
+                      *, routable: pd.Series | None = None,
+                      finite_fill: float | None = None) -> np.ndarray | None:
     """Recompute the composite everyday regime travel time ``t_regime_everyday``
-    from cached inputs under one variant's access parameters. Returns an array
-    aligned to ``cells.index`` (populated-cell order), or None if no everyday
-    service has an OD matrix for the variant's modes."""
+    from cached inputs under one variant's access parameters. Reproduces the
+    deprivation stage's reachability semantics: reachable-but-service-deprived
+    cells get ``finite_fill`` (stay on the map), genuinely unroutable cells are
+    NaN-masked with the shared no-path mask. Returns an array aligned to
+    ``cells.index``, or None if no everyday service has an OD for the modes."""
     # The deprivation FUNCTION is irrelevant to t_regime (= t_eff, a travel
     # time); pass the baseline everyday g only because everyday_surface computes
     # a deprivation column internally. We discard it.
@@ -234,6 +251,11 @@ def everyday_t_regime(cfg: dict, out: Path, cells: pd.DataFrame,
     kappa = _NEAREST_ONLY_KAPPA if params["nearest_only"] else params["kappa"]
     kernel = {"type": params["kernel_type"], "bandwidth": params["bandwidth"]}
     weights = cfg["regimes"]["everyday"].get("composite_weights") or {}
+    if routable is None:
+        routable = routable_mask(out, cells)
+    if finite_fill is None:
+        finite_fill = float(cfg["unreachable"].get("finite_fill_min")
+                            or cfg["routing"]["max_time_min"])
 
     per_service, used = [], []
     for service in cfg.get("everyday_services", {}):
@@ -247,6 +269,7 @@ def everyday_t_regime(cfg: dict, out: Path, cells: pd.DataFrame,
             kappa=kappa, kernel=kernel, gamma=params["gamma"],
             reference=params["reference"], factor_clip=params["factor_clip"],
             policy=params["policy"], max_time_min=params["cap_min"],
+            routable=routable, finite_fill_min=finite_fill,
         )
         per_service.append(surf["t_eff"].to_numpy(float))
         used.append(service)
@@ -254,7 +277,11 @@ def everyday_t_regime(cfg: dict, out: Path, cells: pd.DataFrame,
         return None
     w = np.array([float(weights.get(s, 1.0)) for s in used])
     vals = np.column_stack(per_service)
-    return _weighted_row_mean(vals, w)
+    t = _weighted_row_mean(vals, w)
+    # Mask the genuinely-unroutable (no-path) cells, exactly as the deprivation
+    # stage masks t_regime_everyday — one shared mask for both regimes.
+    no_path = ~routable.reindex(cells.index).fillna(False).to_numpy(bool)
+    return np.where(no_path, np.nan, t)
 
 
 def _weighted_row_mean(vals: np.ndarray, w: np.ndarray) -> np.ndarray:
@@ -324,13 +351,20 @@ def city_access_sensitivity(cfg: dict, city: str, root: Path, grid: dict,
     ev_spec = deprivation_spec(cfg, "everyday")
     em_spec = deprivation_spec(cfg, "emergency")
 
+    # Shared no-path mask + finite-fill, computed once and reused by every
+    # variant so the recomputed everyday surface matches the deprivation stage.
+    routable = routable_mask(out, cells)
+    finite_fill = float(cfg["unreachable"].get("finite_fill_min")
+                        or cfg["routing"]["max_time_min"])
+
     services = list(cfg.get("everyday_services", {}))
     avail = available_od_modes(out, services)
     variants = expand_access_variants(cfg, grid, available_modes=avail)
 
     rows, base_labels, var_label_sets = [], None, []
     for v in variants:
-        t_ev = everyday_t_regime(cfg, out, cells, v.params)
+        t_ev = everyday_t_regime(cfg, out, cells, v.params,
+                                 routable=routable, finite_fill=finite_fill)
         if t_ev is None:
             print(f"  {city}: variant '{v.name}' has no everyday OD; skipped")
             continue
@@ -370,7 +404,8 @@ def city_access_sensitivity(cfg: dict, city: str, root: Path, grid: dict,
     # Threshold-axis block on the BASELINE surfaces (the comparison axis): how
     # far the "how high is high" choice alone moves the HH share. ρ is coupling
     # and threshold-independent, so its threshold-axis range is 0 by definition.
-    t_ev_base = everyday_t_regime(cfg, out, cells, baseline_params(cfg))
+    t_ev_base = everyday_t_regime(cfg, out, cells, baseline_params(cfg),
+                                  routable=routable, finite_fill=finite_fill)
     g_ev = DeprivationFunction.from_spec(ev_spec, context="everyday")
     g_em = DeprivationFunction.from_spec(em_spec, context="emergency")
     ev_p = to_percentile(RegimeSurface(g_ev(t_ev_base), pop, "everyday", city, "raw"))

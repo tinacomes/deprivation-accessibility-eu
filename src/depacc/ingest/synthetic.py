@@ -60,13 +60,21 @@ def generate_city(cfg: dict) -> tuple[pd.DataFrame, dict[str, pd.DataFrame]]:
         })
 
     counts = {
-        "gp": 25, "pharmacy": 18, "supermarket": 22, "school": 15,
-        "green_space": 12,
+        "gp": 25, "pharmacy": 18, "supermarket": 22,
+        "school_primary": 15, "green_space_local": 12,
         "emergency_dept_hospital": 3, "ambulance_station": 5,
     }
     spreads = {"emergency_dept_hospital": 0.5, "ambulance_station": 0.9}
+    # Alias sub-types (extract_alias) are not generated here — the ingest
+    # orchestrator materialises them from their parent, so they never consume
+    # the RNG and the fixture stays deterministic across config splits.
+    from depacc.config import service_extract_aliases
+
+    aliases = service_extract_aliases(cfg)
     facilities = {}
     for service in {**cfg.get("everyday_services", {}), **cfg.get("emergency_services", {})}:
+        if service in aliases:
+            continue
         n = counts.get(service, 10)
         fac = _place(n, spreads.get(service, 1.0))
         fac["dest_id"] = [f"{service}_{i}" for i in range(len(fac))]

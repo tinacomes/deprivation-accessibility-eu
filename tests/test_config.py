@@ -7,8 +7,10 @@ from depacc.config import (
     MissingParameterError,
     deep_merge,
     deprivation_spec,
+    everyday_service_spec,
     load_config,
     require_params,
+    service_extract_aliases,
 )
 
 
@@ -28,11 +30,39 @@ def test_load_defaults():
     assert cfg["tiers"]["tier1"]["modes"] == ["walk", "car"]
     assert "transit" in cfg["tiers"]["tier2"]["modes"]
     assert set(cfg["everyday_services"]) == {
-        "gp", "pharmacy", "supermarket", "school", "green_space",
+        "gp", "pharmacy", "supermarket",
+        "school_primary", "school_secondary",
+        "green_space_local", "green_space_district",
     }
     assert set(cfg["emergency_services"]) == {
         "emergency_dept_hospital", "ambulance_station",
     }
+
+
+def test_service_extract_aliases():
+    cfg = load_config()
+    assert service_extract_aliases(cfg) == {
+        "school_secondary": "school_primary",
+        "green_space_district": "green_space_local",
+    }
+
+
+def test_everyday_service_spec_uniform_vs_per_service():
+    cfg = load_config()
+    # Default is uniform: every service uses the base t0.
+    assert cfg["deprivation"]["everyday"]["threshold_mode"] == "uniform"
+    base_t0 = cfg["deprivation"]["everyday"]["params"]["t0"]
+    for svc in ("gp", "pharmacy", "school_secondary"):
+        assert everyday_service_spec(cfg, svc)["params"]["t0"] == base_t0
+
+    # Switch to per_service: listed services override t0/k, unlisted fall back.
+    cfg["deprivation"]["everyday"]["threshold_mode"] = "per_service"
+    assert everyday_service_spec(cfg, "pharmacy")["params"]["t0"] == 8.0
+    assert everyday_service_spec(cfg, "gp")["params"]["t0"] == 18.0
+    assert (everyday_service_spec(cfg, "school_secondary")["params"]["t0"]
+            > everyday_service_spec(cfg, "school_primary")["params"]["t0"])
+    # form/kind preserved from the base spec.
+    assert everyday_service_spec(cfg, "pharmacy")["form"] == "logistic"
 
 
 def test_city_overlay_hamburg():

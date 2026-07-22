@@ -112,16 +112,42 @@ regimes:
     # Composite across everyday services: equal-weight mean of the
     # per-service deprivation surfaces (weights overridable per city).
     composite: "mean"
+    # The two hierarchical categories are split into two sub-type services
+    # each (school_primary/secondary, green_space_local/district). Half-weight
+    # each sub-type so a split category still counts once overall, keeping the
+    # five everyday categories equally weighted (gp, pharmacy, supermarket,
+    # school, green space). Services not listed default to weight 1.
+    composite_weights:
+      school_primary: 0.5
+      school_secondary: 0.5
+      green_space_local: 0.5
+      green_space_district: 0.5
   emergency:
     modes: ["car"]
     composite: "mean"
 
 unreachable:
-  # Policy for cells with zero reachable facilities of a service within
-  # max_time_min: "exclude" drops them from aggregate statistics (but always
-  # reports their count and population share); "cap_at_max_time" assigns the
-  # deprivation value at max_time_min.
+  # Two DISTINCT meanings of "unreachable" are kept apart (methods.md §2):
+  #
+  #  * "no network path" — the cell is genuinely unroutable (disconnected from
+  #    the network). Detected by a SHARED, service- and mode-independent
+  #    routability probe (a cell that reaches ZERO facilities of ANY service in
+  #    ANY mode), so the everyday and emergency masks coincide. These are the
+  #    ONLY masked/greyed cells; `policy` governs them.
+  #  * "reachable but service-deprived" — the cell IS routable but no facility
+  #    of a given service lies within the cutoff. This is NOT unreachability: a
+  #    large-but-finite effective time (`finite_fill_min`) is assigned so the
+  #    DLF saturates near Lmax (high deprivation) and the cell stays on the map.
+  #    This prevents one sparse layer (e.g. green space) from masking the city.
+  #
+  # Policy for genuinely-unroutable cells: "exclude" drops them from aggregate
+  # statistics (but always reports their count and population share);
+  # "cap_at_max_time" assigns the deprivation value at max_time_min.
   policy: "cap_at_max_time"
+  # Effective time (minutes) assigned to reachable-but-service-deprived cells.
+  # Must be well past the DLF inflection so deprivation saturates high; NOT a
+  # literature parameter. null -> use routing.max_time_min.
+  finite_fill_min: null
 
 typology:
   # Bivariate everyday x emergency classification thresholds on the

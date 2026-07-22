@@ -40,6 +40,96 @@ deprivation:
       Form from Wang et al. 2017; curvature calibrated to intra-urban travel
       range, NOT transferred from hours-scale estimates.
 
+    # ------------------------------------------------------------------------
+    # Per-service tolerated travel time. A single t0=15 across GP, pharmacy,
+    # supermarket, school and green space is wrong in both directions (too
+    # generous for dense near-daily goods-carrying services, too coarse for
+    # categories with an internal size hierarchy): tolerated travel time falls
+    # as usage frequency rises. `threshold_mode` selects the model:
+    #   uniform     -> every service uses the base t0/k above (DEFAULT; the
+    #                  defended simplification + the Phase-3 comparison variant).
+    #   per_service -> a service below overrides t0/k from its entry.
+    #
+    # t0 is a threshold on the EFFECTIVE time (soft-min over facilities,
+    # inflated by 2SFCA congestion), NOT raw walk time — see methods.md §3.1.
+    # Every value below is SEEDED from a named standard but flagged
+    # `verify: TODO`: confirm against the primary source (volume/page) before
+    # treating it as settled. Nothing is hardcoded in src/; nulls are rejected.
+    # ------------------------------------------------------------------------
+    threshold_mode: "uniform"    # uniform | per_service
+    per_service:
+      gp:
+        t0: 18.0
+        k: 0.20
+        verify: TODO
+        source: >-
+          GP is registration-based and less frequent (NL/UK): a longer
+          tolerated time than daily services. Seed anchored to the 15-minute-
+          city general threshold (Moreno et al. 2021) nudged up for
+          registration/appointment friction. VERIFY against primary GP-access
+          standards (e.g. RCGP/NHS access, NL huisarts catchment norms).
+      pharmacy:
+        t0: 8.0
+        k: 0.28
+        verify: TODO
+        source: >-
+          Pharmacies are dense, near-daily and location-regulated in several
+          countries (DE Apothekenbetriebsordnung; comparable EU pharmacy
+          location rules). Seed ~7-10 min. VERIFY against the national pharmacy
+          siting regulation and pharmacy-accessibility literature.
+      supermarket:
+        t0: 10.0
+        k: 0.25
+        verify: TODO
+        source: >-
+          Frequent, goods-carrying trips penalise distance; ~10 min. Seed
+          anchored to food-access "food desert" walking thresholds (USDA ERS;
+          DEFRA/ONS food accessibility). VERIFY against the primary food-access
+          standard used.
+      school_primary:
+        t0: 12.0
+        k: 0.22
+        verify: TODO
+        source: >-
+          Primary schooling is local and daily: short tolerated walk. Seed
+          ~10-15 min, anchored to statutory safe-walking-distance norms (e.g.
+          UK DfE statutory walking distance ~2 miles lower band; DE Schulweg
+          planning). VERIFY against the national primary-school catchment norm.
+      school_secondary:
+        t0: 27.0
+        k: 0.14
+        verify: TODO
+        source: >-
+          Secondary schools are sparser with wider catchments: a longer
+          tolerated time (~25-30 min). Seed anchored to statutory secondary
+          walking distance (UK DfE ~3 miles) / typical secondary catchments.
+          VERIFY against the national secondary-school catchment norm.
+        extract_alias_note: >-
+          Currently shares the `school` OSM extraction with school_primary
+          (see config/services.yaml extract_alias); split by isced:level /
+          school level tags once reliably available.
+      green_space_local:
+        t0: 5.0
+        k: 0.35
+        verify: TODO
+        source: >-
+          Local/pocket green space should be within a short walk: Natural
+          England ANGSt and WHO urban green-space guidance put a site within
+          ~300 m (~5 min walk) of every home. Seed ~5 min. VERIFY against
+          ANGSt (Natural England) and WHO Regional Office for Europe (2017).
+      green_space_district:
+        t0: 20.0
+        k: 0.15
+        verify: TODO
+        source: >-
+          District / larger sites are visited less often and tolerate a longer
+          trip (ANGSt tiers larger sites at 2 km / 5 km). Seed ~20 min. VERIFY
+          against the ANGSt distance tiers for larger accessible greenspace.
+        extract_alias_note: >-
+          Currently shares the `green_space` OSM extraction with
+          green_space_local (see config/services.yaml extract_alias); split by
+          min_area_m2 bands once park polygons/areas are extracted.
+
   emergency:
     # Emergency/disaster framing: monetary Deprivation Cost Function (DCF).
     # CONVEX Box-Cox — time-critical, so the cost escalates ever more steeply;
