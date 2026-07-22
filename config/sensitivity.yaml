@@ -27,14 +27,29 @@ sensitivity:
     emergency:
       - { alternative: emergency_exponential }   # exponential DCF, 45/60-min anchors
 
-  # LAYER 3 — accessibility axis. Changing supply (nearest vs 2SFCA) or mode
-  # (walk vs walk+transit) changes the TRAVEL TIMES, so it requires re-running
-  # the access + deprivation stages per variant (heavier). Listed here as the
-  # comparison axis; the harness reports deprivation-calibration sensitivity
-  # now, and accessibility sensitivity when those variant runs are supplied.
+  # LAYER 3 — accessibility axis (the knobs that BUILD the travel times, so —
+  # unlike Layers 1/2 — they CAN move the rank-based targets). Run with:
+  #   depacc sensitivity --layer access
+  #
+  # CHEAP variants: re-run the DEPRIVATION stage only, from the SAVED OD
+  # parquets — no re-routing. Each knob is swept one-at-a-time from the config
+  # baseline (softmin.kappa / catchment.gamma / catchment.kernel.bandwidth_min /
+  # routing.k_nearest / unreachable.policy / regimes.everyday.modes); every
+  # variant recomputes the everyday effective-time surface -> percentiles ->
+  # typology and reports how far the HH share, coupling rho and Ginis move, plus
+  # which cells flip class vs baseline. Omitted axes fall back to these values.
   accessibility:
-    supply: [nearest, 2sfca]
-    mode: [walk, walk_transit]
+    kappa: [0.1, 0.25, 0.5, 1.0, 2.0]      # soft-min smoothing (per minute)
+    gamma: [0.0, 0.25, 0.5, 1.0]           # 2SFCA congestion exponent
+    bandwidth_min: [10, 15, 20]            # walk catchment bandwidth (minutes)
+    k_nearest: [10, 30]                    # facilities kept per cell (subset saved k=30)
+    nearest_only: true                     # add the hard-min (kappa->inf) variant
+    unreachable: [cap_at_max_time, exclude]  # unreachable-cell policy (or a numeric cap in minutes)
+    everyday_modes: [[walk], [walk, car]]  # everyday mode set (min travel time across modes)
+    # EXPENSIVE variants (per-variant RE-ROUTING) are DEFERRED until the pilot
+    # sample exists and are NOT run by --layer access:
+    #   friction vs r5 engine  — Workstream E does this for Hamburg.
+    #   transit inclusion      — Tier-2 only (needs GTFS + a transit OD build).
 
   # typology threshold used for the stable-target typology shares + flip-cells.
   threshold: 0.5

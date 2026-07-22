@@ -60,6 +60,12 @@ def _sensitivity_access_modes(cfg: dict) -> set[str]:
     modes: set[str] = set()
     for m in axis.get("mode", []) or []:
         modes |= _SENS_MODE_ALIAS.get(str(m), {str(m)})
+    # Layer-3 everyday_modes variants ([[walk], [walk, car], ...]) declare the
+    # concrete everyday mode sets to sweep; keep the OD for every mode any
+    # declared variant needs so the sweep stays cheap (reuses saved matrices).
+    for modeset in axis.get("everyday_modes", []) or []:
+        for m in modeset if isinstance(modeset, (list, tuple)) else [modeset]:
+            modes |= _SENS_MODE_ALIAS.get(str(m), {str(m)})
     return modes
 
 

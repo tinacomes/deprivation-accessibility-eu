@@ -279,13 +279,29 @@ clustering, not just levels.
 (`config/sensitivity.yaml`); raw deprivation magnitudes are never tracked.
 Layers: (1) curvature sweep and (2) functional-form swap — both evaluated on
 the saved deprivation-free travel times (`t_regime_*`), so no re-routing;
-(3) the accessibility axis (supply: nearest vs 2SFCA; mode: walk vs
-walk+transit), which changes the travel times and is the comparison against
-which deprivation-calibration sensitivity is judged; (4) flip-cells — cells
-whose typology class changes across the sweep, reported as a stable-vs-
-sensitive population share and mapped. Reported as rank-agreement
-(Spearman/Kendall of city orderings) and cluster agreement (adjusted Rand)
-versus baseline.
+(3) the **accessibility axis**, run with `depacc sensitivity --layer access` —
+the knobs that build the travel times and can therefore actually move the
+ranks; (4) flip-cells — cells whose typology class changes across the sweep,
+reported as a stable-vs-sensitive population share and mapped. Reported as
+rank-agreement (Spearman/Kendall of city orderings) and cluster agreement
+(adjusted Rand) versus baseline.
+
+**Layer 3 (accessibility) — the cheap variants are ACTIVE.** They re-run the
+*deprivation stage only*, from the **saved OD parquets** — no re-routing. Each
+knob is swept one at a time from the config baseline: `softmin.kappa`
+∈{0.1, 0.25, 0.5, 1, 2}, `catchment.gamma` ∈{0, 0.25, 0.5, 1}, walk catchment
+bandwidth ∈{10, 15, 20} min, `k_nearest` ∈{10, 30} (subsetting the saved
+k = 30 OD), nearest-only vs soft-min (κ→∞), the unreachable-cell treatment
+(cap value / exclude), and the everyday **mode set** (walk vs walk+car, the
+element-wise minimum travel time — the car OD is kept by the access stage once
+a declared variant needs it). Every variant recomputes the everyday
+effective-time surface → percentiles → typology and reports how far the **HH
+share, coupling ρ and within-regime Ginis** move, plus which cells flip class
+(`sensitivity/<city>_access_sensitivity.csv`, a flip-cell map, and — for
+Hamburg — an acceptance table naming which knobs beat the threshold axis). The
+**expensive** Layer-3 variants that need per-variant *re-routing* — friction vs
+r5 engine (Workstream E, Hamburg) and transit inclusion for Tier-2 — are
+deferred until the pilot sample exists.
 
 **Layer 2 (form swap) is ACTIVE, and it is calibrated the honest way — form
 transferred, *anchors* held fixed.** Where Layer 1 varies curvature within a
@@ -332,11 +348,16 @@ still reports the two things that *are* well-defined:
   reader can see the split's leverage.
 
 It follows that the assumptions which move the **spatial** result are the
-**accessibility** ones (Layer 3: supply model, mode, `softmin.kappa`,
-`catchment.gamma`, bandwidth, `k_nearest`) — because they change the travel
-times and therefore the ranks — not the deprivation-function curvature. Those
-require per-variant re-runs of the access+deprivation stages; the harness is
-staged to accept them.
+**accessibility** ones (Layer 3: mode set, `softmin.kappa`, `catchment.gamma`,
+bandwidth, `k_nearest`, unreachable treatment) — because they change the travel
+times and therefore the ranks — not the deprivation-function curvature. The
+cheap ones run from the cached OD (above); the Hamburg acceptance table
+(`sensitivity/hamburg_access_acceptance.csv`) ranks each knob by how far it
+moves the HH share and ρ against the threshold axis, and the expectation is
+that the **everyday mode set dominates** — swapping walk for walk+car reshapes
+the effective-time field far more than any within-model knob. (ρ is a coupling
+of the two surfaces and is threshold-independent, so *any* knob that moves it
+beats the threshold axis, whose ρ range is zero by construction.)
 
 ## 8. Reproducibility
 
