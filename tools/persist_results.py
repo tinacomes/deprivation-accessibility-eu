@@ -70,6 +70,11 @@ SENSITIVITY_FILES = (
 )
 SENSITIVITY_GLOBS = (
     "*_deprivation_sensitivity.csv",
+    # Layer-3 accessibility sweep (depacc sensitivity --layer access): per-city
+    # variant table, the Hamburg-style acceptance table, and the flip-cell map.
+    "*_access_sensitivity.csv",
+    "*_access_acceptance.csv",
+    "*_access_flip_cells.png",
 )
 
 
