@@ -6,9 +6,13 @@ scale, so it is directly interpretable and comparable across services and
 cities without any DLF/DCF calibration. For each service it reports the
 population-weighted mean / median / p90 of the regime-representative travel
 time (effective 2SFCA time for everyday services, nearest-facility time for
-emergency services), the population share beyond each policy threshold, and
-the unreachable share. The per-regime composite rows summarise the same at
-the regime level.
+emergency services). The mean/median/p90 are computed over REACHABLE cells
+only — a cell capped at the routing cutoff (cap_at_max_time policy) or NaN
+(exclude policy) is not a measured travel time and would otherwise flood the
+upper tail — so p90 is reported as ``pop_p90_time_min_reachable`` alongside the
+``unreachable_pop_share`` and the population share beyond each policy
+threshold. The per-regime composite rows summarise the same at the regime
+level.
 
 These are written by the deprivation stage to:
     accessibility_by_service.csv   (one row per service)
@@ -77,26 +81,38 @@ def accessibility_indicators(surfaces: pd.DataFrame, cfg: dict,
 
     def _row(label: str, regime: str, t: np.ndarray, unreach: np.ndarray | None,
              dep: np.ndarray | None, n_fac: float) -> dict:
-        m = np.isfinite(t) & (pop > 0)
-        denom = float(pop[m].sum())
+        t = np.asarray(t, float)
+        pop_ok = pop > 0
+        total_pop = float(pop[pop_ok].sum())
+        # Unreachable cells: under the cap_at_max_time policy their travel time
+        # is pinned at the cutoff (a placeholder, not a measured time); under
+        # exclude it is NaN. Either way it must NOT enter the travel-time
+        # quantiles — otherwise the cap floods the upper tail and p90 collapses
+        # onto the cutoff. Quantiles are therefore REACHABLE-only, and the
+        # unreachable population is reported separately as a share.
+        um = (np.asarray(unreach, bool) & pop_ok) if unreach is not None \
+            else np.zeros(len(pop), dtype=bool)
+        reachable = np.isfinite(t) & pop_ok & ~um
+        w_reach = np.where(reachable, pop, 0.0)
         row = {
             "level": label if label in ("everyday", "emergency") else "service",
             "regime": regime,
             "service": label,
             "n_facilities": n_fac,
-            "pop_mean_time_min": _wmean(t, pop),
-            "pop_median_time_min": _wq(t, pop, 0.50),
-            "pop_p90_time_min": _wq(t, pop, 0.90),
+            "pop_mean_time_min": _wmean(t, w_reach),
+            "pop_median_time_min": _wq(t, w_reach, 0.50),
+            "pop_p90_time_min_reachable": _wq(t, w_reach, 0.90),
         }
+        # Share of the WHOLE population beyond each policy threshold: an
+        # unreachable cell is by definition beyond every finite threshold.
         for thr_min in thr_cfg.get(regime, []) or []:
-            beyond = m & (t > float(thr_min))
+            x = float(thr_min)
+            beyond = um | (reachable & (t > x))
             row[f"pop_share_beyond_{int(thr_min)}min"] = (
-                float(pop[beyond].sum()) / denom if denom > 0 else np.nan)
+                float(pop[beyond].sum()) / total_pop if total_pop > 0 else np.nan)
         if unreach is not None:
-            um = unreach.astype(bool) & (pop > 0)
             row["unreachable_pop_share"] = (
-                float(pop[um].sum()) / float(pop[pop > 0].sum())
-                if float(pop[pop > 0].sum()) > 0 else np.nan)
+                float(pop[um].sum()) / total_pop if total_pop > 0 else np.nan)
         if dep is not None:
             row["mean_deprivation"] = _wmean(dep, pop)
         return row
@@ -141,7 +157,7 @@ def write_accessibility_summary(surfaces: pd.DataFrame, cfg: dict,
     per_service.to_csv(out / "accessibility_by_service.csv", index=False)
     per_regime.to_csv(out / "accessibility_by_regime.csv", index=False)
     cols = ["service", "regime", "n_facilities", "pop_median_time_min",
-            "pop_p90_time_min", "unreachable_pop_share"]
+            "pop_p90_time_min_reachable", "unreachable_pop_share"]
     have = [c for c in cols if c in per_service.columns]
     print("accessibility by service (regime-representative travel time):")
     print(per_service[have].to_string(index=False))

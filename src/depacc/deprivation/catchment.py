@@ -49,6 +49,27 @@ def kernel_weight(times, kernel: Mapping) -> np.ndarray:
     return np.where(np.isnan(t), 0.0, w)
 
 
+def facility_weighted_demand(
+    od: pd.DataFrame,
+    population: pd.Series,
+    supply: pd.Series,
+    kernel: Mapping,
+    origin_col: str = "origin",
+    dest_col: str = "dest",
+    time_col: str = "time",
+) -> pd.Series:
+    """Kernel-weighted demand ``sum_i P_i K(t_ij)`` per facility j (the
+    denominator of the 2SFCA ratio). Reindexed to ``supply.index``; facilities
+    with no demand in reach are 0. This is also the natural weight for the
+    reference ratio in :func:`congestion_factor` — it weights each facility by
+    how much demand actually competes for it."""
+    w = kernel_weight(od[time_col].to_numpy(), kernel)
+    demand = pd.Series(w * population.reindex(od[origin_col]).to_numpy(), index=od[dest_col])
+    weighted_demand = demand.groupby(level=0).sum().reindex(supply.index).fillna(0.0)
+    weighted_demand.name = "weighted_demand"
+    return weighted_demand
+
+
 def supply_demand_ratio(
     od: pd.DataFrame,
     population: pd.Series,
@@ -66,10 +87,10 @@ def supply_demand_ratio(
     *lower* bound of burden, i.e. treated as uncongested — see
     :func:`congestion_factor`).
     """
-    w = kernel_weight(od[time_col].to_numpy(), kernel)
-    demand = pd.Series(w * population.reindex(od[origin_col]).to_numpy(), index=od[dest_col])
-    weighted_demand = demand.groupby(level=0).sum()
-    weighted_demand = weighted_demand.reindex(supply.index)
+    weighted_demand = facility_weighted_demand(
+        od, population, supply, kernel,
+        origin_col=origin_col, dest_col=dest_col, time_col=time_col,
+    )
     with np.errstate(divide="ignore", invalid="ignore"):
         r = supply / weighted_demand.replace(0.0, np.nan)
     r.name = "supply_demand_ratio"

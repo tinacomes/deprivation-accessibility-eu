@@ -55,29 +55,36 @@ def test_everyday_effective_time_and_baseline():
 
 
 def test_congestion_raises_deprivation_at_crowded_facilities():
-    # Two isolated neighbourhoods, both within catchment of their facility:
-    # cell 0 only reaches "a", cell 1 only reaches "b", equal times.
-    cells = pd.DataFrame({"population": [100.0, 10000.0]}, index=[0, 1])
+    # Four isolated neighbourhoods, each within catchment of one facility at
+    # equal time. Facilities a/b/c serve a typical population; facility d is
+    # crowded (twice the demand). The reference ratio is the DEMAND-WEIGHTED
+    # median (item 4), so it sits at the typical facilities and the crowded
+    # facility d — a minority of total demand — is inflated ABOVE it.
+    cells = pd.DataFrame({"population": [100.0, 100.0, 100.0, 200.0]},
+                         index=[0, 1, 2, 3])
     od = pd.DataFrame(
         [
             {"origin": 0, "dest": "a", "time": 10.0},
             {"origin": 1, "dest": "b", "time": 10.0},
+            {"origin": 2, "dest": "c", "time": 10.0},
+            {"origin": 3, "dest": "d", "time": 10.0},
         ]
     )
-    supply = pd.Series(1.0, index=["a", "b"])
+    supply = pd.Series(1.0, index=["a", "b", "c", "d"])
     base = everyday_surface(od, cells, supply, DLF, kappa=0.5, kernel=KERNEL,
                             gamma=0.0, policy="exclude")
     cong = everyday_surface(od, cells, supply, DLF, kappa=0.5, kernel=KERNEL,
                             gamma=1.0, factor_clip=(0.5, 4.0), policy="exclude")
-    # Without congestion the two cells are identical...
-    assert base.loc[0, "deprivation"] == pytest.approx(base.loc[1, "deprivation"])
-    # ...with congestion, the 100x-crowded facility "b" inflates cell 1's
-    # effective time and deprivation, while uncrowded "a" deflates cell 0's.
-    assert cong.loc[1, "t_eff"] > base.loc[1, "t_eff"]
-    assert cong.loc[1, "deprivation"] > base.loc[1, "deprivation"]
-    assert cong.loc[1, "deprivation"] > cong.loc[0, "deprivation"]
+    # Without congestion every cell is identical...
+    assert base["deprivation"].std() == pytest.approx(0.0, abs=1e-12)
+    # ...with congestion, the crowded facility "d" inflates cell 3's effective
+    # time and deprivation above the demand-weighted reference.
+    assert cong.loc[3, "t_eff"] > base.loc[3, "t_eff"]
+    assert cong.loc[3, "deprivation"] > base.loc[3, "deprivation"]
+    # Cell 3 (crowded) is more deprived than the typical cells.
+    assert cong.loc[3, "deprivation"] > cong.loc[0, "deprivation"]
     # The plain nearest-time baseline is untouched by congestion.
-    assert cong.loc[1, "t_nearest"] == 10.0
+    assert cong.loc[3, "t_nearest"] == 10.0
 
 
 def test_unreachable_flagged_and_excluded():

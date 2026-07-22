@@ -22,7 +22,10 @@ from typing import Mapping
 import numpy as np
 import pandas as pd
 
-from depacc.deprivation.catchment import congestion_factor, supply_demand_ratio
+from depacc.deprivation.catchment import (
+    congestion_factor,
+    facility_weighted_demand,
+)
 from depacc.deprivation.functions import DeprivationFunction
 from depacc.deprivation.softmin import grouped_softmin
 
@@ -99,12 +102,19 @@ def everyday_surface(
     time ``t_eff``.
     """
     population = cells["population"]
-    ratio = supply_demand_ratio(
+    # Kernel-weighted demand per facility (2SFCA denominator); computed once
+    # and reused as the reference-median weights so the reference ratio is
+    # weighted by the demand actually competing for each facility.
+    demand = facility_weighted_demand(
         od, population, supply, kernel,
         origin_col=origin_col, dest_col=dest_col, time_col=time_col,
     )
+    with np.errstate(divide="ignore", invalid="ignore"):
+        ratio = supply / demand.replace(0.0, np.nan)
+    ratio.name = "supply_demand_ratio"
     factor = congestion_factor(
-        ratio, gamma, reference=reference, factor_clip=factor_clip,
+        ratio, gamma, reference=reference, reference_weights=demand,
+        factor_clip=factor_clip,
     )
     inflated = od[[origin_col, dest_col]].copy()
     inflated["time"] = (

@@ -28,6 +28,68 @@ _SYNTH_SPEED = {"walk": 4.8, "car": 30.0, "transit": 15.0}
 _SYNTH_DETOUR = 1.3
 _SYNTH_ACCESS_OVERHEAD_MIN = {"walk": 0.0, "car": 3.0, "transit": 5.0}
 
+# Sensitivity Layer-3 accessibility "mode" axis values -> the concrete routing
+# modes they require (walk_transit = the elementwise-min of walk and transit).
+_SENS_MODE_ALIAS = {
+    "walk": {"walk"},
+    "car": {"car"},
+    "transit": {"transit"},
+    "walk_transit": {"walk", "transit"},
+}
+
+
+def _sensitivity_access_modes(cfg: dict) -> set[str]:
+    """Routing modes named by the sensitivity Layer-3 accessibility axis.
+
+    Precomputing these here keeps the Layer-3 accessibility variants cheap:
+    the sweep reuses saved OD matrices instead of re-routing. The sweep grid
+    lives in its own file (config/sensitivity.yaml), not the merged per-city
+    config, so fall back to loading it directly when it is absent from cfg.
+    Only the everyday (2SFCA/soft-min access) regime is swept on mode.
+    """
+    axis = ((cfg.get("sensitivity") or {}).get("accessibility")) or {}
+    if not axis:
+        try:
+            import yaml
+
+            from depacc.config import CONFIG_DIR
+            grid = yaml.safe_load((CONFIG_DIR / "sensitivity.yaml").read_text()) or {}
+            axis = ((grid.get("sensitivity") or {}).get("accessibility")) or {}
+        except Exception:  # pragma: no cover - defensive; sensitivity is optional
+            axis = {}
+    modes: set[str] = set()
+    for m in axis.get("mode", []) or []:
+        modes |= _SENS_MODE_ALIAS.get(str(m), {str(m)})
+    return modes
+
+
+def _service_modes(cfg: dict, available: list[str]) -> dict[str, list[str]]:
+    """Map each service to the routing modes actually consumed downstream.
+
+    The deprivation stage reads only the OD matrices for its regime's modes
+    (``regimes.<regime>.modes``); computing every mode for every service is
+    wasted routing. Everyday services additionally get the modes named by the
+    sensitivity Layer-3 accessibility axis so those variants reuse saved
+    matrices. The result is intersected with ``available`` (the modes this run
+    can route) so a Tier-1 walk/car run never tries to route transit.
+    """
+    avail = list(dict.fromkeys(available))  # order-preserving dedupe
+    avail_set = set(avail)
+    regimes = cfg.get("regimes", {}) or {}
+    everyday_modes = set(regimes.get("everyday", {}).get("modes", []) or [])
+    emergency_modes = set(regimes.get("emergency", {}).get("modes", []) or [])
+    sens_modes = _sensitivity_access_modes(cfg)
+
+    def _ordered(wanted: set[str]) -> list[str]:
+        return [m for m in avail if m in wanted]
+
+    result: dict[str, list[str]] = {}
+    for s in cfg.get("everyday_services", {}) or {}:
+        result[s] = _ordered((everyday_modes | sens_modes) & avail_set)
+    for s in cfg.get("emergency_services", {}) or {}:
+        result[s] = _ordered(emergency_modes & avail_set)
+    return result
+
 
 def run_access(cfg: dict, city: str, root: Path) -> None:
     out = derived_dir(cfg, city, root)
@@ -44,6 +106,10 @@ def run_access(cfg: dict, city: str, root: Path) -> None:
     cells = pd.read_parquet(cells_path)
     modes = cfg["routing"].get("modes") or cfg["tiers"]["tier1"]["modes"]
     services = list(cfg.get("everyday_services", {})) + list(cfg.get("emergency_services", {}))
+    # Only route the (service, mode) pairs the service's regime consumes (plus
+    # the sensitivity Layer-3 modes for everyday services); routing every mode
+    # for every service is wasted work — see _service_modes.
+    service_modes = _service_modes(cfg, modes)
     k = int(cfg["routing"].get("k_nearest", 30))
 
     synthetic = bool(cfg["city"].get("synthetic"))
@@ -59,7 +125,11 @@ def run_access(cfg: dict, city: str, root: Path) -> None:
         if facilities.empty:
             print(f"WARNING: zero facilities for '{service}'; skipping")
             continue
-        for mode in modes:
+        svc_modes = service_modes.get(service, modes)
+        if not svc_modes:
+            print(f"WARNING: no regime mode available for '{service}'; skipping")
+            continue
+        for mode in svc_modes:
             od_path = out / f"od_{service}_{mode}.parquet"
             if od_path.exists():
                 continue
