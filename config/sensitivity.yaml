@@ -15,12 +15,17 @@ sensitivity:
   emergency:
     lam: [1.4, 1.8, 2.2]    # Box-Cox exponent
 
-  # LAYER 2 — functional-form swap. Requires concrete params for the
-  # alternate forms (we do not fabricate calibrations); provide them here to
-  # activate. Empty -> form-swap layer is skipped with a note.
+  # LAYER 2 — functional-form swap. ACTIVE: swaps the FORM while holding the
+  # domain anchors fixed (the honest counterpart of "form transferred, curvature
+  # calibrated"). Each entry references a calibrated alternative in
+  # config/deprivation.yaml -> deprivation.alternatives (single source of truth
+  # for the anchor-calibrated params + documented anchor equations); an inline
+  # {form, params, ...} spec is also accepted. Empty -> layer skipped.
   form_swap:
-    everyday: []   # e.g. [{form: exponential, params: {beta: .., scale: ..}}]
-    emergency: []  # e.g. [{form: exponential, params: {beta: .., scale: ..}}]
+    everyday:
+      - { alternative: everyday_box_cox }        # concave Box-Cox DLF, 15/45-min anchors
+    emergency:
+      - { alternative: emergency_exponential }   # exponential DCF, 45/60-min anchors
 
   # LAYER 3 — accessibility axis. Changing supply (nearest vs 2SFCA) or mode
   # (walk vs walk+transit) changes the TRAVEL TIMES, so it requires re-running

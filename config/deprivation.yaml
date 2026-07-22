@@ -59,18 +59,49 @@ deprivation:
       Convex form per Cantillo 2018 / Delgado-Lindeman 2019; curvature
       calibrated to clinical time-to-care threshold (~45-60 min).
 
-  # Sensitivity analysis: each entry is an alternative specification that can
-  # be swapped in for either regime via `depacc run --deprivation-spec NAME`.
+  # Sensitivity analysis: each entry is an alternative FORM that can be swapped
+  # in for either regime via `depacc run --deprivation-spec NAME`, and that the
+  # robustness harness activates as Layer 2 (config/sensitivity.yaml
+  # form_swap). These are the honest counterpart of "form transferred, curvature
+  # calibrated": the FORM changes while the SAME domain anchors are held fixed,
+  # so the parameters below are CALIBRATED FROM THOSE ANCHORS, not invented. The
+  # anchor equations are recorded in each `note:` and are exactly reproducible.
   alternatives:
     everyday_box_cox:
+      # Saturating logistic DLF -> concave (lam<1) Box-Cox DLF, same 15/45-min
+      # anchors: passes through (15 min, 0.5) and (45 min, 1.0), i.e. the
+      # 15-minute-city half-max and the ~45-min saturation ceiling (Lmax=1).
       kind: "DLF"
       form: "box_cox"
-      params: { lam: null, scale: null, shift: null }
-      source: "TODO(cite): Box-Cox DLF variant from the Wang et al. line of work."
+      params: { lam: 0.546, scale: 0.077, shift: 1.0 }
+      source: >-
+        Form: Box-Cox DLF (Wang et al. 2017 line of work), swapped for the
+        logistic to test functional FORM at fixed anchors. See methods.md §7a
+        Layer 2.
+      note: >-
+        Anchors held fixed with the logistic (methods.md §3): shift fixed at
+        1 min (convention, matching the emergency DCF); lam solved from the
+        SHAPE anchor g(15)=0.5*g(45), i.e. ((15+1)^lam - 1)/((45+1)^lam - 1) =
+        0.5  ->  lam = 0.546 (concave, diminishing returns); scale solved from
+        the LEVEL anchor g(45)=1 (the logistic ceiling Lmax=1), i.e.
+        scale = lam/((45+1)^lam - 1) = 0.077. Curvature (lam) is thus the only
+        free shape parameter and it is fixed by the anchor, not chosen.
     emergency_exponential:
+      # Convex Box-Cox DCF -> exponential DCF, same clinical-threshold anchors:
+      # passes through the baseline Box-Cox at BOTH 45 and 60 min, so the
+      # g(60)/g(45) ratio (the ~45-60 min time-to-care escalation) is identical.
       kind: "DCF"
       form: "exponential"
-      params: { beta: null, scale: null }
+      params: { beta: 0.02437, scale: 273.7805 }
       source: >-
-        TODO(cite): exponential DCF variant (Holguín-Veras et al. line of
-        work).
+        Form: exponential DCF (Holguín-Veras et al. 2013 line of work), swapped
+        for the Box-Cox to test functional FORM at fixed anchors. See methods.md
+        §7a Layer 2.
+      note: >-
+        Anchors held fixed with the baseline Box-Cox DCF (lam=1.8, shift=1,
+        scale=1; methods.md §3): beta solved from the clinical-threshold RATIO
+        anchor g(60)/g(45) = (61^1.8 - 1)/(46^1.8 - 1) = 1.6627, i.e.
+        (exp(60*beta)-1)/(exp(45*beta)-1) = 1.6627  ->  beta = 0.02437; scale
+        solved so g_exp(45) = g_boxcox(45) = (46^1.8 - 1)/1.8, i.e.
+        scale = 273.7805. The exponential then coincides with the Box-Cox at
+        both 45 and 60 min, so only the FORM between/beyond the anchors differs.

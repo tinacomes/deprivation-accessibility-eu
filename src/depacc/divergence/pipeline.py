@@ -58,6 +58,7 @@ def run_divergence(cfg: dict, city: str, root: Path) -> None:
         tier=int(cfg["city"].get("tier", 1)),
         synthetic=bool(cfg["city"].get("synthetic", False)),
         population_total=float(surfaces["population"].sum()),
+        surfaces=surfaces,
     )
     # deprivation-free LEVEL features (travel-time based) join the city row.
     from depacc.cityvector.features import level_features

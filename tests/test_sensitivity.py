@@ -86,6 +86,48 @@ def test_city_variant_table_curvature_invariant_typology():
     assert thr["share_HH"].is_monotonic_decreasing
 
 
+def test_form_swap_resolves_named_alternatives():
+    """Layer 2: a form_swap entry referencing a named alternative resolves to
+    that alternative's anchor-calibrated spec, on the separate form_swap axis."""
+    cfg = load_config()
+    grid = {"form_swap": {"everyday": [{"alternative": "everyday_box_cox"}],
+                          "emergency": [{"alternative": "emergency_exponential"}]}}
+    variants = expand_variants(cfg, grid)
+    by_name = {v.name: v for v in variants}
+    assert by_name["formswap_everyday_box_cox"].layer == "form_swap"
+    assert by_name["formswap_emergency_exponential"].layer == "form_swap"
+    ev = by_name["formswap_everyday_box_cox"]
+    # everyday regime swapped to the concave Box-Cox DLF; emergency baseline kept.
+    assert ev.everyday["form"] == "box_cox" and ev.everyday["params"]["lam"] < 1
+    assert ev.emergency == cfg["deprivation"]["emergency"]
+    em = by_name["formswap_emergency_exponential"]
+    assert em.emergency["form"] == "exponential"
+    assert em.everyday == cfg["deprivation"]["everyday"]
+
+
+def test_form_swap_unknown_alternative_raises():
+    cfg = load_config()
+    with pytest.raises(KeyError, match="unknown alternative"):
+        expand_variants(cfg, {"form_swap": {"everyday": [{"alternative": "nope"}]}})
+
+
+def test_city_table_separates_form_swap_from_curvature():
+    """The curvature envelope (axis='curvature') must not absorb the Layer-2
+    form-swap Ginis (axis='form_swap')."""
+    cfg = load_config()
+    grid = {"emergency": {"lam": [1.4, 1.8, 2.2]},
+            "form_swap": {"emergency": [{"alternative": "emergency_exponential"}]}}
+    variants = expand_variants(cfg, grid)
+    rng = np.random.default_rng(5)
+    n = 300
+    t_ev, t_em = rng.uniform(0, 40, n), rng.uniform(0, 90, n)
+    pop = rng.uniform(1, 100, n)
+    tbl = city_variant_table(t_ev, t_em, pop, variants, "c")
+    assert (tbl.axis == "form_swap").any()
+    cur = tbl[tbl.axis == "curvature"]
+    assert not cur.variant.str.contains("formswap").any()
+
+
 def test_flip_cells():
     base = np.array(["LL", "HH", "HL", "LH"], dtype=object)
     v1 = np.array(["LL", "HH", "HH", "LH"], dtype=object)   # cell 2 flips

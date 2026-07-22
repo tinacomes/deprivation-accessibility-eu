@@ -147,7 +147,15 @@ empty/unreachable cells are excluded from weights.
    deprivation), population-weighted and mapped.
 2. **City-level divergence:** each city as a point in the
    (Gini of everyday deprivation, Gini of emergency deprivation) plane;
-   off-diagonal spread measured alongside population-weighted mean levels.
+   off-diagonal spread measured alongside population-weighted mean levels. The
+   plane is drawn with **curvature-envelope error bars** — the min–max Gini
+   across the deprivation-function curvature variants (§7a Layer 1) — because
+   the curvature assumption moves each city's Gini by a non-trivial amount
+   (~0.2), so a single point would overstate the precision; the bars are the
+   honest way to place a city. A **deprivation-function-free variant** of the
+   plane uses `gini_t_everyday` / `gini_t_emergency` (§4.3): the Gini of the
+   regime-representative *travel time* over reachable cells, which needs no
+   DLF/DCF calibration at all and so carries no curvature envelope.
 3. **Trajectory:** cities ordered along the FUA-population size gradient;
    test whether everyday and emergency deprivation/inequity co-evolve or
    diverge with size. Cross-sectional (space-for-time) inference only.
@@ -219,7 +227,8 @@ they are city-level indicators in their own right.
 
 | indicator | file |
 | --- | --- |
-| Ginis, Spearman ρ, `divergence_gap`, compounding & Jaccard shares, level features | `cityplane_row.csv` (this city) / `cityplane.csv` (all cities) |
+| Ginis (deprivation), Spearman ρ, `divergence_gap`, compounding & Jaccard shares, level features | `cityplane_row.csv` (this city) / `cityplane.csv` (all cities) |
+| travel-time Ginis (deprivation-function-free): `gini_t_everyday`, `gini_t_emergency` on reachable `t_regime_*` | `cityplane_row.csv` / `cityplane.csv` |
 | class population shares per threshold | `typology_summary_<pct>.csv` |
 | per-regime mean/Gini/concentration index; gradient regressions | `equity_indices.csv`, `equity_regressions.csv` |
 | per-infrastructure accessibility | `accessibility_by_service.csv`, `accessibility_by_regime.csv` |
@@ -277,6 +286,29 @@ whose typology class changes across the sweep, reported as a stable-vs-
 sensitive population share and mapped. Reported as rank-agreement
 (Spearman/Kendall of city orderings) and cluster agreement (adjusted Rand)
 versus baseline.
+
+**Layer 2 (form swap) is ACTIVE, and it is calibrated the honest way — form
+transferred, *anchors* held fixed.** Where Layer 1 varies curvature within a
+fixed form, Layer 2 replaces the form itself while pinning the *same domain
+anchors* the baselines were calibrated to (§3), so only the functional shape
+between/beyond the anchors differs:
+
+- Everyday: the saturating **logistic DLF → a concave Box-Cox DLF** (`lam < 1`)
+  that passes through the same `g(15) = 0.5·g(45)` half-max and the `g(45) = 1`
+  ceiling. `lam` is *solved* from the ratio anchor, `scale` from the ceiling
+  anchor — not chosen.
+- Emergency: the convex **Box-Cox DCF → an exponential DCF** matching the
+  baseline at *both* 45 and 60 min, so the clinical-threshold ratio
+  `g(60)/g(45) ≈ 1.66` is identical. `beta` is *solved* from that ratio.
+
+The calibrated parameters and their anchor equations live in
+`config/deprivation.yaml → deprivation.alternatives.*` (`note:` fields, exactly
+reproducible), and the swap is wired in `config/sensitivity.yaml → form_swap`.
+Because every admissible `g(t)` is still strictly increasing, the co-location
+typology stays rank-invariant across Layer 2 as well; what Layer 2 tests is
+whether the **Ginis and the plane** survive a change of *form* (not just
+curvature), tracked separately on the `form_swap` axis so it never contaminates
+the Layer-1 curvature envelope.
 
 **Framing:** this is a *structured robustness check over a defensible
 parameter envelope*, NOT a probabilistic uncertainty quantification — it is

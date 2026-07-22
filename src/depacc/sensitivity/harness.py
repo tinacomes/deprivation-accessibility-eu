@@ -56,13 +56,34 @@ def expand_variants(cfg: dict, grid: dict) -> list[Variant]:
         variants.append(Variant(name, "curvature", ev0, {**em0, "params": params}))
 
     fs = grid.get("form_swap", {}) or {}
-    for alt in fs.get("everyday", []) or []:
-        variants.append(Variant(f"formswap_everyday_{alt['form']}", "form_swap",
-                                 {**ev0, **alt}, em0))
-    for alt in fs.get("emergency", []) or []:
-        variants.append(Variant(f"formswap_emergency_{alt['form']}", "form_swap",
-                                 ev0, {**em0, **alt}))
+    for entry in fs.get("everyday", []) or []:
+        spec, form = _resolve_form_swap(cfg, ev0, entry)
+        variants.append(Variant(f"formswap_everyday_{form}", "form_swap", spec, em0))
+    for entry in fs.get("emergency", []) or []:
+        spec, form = _resolve_form_swap(cfg, em0, entry)
+        variants.append(Variant(f"formswap_emergency_{form}", "form_swap", ev0, spec))
     return variants
+
+
+def _resolve_form_swap(cfg: dict, base_spec: dict, entry: dict) -> tuple[dict, str]:
+    """Resolve a Layer-2 form_swap entry to a concrete deprivation spec.
+
+    An entry is either ``{alternative: <name>}`` — resolved from
+    ``deprivation.alternatives`` in the merged config (the single source of
+    truth for the anchor-calibrated params) — or an inline ``{form, params,
+    ...}`` override merged over the regime baseline. Returns (spec, form_label).
+    """
+    if "alternative" in entry:
+        alts = (cfg.get("deprivation", {}) or {}).get("alternatives", {}) or {}
+        name = entry["alternative"]
+        if name not in alts:
+            raise KeyError(
+                f"form_swap references unknown alternative '{name}'; "
+                f"available: {sorted(alts)}")
+        spec = dict(alts[name])
+    else:
+        spec = {**base_spec, **entry}
+    return spec, str(spec.get("form"))
 
 
 def city_stable_targets(t_everyday: np.ndarray, t_emergency: np.ndarray,
@@ -106,13 +127,19 @@ def city_variant_table(t_everyday: np.ndarray, t_emergency: np.ndarray,
         while the class-share columns stay put across curvature variants.
       * THRESHOLD (the split choice): the compounding (HH) share is swept over
         several percentile cut-offs, since "how high is high" is an assumption.
+
+    The ``axis`` column separates the deprivation-function *curvature* variants
+    (baseline + Layer-1) from the Layer-2 *form_swap* variants, so a consumer
+    (e.g. the plane's curvature error bars) can take the curvature envelope
+    without the form-swap Ginis leaking into it.
     """
     rows = []
     for v in variants:
         tgt = city_stable_targets(t_everyday, t_emergency, population,
                                   v.everyday, v.emergency, city_id, threshold=0.5)
+        axis = "form_swap" if v.layer == "form_swap" else "curvature"
         rows.append({
-            "city": city_id, "axis": "curvature", "variant": v.name,
+            "city": city_id, "axis": axis, "variant": v.name,
             "layer": v.layer, "threshold": 0.5,
             "gini_everyday": tgt["gini_everyday"],
             "gini_emergency": tgt["gini_emergency"],
