@@ -2,11 +2,14 @@
 curvature rank-robustness, flip-cells."""
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from depacc.config import load_config
 from depacc.sensitivity.harness import (
     Variant,
+    adjusted_rand,
+    city_calibration_targets,
     city_stable_targets,
     expand_variants,
     flip_cells,
@@ -59,6 +62,57 @@ def test_curvature_preserves_city_rankings():
     from scipy.stats import spearmanr
     rho = spearmanr(gaps_base, gaps_var).correlation
     assert rho > 0.8  # rankings survive the curvature change
+
+
+def test_adjusted_rand_identity_and_none_dropped():
+    a = np.array(["LL", "HH", "HL", "LH", "HH"], dtype=object)
+    assert adjusted_rand(a, a) == pytest.approx(1.0)
+    b = np.array(["HH", "LL", "LH", "HL", "LL"], dtype=object)
+    assert -0.6 <= adjusted_rand(a, b) <= 1.0
+    # None pairs are dropped, not counted as a class.
+    c = np.array(["LL", "HH", None, "LH", "HH"], dtype=object)
+    assert adjusted_rand(a, c) == pytest.approx(1.0)
+
+
+def test_calibration_targets_uniform_vs_per_service():
+    cfg = load_config()  # everyday is logistic, per_service seeds present
+    rng = np.random.default_rng(3)
+    n = 400
+    surf = pd.DataFrame({
+        "population": rng.uniform(1, 500, n),
+        "t_regime_emergency": rng.uniform(0, 90, n),
+        "unreachable_everyday": np.zeros(n, dtype=bool),
+    })
+    for svc in cfg["everyday_services"]:
+        surf[f"t_eff_{svc}"] = rng.uniform(0, 40, n)
+    uni = city_calibration_targets(surf, cfg, "uniform")
+    per = city_calibration_targets(surf, cfg, "per_service")
+    for tgt in (uni, per):
+        assert 0 <= tgt["gini_everyday"] <= 1
+        assert {f"share_{c}" for c in ("LL", "LH", "HL", "HH")} <= set(tgt)
+    # Per-service thresholds change the everyday surface, so at least one stable
+    # target must differ (they are not identical by construction).
+    assert (uni["gini_everyday"] != pytest.approx(per["gini_everyday"])
+            or uni["share_HH"] != pytest.approx(per["share_HH"]))
+    # Emergency is held fixed across the calibration variant.
+    assert uni["gini_emergency"] == pytest.approx(per["gini_emergency"])
+
+
+def test_calibration_masks_no_path_cells():
+    cfg = load_config()
+    rng = np.random.default_rng(5)
+    n = 50
+    surf = pd.DataFrame({
+        "population": rng.uniform(1, 100, n),
+        "t_regime_emergency": rng.uniform(0, 90, n),
+        "unreachable_everyday": np.array([True] * 5 + [False] * (n - 5)),
+    })
+    for svc in cfg["everyday_services"]:
+        surf[f"t_eff_{svc}"] = rng.uniform(0, 40, n)
+    tgt = city_calibration_targets(surf, cfg, "per_service")
+    # Masked cells are unclassified (they carry NaN everyday deprivation), so
+    # the classified shares still sum to ~1 over the reachable cells.
+    assert sum(tgt[f"share_{c}"] for c in ("LL", "LH", "HL", "HH")) == pytest.approx(1.0)
 
 
 def test_flip_cells():

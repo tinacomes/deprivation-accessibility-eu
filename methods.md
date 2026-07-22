@@ -296,13 +296,29 @@ clustering, not just levels.
 (`config/sensitivity.yaml`); raw deprivation magnitudes are never tracked.
 Layers: (1) curvature sweep and (2) functional-form swap — both evaluated on
 the saved deprivation-free travel times (`t_regime_*`), so no re-routing;
-(3) the accessibility axis (supply: nearest vs 2SFCA; mode: walk vs
-walk+transit), which changes the travel times and is the comparison against
-which deprivation-calibration sensitivity is judged; (4) flip-cells — cells
-whose typology class changes across the sweep, reported as a stable-vs-
-sensitive population share and mapped. Reported as rank-agreement
-(Spearman/Kendall of city orderings) and cluster agreement (adjusted Rand)
-versus baseline.
+(2b) the **everyday-threshold calibration** — uniform `t0 = 15` vs per-service
+`t0` (§3.1), the one deprivation-calibration layer that must be applied *per
+service* and re-composited from the saved per-service effective times
+(`t_eff_<service>`), still no re-routing; (3) the accessibility axis (supply:
+nearest vs 2SFCA; mode: walk vs walk+transit), which changes the travel times
+and is the comparison against which deprivation-calibration sensitivity is
+judged; (4) flip-cells — cells whose typology class changes across the sweep,
+reported as a stable-vs-sensitive population share and mapped. Reported as
+rank-agreement (Spearman/Kendall of city orderings) and cluster agreement
+(adjusted Rand) versus baseline.
+
+**The calibration finding (Layer 2b vs Layer 3).** The uniform-vs-per-service
+contrast is reported as a first-class result against the Layer-3 hypothesis:
+the outputs should move **more** with the accessibility model (supply/mode)
+than with deprivation calibration. If the contrast barely moves the stable
+targets (Spearman/Kendall on city rankings, typology-class ARI, typology
+shares, Ginis, `divergence_gap`), uniform `t0 = 15` is **retained as a stated,
+defended simplification**; if it moves them, per-service `t0` was necessary and
+is adopted. Either way the choice becomes a reported robustness finding, not an
+attackable default. Outputs: `sensitivity/calibration_rank_agreement.csv`,
+`calibration_typology_ari.csv`, `calibration_target_drift.csv`. (The per-service
+seeds carry `verify: TODO` in `config/deprivation.yaml`; the decision is
+re-read once they are confirmed against primary sources.)
 
 **Framing:** this is a *structured robustness check over a defensible
 parameter envelope*, NOT a probabilistic uncertainty quantification — it is
@@ -312,5 +328,14 @@ not presented as a posterior.
 
 Config-driven (YAML per city + tier); cached downloads with SHA-256
 provenance sidecars; no raw data committed; unit tests on the DLF/DCF
-mapping, soft-min reducer, 2SFCA factor, unreachable handling and the
-divergence typology; CI runs the tests on every push.
+mapping, soft-min reducer, 2SFCA factor, unreachable handling (incl. the
+shared no-path mask and the reachable-but-service-deprived finite-fill,
+§2.4), the per-service `t0` seam and the divergence typology; CI runs the
+tests on every push.
+
+**Deprivation parameters are never hardcoded in `src/`.** The per-service
+everyday thresholds (§3.1) live in `config/deprivation.yaml` with a `source`
+and a `verify: TODO` flag on every value; the pipeline still refuses null
+placeholders. The uniform-vs-per-service choice is not asserted as settled —
+it is decided by the §7a Layer-2b robustness result and re-read once the seeds
+are confirmed against the primary sources cited in §3.1.

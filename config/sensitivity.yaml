@@ -31,5 +31,17 @@ sensitivity:
     supply: [nearest, 2sfca]
     mode: [walk, walk_transit]
 
+  # DEPRIVATION-CALIBRATION variant — uniform t0=15 vs per-service t0
+  # (config/deprivation.yaml deprivation.everyday.threshold_mode). Unlike the
+  # curvature layers it is applied PER SERVICE and re-composited from the saved
+  # per-service effective times (t_eff_<service>), so it needs a completed
+  # deprivation run but no re-routing. Reported as a robustness result against
+  # the Layer-3 accessibility axis (methods.md §7a/§8): the outputs should move
+  # MORE with supply/mode than with this calibration choice. Only stable
+  # targets are tracked (Spearman/Kendall on city rankings, typology-class ARI,
+  # typology shares, Ginis, divergence_gap) — never raw magnitudes.
+  calibration:
+    everyday_t0: [uniform, per_service]
+
   # typology threshold used for the stable-target typology shares + flip-cells.
   threshold: 0.5
