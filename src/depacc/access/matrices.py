@@ -38,6 +38,27 @@ _SENS_MODE_ALIAS = {
 }
 
 
+def _route_sensitivity_modes(cfg: dict) -> bool:
+    """Whether to route the EXTRA everyday modes named by the Layer-3
+    accessibility axis (e.g. car, for the walk+car variant).
+
+    OFF by default: those matrices roughly double a friction city's access
+    time (the everyday×car Dijkstra is the dominant cost — cf. Workstream A.2),
+    yet they are only consumed if you actually run the Layer-3 sweep's mode
+    variant. So it is opt-in — enabled per deep-dive run, off for the many-city
+    batch. When off, the access stage routes only the regime modes and the
+    Layer-3 sweep simply skips the variants whose modes were not saved.
+
+    Enabled by ``routing.route_sensitivity_modes: true`` in the (merged) config
+    or the ``DEPACC_ROUTE_SENSITIVITY_MODES`` env var (1/true/yes)."""
+    import os
+
+    if bool((cfg.get("routing") or {}).get("route_sensitivity_modes", False)):
+        return True
+    return os.environ.get("DEPACC_ROUTE_SENSITIVITY_MODES", "").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
 def _sensitivity_access_modes(cfg: dict) -> set[str]:
     """Routing modes named by the sensitivity Layer-3 accessibility axis.
 
@@ -46,7 +67,12 @@ def _sensitivity_access_modes(cfg: dict) -> set[str]:
     lives in its own file (config/sensitivity.yaml), not the merged per-city
     config, so fall back to loading it directly when it is absent from cfg.
     Only the everyday (2SFCA/soft-min access) regime is swept on mode.
+
+    Gated by :func:`_route_sensitivity_modes` (OFF by default) so a normal run
+    — and every many-city batch run — pays only for the regime modes.
     """
+    if not _route_sensitivity_modes(cfg):
+        return set()
     axis = ((cfg.get("sensitivity") or {}).get("accessibility")) or {}
     if not axis:
         try:
