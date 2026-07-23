@@ -1,0 +1,9 @@
+city,knob,hh_share_range,rho_range,hh_exceeds_threshold,rho_exceeds_threshold
+hamburg,threshold_axis,0.2995197453295766,0.0,False,False
+hamburg,kappa,0.1777896841097068,0.08215259143050829,False,True
+hamburg,everyday_mode,0.1777896841097068,0.011287988854645492,False,True
+hamburg,gamma,0.04180051474824442,0.14655618309207202,False,True
+hamburg,k_nearest,0.0077998056722003994,0.024943352226560522,False,True
+hamburg,bandwidth,0.001963739328179559,0.005587466557478382,False,True
+hamburg,nearest_only,0.0014840770990309227,0.003042564973040174,False,True
+hamburg,unreachable,0.0,0.0,False,False
