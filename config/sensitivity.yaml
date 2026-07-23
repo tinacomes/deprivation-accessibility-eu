@@ -15,21 +15,53 @@ sensitivity:
   emergency:
     lam: [1.4, 1.8, 2.2]    # Box-Cox exponent
 
-  # LAYER 2 — functional-form swap. Requires concrete params for the
-  # alternate forms (we do not fabricate calibrations); provide them here to
-  # activate. Empty -> form-swap layer is skipped with a note.
+  # LAYER 2 — functional-form swap. ACTIVE: swaps the FORM while holding the
+  # domain anchors fixed (the honest counterpart of "form transferred, curvature
+  # calibrated"). Each entry references a calibrated alternative in
+  # config/deprivation.yaml -> deprivation.alternatives (single source of truth
+  # for the anchor-calibrated params + documented anchor equations); an inline
+  # {form, params, ...} spec is also accepted. Empty -> layer skipped.
   form_swap:
-    everyday: []   # e.g. [{form: exponential, params: {beta: .., scale: ..}}]
-    emergency: []  # e.g. [{form: exponential, params: {beta: .., scale: ..}}]
+    everyday:
+      - { alternative: everyday_box_cox }        # concave Box-Cox DLF, 15/45-min anchors
+    emergency:
+      - { alternative: emergency_exponential }   # exponential DCF, 45/60-min anchors
 
-  # LAYER 3 — accessibility axis. Changing supply (nearest vs 2SFCA) or mode
-  # (walk vs walk+transit) changes the TRAVEL TIMES, so it requires re-running
-  # the access + deprivation stages per variant (heavier). Listed here as the
-  # comparison axis; the harness reports deprivation-calibration sensitivity
-  # now, and accessibility sensitivity when those variant runs are supplied.
+  # LAYER 3 — accessibility axis (the knobs that BUILD the travel times, so —
+  # unlike Layers 1/2 — they CAN move the rank-based targets). Run with:
+  #   depacc sensitivity --layer access
+  #
+  # CHEAP variants: re-run the DEPRIVATION stage only, from the SAVED OD
+  # parquets — no re-routing. Each knob is swept one-at-a-time from the config
+  # baseline (softmin.kappa / catchment.gamma / catchment.kernel.bandwidth_min /
+  # routing.k_nearest / unreachable.policy / regimes.everyday.modes); every
+  # variant recomputes the everyday effective-time surface -> percentiles ->
+  # typology and reports how far the HH share, coupling rho and Ginis move, plus
+  # which cells flip class vs baseline. Omitted axes fall back to these values.
   accessibility:
-    supply: [nearest, 2sfca]
-    mode: [walk, walk_transit]
+    kappa: [0.1, 0.25, 0.5, 1.0, 2.0]      # soft-min smoothing (per minute)
+    gamma: [0.0, 0.25, 0.5, 1.0]           # 2SFCA congestion exponent
+    bandwidth_min: [10, 15, 20]            # walk catchment bandwidth (minutes)
+    k_nearest: [10, 30]                    # facilities kept per cell (subset saved k=30)
+    nearest_only: true                     # add the hard-min (kappa->inf) variant
+    unreachable: [cap_at_max_time, exclude]  # unreachable-cell policy (or a numeric cap in minutes)
+    everyday_modes: [[walk], [walk, car]]  # everyday mode set (min travel time across modes)
+    # EXPENSIVE variants (per-variant RE-ROUTING) are DEFERRED until the pilot
+    # sample exists and are NOT run by --layer access:
+    #   friction vs r5 engine  — Workstream E does this for Hamburg.
+    #   transit inclusion      — Tier-2 only (needs GTFS + a transit OD build).
+
+  # DEPRIVATION-CALIBRATION variant — uniform t0=15 vs per-service t0
+  # (config/deprivation.yaml deprivation.everyday.threshold_mode). Unlike the
+  # curvature layers it is applied PER SERVICE and re-composited from the saved
+  # per-service effective times (t_eff_<service>), so it needs a completed
+  # deprivation run but no re-routing. Reported as a robustness result against
+  # the Layer-3 accessibility axis (methods.md §7a/§8): the outputs should move
+  # MORE with supply/mode than with this calibration choice. Only stable
+  # targets are tracked (Spearman/Kendall on city rankings, typology-class ARI,
+  # typology shares, Ginis, divergence_gap) — never raw magnitudes.
+  calibration:
+    everyday_t0: [uniform, per_service]
 
   # typology threshold used for the stable-target typology shares + flip-cells.
   threshold: 0.5

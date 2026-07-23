@@ -42,7 +42,9 @@ surfaces per city:
    effective time (substitutability bonus); bounds
    `min - ln(n)/κ ≤ t_eff ≤ min` (unit-tested). κ in config
    (`softmin.kappa`), sensitivity-swept.
-3. **Deprivation.** `D_ev(i) = g_DLF(t_eff(i))`.
+3. **Deprivation.** `D_ev(i) = g_DLF(t_eff(i))`, evaluated **per service**
+   before the composite (§2.5), so the deprivation function can carry a
+   per-service threshold.
 
 ### 2.2 Emergency regime (non-substitutable, time-critical)
 
@@ -54,12 +56,52 @@ DCF is where its shape matters most.
 For **both** regimes, the plain nearest-facility travel time is always
 computed and reported as a comparison baseline.
 
-### 2.4 Unreachable cells
+### 2.4 Two meanings of "unreachable" (kept apart)
 
-Cells with no reachable facility of a service within `routing.max_time_min`
-are flagged explicitly and handled by config policy — `cap_at_max_time`
-(default: deprivation at the cutoff time) or `exclude` (NaN, dropped from
-aggregates) — and their population share is always reported.
+"Unreachable" conflates two very different situations, and merging them
+collapses the everyday–emergency divergence (it inflates the everyday mask by
+orders of magnitude and silently promotes far-but-routable cells to maximal
+deprivation). They are therefore split:
+
+1. **No network path** — the cell is genuinely unroutable (disconnected from
+   the network). This is a property of the *cell*, not the service, so it is
+   detected once by a **shared, service- and mode-independent routability
+   probe**: a cell has no network path iff it reaches **zero facilities of any
+   service in any mode**. Because the probe ignores service type and mode, the
+   everyday and emergency no-path sets are **equal by construction**
+   (regression-tested). These are the **only** masked/greyed cells: at the
+   city composite they are set to NaN on both the deprivation surface and the
+   regime travel time, so the choropleths (`viz/`) and the typology
+   (`divergence/`) share **one** mask and can never disagree (the bug where a
+   capped-high value was greyed on the map yet classified as compounding
+   downstream). `unreachable.policy` (`exclude` → NaN; `cap_at_max_time` →
+   value at the cutoff) selects how the *per-service* surface treats them
+   before compositing; either way the composite is masked. Their population
+   share is always reported.
+
+2. **Reachable but service-deprived** — the cell **is** routable but no
+   facility of a given service lies within its cutoff (or its 2SFCA catchment
+   supply is vanishing, which the congestion factor already inflates). This is
+   **not** unreachability; it is a badly deprived cell. It is assigned a
+   large-but-finite effective time (`unreachable.finite_fill_min`, default
+   `routing.max_time_min`) so the DLF saturates near `Lmax` (high everyday
+   deprivation) and the cell **stays on the map**.
+
+The distinction is what keeps a single walking-scale service (green space,
+school) from masking the entire city and being re-read as compounding (HH)
+deprivation downstream.
+
+### 2.5 Composite across everyday services
+
+Per-service DLF surfaces `D_s(i)` are combined into `D_ev(i)` by an
+**equal-weight (config-overridable) population-independent mean over the
+services reachable at cell i**, renormalising the weights per cell so a
+service-deprived layer that was excluded (policy `exclude`) does not NaN the
+composite unless *every* service is missing. The composite **mask is the
+shared no-path mask of §2.4** — never the union (`any`) of the per-service
+service-deprivation flags, which would let one sparse layer mask the city.
+The same rule and mask are applied to the emergency composite over its
+services.
 
 **Travel-time summaries are reachable-only.** A cell handled by
 `cap_at_max_time` carries the cutoff as its travel time (a placeholder, not a
@@ -81,7 +123,7 @@ The two regimes use deliberately different shapes (t in **minutes**):
 
 | Regime | Kind | Form | Parameters | Source |
 |---|---|---|---|---|
-| Everyday | DLF (dimensionless) | **logistic** (saturating) `g(t) = Lmax / (1 + e^{−k(t − t0)})` | Lmax = 1.0, t0 = 15 min, k = 0.2 /min | Wang et al. 2017 — logistic S-curve of needs-based severity |
+| Everyday | DLF (dimensionless) | **logistic** (saturating) `g(t) = Lmax / (1 + e^{−k(t − t0)})` | Lmax = 1.0; t0, k **per service** (§3.1; base t0 = 15 min, k = 0.2 /min) | Wang et al. 2017 — logistic S-curve of needs-based severity |
 | Emergency | DCF (monetary) | **Box-Cox** (convex, escalating) `g(t) = scale·((t+shift)^λ − shift^λ)/λ` | λ = 1.8, shift = 1 min, scale = 1.0 (relative) | Cantillo et al. 2018; Delgado-Lindeman 2019 — ambulance / time-to-care DCF |
 
 **Everyday deprivation SATURATES** — everyday services are substitutable and
@@ -119,6 +161,77 @@ Cantillo, Serrano, Macea, Holguín-Veras (2018); Delgado-Lindeman et al.
 (2019); anchored in the deprivation-cost-function programme of Holguín-Veras
 et al. (2013).
 
+## 3.1 Per-service everyday thresholds
+
+Tolerated travel time falls as usage frequency rises, and some categories have
+an internal size hierarchy, so a single `t0 = 15` across every everyday service
+is wrong in both directions: too generous for dense, near-daily,
+goods-carrying services, and too coarse for categories that span a size
+gradient. `t0` (and `k`) are therefore a **per-service mapping**
+(`config/deprivation.yaml → deprivation.everyday.per_service`), applied to each
+service's surface **before** the composite (§2.5). The mode is selected by
+`deprivation.everyday.threshold_mode`:
+
+- `uniform` (**default**) — every service uses the base `t0 = 15`, `k = 0.2`.
+  This is the defended simplification and the comparison variant in §7.3.
+- `per_service` — the seeds below override `t0`/`k` per service.
+
+Every seed is **transferred from a named standard but flagged `verify: TODO`**
+in config (confirm against the primary source before treating as settled — the
+values are indicative, not calibrated coefficients):
+
+| Service | Seed t0 (min) | Basis (all `verify: TODO`) |
+|---|---|---|
+| pharmacy | 8 | dense, near-daily, location-regulated (DE Apothekenbetriebsordnung and comparable EU pharmacy-siting rules) |
+| supermarket | 10 | frequent, goods-carrying; food-access "food desert" walking thresholds (USDA ERS; DEFRA/ONS) |
+| gp | 18 | registration-based, less frequent (NL/UK); 15-minute-city baseline (Moreno et al. 2021) plus appointment friction |
+| school — primary | 12 | local, daily; statutory safe-walking-distance norms (e.g. UK DfE lower band; DE Schulweg) |
+| school — secondary | 27 | sparser, wider catchment; statutory secondary walking distance (UK DfE ~3 mi) |
+| green space — local | 5 | Natural England ANGSt / WHO Europe (2017): a site within ~300 m (~5 min) of every home |
+| green space — district | 20 | ANGSt larger-site distance tiers (2 km / 5 km) |
+
+The two hierarchical categories are **split in the config**
+(`config/services.yaml`): `school → school_primary/school_secondary`,
+`green_space → green_space_local/green_space_district`. Until the OSM
+extraction can distinguish them (schools by `isced:level`/level tags; green
+space by `min_area_m2` bands) the second sub-type **reuses the first's
+extraction** via `extract_alias` — the same facilities are routed once and each
+sub-type applies its own threshold; a `composite_weight` of 0.5 on each keeps
+the split category counting once so the five everyday categories stay equally
+weighted.
+
+### 3.1a `t0` acts on the *effective* time, not raw walk time
+
+`t0` is a threshold on the **effective** deprivation time `t_eff` — the
+soft-min over reachable facilities (§2.1 step 2), of travel time already
+inflated by the 2SFCA congestion factor `c_j` (§2.1 step 1) — **not** on a raw
+point-to-point walk time. A published walking standard (ANGSt 300 m ≈ 5 min)
+is a raw single-facility walk time, so it is mapped onto the `t_eff` basis, not
+dropped in raw:
+
+- the soft-min sits at or **below** the nearest raw time (substitutability
+  bonus, bounded by `ln(n)/κ`), so for a lone reachable facility `t_eff ≈`
+  nearest raw time and the raw standard transfers directly;
+- congestion **inflates** it: at the city's reference crowding `c_j ≈ 1`, but a
+  facility with half the reference supply-per-demand carries `c_j = 2^γ`, so
+  the same raw standard corresponds to a *larger* `t_eff` where supply is
+  scarce. The seeds are stated on the (reference-crowding) `t_eff` basis, and
+  the sensitivity of the outputs to this mapping is tracked in §7.3 — it is not
+  asserted to be exact.
+
+### 3.1b Mode
+
+The published standards are **walking** thresholds. The everyday regime is
+evaluated on the **walk** network only (`regimes.everyday.modes: ["walk"]`), so
+a single walking `t0` per service is **mode-consistent** by construction — no
+per-mode `t0` is needed while everyday is walk-only. This is a deliberate
+decision, not an oversight: reaching a pharmacy in 15 min *by car* is a
+different construct from 15 min *on foot*, so **if** `car` were added to the
+everyday regime, `t0` would have to vary by mode (a single `t0` across modes
+would be as questionable as a single `t0` across services). That switch is
+flagged here and gated on the mode set; the emergency regime, which is
+car-based and non-substitutable, keeps its own convex DCF and is unaffected.
+
 ## 3a. Cross-regime standardisation (mandatory)
 
 The everyday (bounded logistic DLF) and emergency (unbounded Box-Cox DCF)
@@ -147,7 +260,15 @@ empty/unreachable cells are excluded from weights.
    deprivation), population-weighted and mapped.
 2. **City-level divergence:** each city as a point in the
    (Gini of everyday deprivation, Gini of emergency deprivation) plane;
-   off-diagonal spread measured alongside population-weighted mean levels.
+   off-diagonal spread measured alongside population-weighted mean levels. The
+   plane is drawn with **curvature-envelope error bars** — the min–max Gini
+   across the deprivation-function curvature variants (§7a Layer 1) — because
+   the curvature assumption moves each city's Gini by a non-trivial amount
+   (~0.2), so a single point would overstate the precision; the bars are the
+   honest way to place a city. A **deprivation-function-free variant** of the
+   plane uses `gini_t_everyday` / `gini_t_emergency` (§4.3): the Gini of the
+   regime-representative *travel time* over reachable cells, which needs no
+   DLF/DCF calibration at all and so carries no curvature envelope.
 3. **Trajectory:** cities ordered along the FUA-population size gradient;
    test whether everyday and emergency deprivation/inequity co-evolve or
    diverge with size. Cross-sectional (space-for-time) inference only.
@@ -219,7 +340,8 @@ they are city-level indicators in their own right.
 
 | indicator | file |
 | --- | --- |
-| Ginis, Spearman ρ, `divergence_gap`, compounding & Jaccard shares, level features | `cityplane_row.csv` (this city) / `cityplane.csv` (all cities) |
+| Ginis (deprivation), Spearman ρ, `divergence_gap`, compounding & Jaccard shares, level features | `cityplane_row.csv` (this city) / `cityplane.csv` (all cities) |
+| travel-time Ginis (deprivation-function-free): `gini_t_everyday`, `gini_t_emergency` on reachable `t_regime_*` | `cityplane_row.csv` / `cityplane.csv` |
 | class population shares per threshold | `typology_summary_<pct>.csv` |
 | per-regime mean/Gini/concentration index; gradient regressions | `equity_indices.csv`, `equity_regressions.csv` |
 | per-infrastructure accessibility | `accessibility_by_service.csv`, `accessibility_by_regime.csv` |
@@ -270,13 +392,70 @@ clustering, not just levels.
 (`config/sensitivity.yaml`); raw deprivation magnitudes are never tracked.
 Layers: (1) curvature sweep and (2) functional-form swap — both evaluated on
 the saved deprivation-free travel times (`t_regime_*`), so no re-routing;
-(3) the accessibility axis (supply: nearest vs 2SFCA; mode: walk vs
-walk+transit), which changes the travel times and is the comparison against
-which deprivation-calibration sensitivity is judged; (4) flip-cells — cells
-whose typology class changes across the sweep, reported as a stable-vs-
-sensitive population share and mapped. Reported as rank-agreement
-(Spearman/Kendall of city orderings) and cluster agreement (adjusted Rand)
-versus baseline.
+(2b) the **everyday-threshold calibration** — uniform `t0 = 15` vs per-service
+`t0` (§3.1), the one deprivation-calibration layer that must be applied *per
+service* and re-composited from the saved per-service effective times
+(`t_eff_<service>`), still no re-routing; (3) the **accessibility axis**, run
+with `depacc sensitivity --layer access` — the knobs (mode set, `softmin.kappa`,
+`catchment.gamma`, bandwidth, `k_nearest`, unreachable treatment) that build the
+travel times and can therefore actually move the ranks; (4) flip-cells — cells
+whose typology class changes across the sweep,
+reported as a stable-vs-sensitive population share and mapped. Reported as
+rank-agreement (Spearman/Kendall of city orderings) and cluster agreement
+(adjusted Rand) versus baseline.
+
+**Layer 2 (form swap) is ACTIVE, and it is calibrated the honest way — form
+transferred, *anchors* held fixed.** Where Layer 1 varies curvature within a
+fixed form, Layer 2 replaces the form itself while pinning the *same domain
+anchors* the baselines were calibrated to (§3), so only the functional shape
+between/beyond the anchors differs:
+
+- Everyday: the saturating **logistic DLF → a concave Box-Cox DLF** (`lam < 1`)
+  that passes through the same `g(15) = 0.5·g(45)` half-max and the `g(45) = 1`
+  ceiling. `lam` is *solved* from the ratio anchor, `scale` from the ceiling
+  anchor — not chosen.
+- Emergency: the convex **Box-Cox DCF → an exponential DCF** matching the
+  baseline at *both* 45 and 60 min, so the clinical-threshold ratio
+  `g(60)/g(45) ≈ 1.66` is identical. `beta` is *solved* from that ratio.
+
+The calibrated parameters and their anchor equations live in
+`config/deprivation.yaml → deprivation.alternatives.*` (`note:` fields, exactly
+reproducible), and the swap is wired in `config/sensitivity.yaml → form_swap`.
+Because every admissible `g(t)` is still strictly increasing, the co-location
+typology stays rank-invariant across Layer 2 as well; what Layer 2 tests is
+whether the **Ginis and the plane** survive a change of *form* (not just
+curvature), tracked separately on the `form_swap` axis so it never contaminates
+the Layer-1 curvature envelope.
+
+**Layer 3 (accessibility) — the cheap variants are ACTIVE.** They re-run the
+*deprivation stage only*, from the **saved OD parquets** — no re-routing. Each
+knob is swept one at a time from the config baseline: `softmin.kappa`
+∈{0.1, 0.25, 0.5, 1, 2}, `catchment.gamma` ∈{0, 0.25, 0.5, 1}, walk catchment
+bandwidth ∈{10, 15, 20} min, `k_nearest` ∈{10, 30} (subsetting the saved
+k = 30 OD), nearest-only vs soft-min (κ→∞), the unreachable-cell treatment
+(cap value / exclude), and the everyday **mode set** (walk vs walk+car, the
+element-wise minimum travel time — the car OD is kept by the access stage once
+a declared variant needs it). Every variant recomputes the everyday
+effective-time surface → percentiles → typology and reports how far the **HH
+share, coupling ρ and within-regime Ginis** move, plus which cells flip class
+(`sensitivity/<city>_access_sensitivity.csv`, a flip-cell map, and — for
+Hamburg — an acceptance table naming which knobs beat the threshold axis). The
+**expensive** Layer-3 variants that need per-variant *re-routing* — friction vs
+r5 engine (Workstream E, Hamburg) and transit inclusion for Tier-2 — are
+deferred until the pilot sample exists.
+
+**The calibration finding (Layer 2b vs Layer 3).** The uniform-vs-per-service
+contrast is reported as a first-class result against the Layer-3 hypothesis:
+the outputs should move **more** with the accessibility model (supply/mode)
+than with deprivation calibration. If the contrast barely moves the stable
+targets (Spearman/Kendall on city rankings, typology-class ARI, typology
+shares, Ginis, `divergence_gap`), uniform `t0 = 15` is **retained as a stated,
+defended simplification**; if it moves them, per-service `t0` was necessary and
+is adopted. Either way the choice becomes a reported robustness finding, not an
+attackable default. Outputs: `sensitivity/calibration_rank_agreement.csv`,
+`calibration_typology_ari.csv`, `calibration_target_drift.csv`. (The per-service
+seeds carry `verify: TODO` in `config/deprivation.yaml`; the decision is
+re-read once they are confirmed against primary sources.)
 
 **Framing:** this is a *structured robustness check over a defensible
 parameter envelope*, NOT a probabilistic uncertainty quantification — it is
@@ -300,15 +479,29 @@ still reports the two things that *are* well-defined:
   reader can see the split's leverage.
 
 It follows that the assumptions which move the **spatial** result are the
-**accessibility** ones (Layer 3: supply model, mode, `softmin.kappa`,
-`catchment.gamma`, bandwidth, `k_nearest`) — because they change the travel
-times and therefore the ranks — not the deprivation-function curvature. Those
-require per-variant re-runs of the access+deprivation stages; the harness is
-staged to accept them.
+**accessibility** ones (Layer 3: mode set, `softmin.kappa`, `catchment.gamma`,
+bandwidth, `k_nearest`, unreachable treatment) — because they change the travel
+times and therefore the ranks — not the deprivation-function curvature. The
+cheap ones run from the cached OD (above); the Hamburg acceptance table
+(`sensitivity/hamburg_access_acceptance.csv`) ranks each knob by how far it
+moves the HH share and ρ against the threshold axis, and the expectation is
+that the **everyday mode set dominates** — swapping walk for walk+car reshapes
+the effective-time field far more than any within-model knob. (ρ is a coupling
+of the two surfaces and is threshold-independent, so *any* knob that moves it
+beats the threshold axis, whose ρ range is zero by construction.)
 
 ## 8. Reproducibility
 
 Config-driven (YAML per city + tier); cached downloads with SHA-256
 provenance sidecars; no raw data committed; unit tests on the DLF/DCF
-mapping, soft-min reducer, 2SFCA factor, unreachable handling and the
-divergence typology; CI runs the tests on every push.
+mapping, soft-min reducer, 2SFCA factor, unreachable handling (incl. the
+shared no-path mask and the reachable-but-service-deprived finite-fill,
+§2.4), the per-service `t0` seam and the divergence typology; CI runs the
+tests on every push.
+
+**Deprivation parameters are never hardcoded in `src/`.** The per-service
+everyday thresholds (§3.1) live in `config/deprivation.yaml` with a `source`
+and a `verify: TODO` flag on every value; the pipeline still refuses null
+placeholders. The uniform-vs-per-service choice is not asserted as settled —
+it is decided by the §7a Layer-2b robustness result and re-read once the seeds
+are confirmed against the primary sources cited in §3.1.

@@ -208,13 +208,33 @@ def run_viz(cfg: dict, city: str, root: Path) -> None:
     plane_path = root / cfg["output"]["root"] / "cityplane.csv"
     if plane_path.exists():
         plane = pd.read_csv(plane_path)
+        # Curvature envelope per city (min-max Gini across the deprivation-
+        # function curvature variants), if the robustness sweep has been run —
+        # drawn as error bars, the honest way to place a city on the plane.
+        envelopes = {str(r.city): _curvature_envelope(root, cfg, str(r.city))
+                     for _, r in plane.iterrows()}
         fig, ax = plt.subplots(figsize=(6.5, 6))
-        lim = max(plane.gini_everyday.max(), plane.gini_emergency.max()) * 1.15 + 1e-9
+        hi_env = [max(e["ev_hi"], e["em_hi"]) for e in envelopes.values() if e]
+        lim = max([plane.gini_everyday.max(), plane.gini_emergency.max(), *hi_env]) \
+            * 1.15 + 1e-9
         ax.plot([0, lim], [0, lim], color="0.75", linewidth=1, linestyle="--",
                 zorder=1)
+        n_env = 0
+        for _, r in plane.iterrows():
+            e = envelopes.get(str(r.city))
+            if not e:
+                continue
+            xerr = [[max(0.0, r.gini_everyday - e["ev_lo"])],
+                    [max(0.0, e["ev_hi"] - r.gini_everyday)]]
+            yerr = [[max(0.0, r.gini_emergency - e["em_lo"])],
+                    [max(0.0, e["em_hi"] - r.gini_emergency)]]
+            ax.errorbar(r.gini_everyday, r.gini_emergency, xerr=xerr, yerr=yerr,
+                        fmt="none", ecolor="#3b4994", elinewidth=1.0,
+                        capsize=2, alpha=0.45, zorder=2)
+            n_env += 1
         ax.scatter(plane.gini_everyday, plane.gini_emergency,
                    s=20 + 40 * np.log10(plane.population.clip(lower=1) + 1),
-                   c="#3b4994", alpha=0.85, linewidths=0, zorder=2)
+                   c="#3b4994", alpha=0.85, linewidths=0, zorder=3)
         for _, r in plane.iterrows():
             label = r["name"] + (" (synthetic)" if r.get("synthetic") else "")
             ax.annotate(label, (r.gini_everyday, r.gini_emergency),
@@ -222,8 +242,11 @@ def run_viz(cfg: dict, city: str, root: Path) -> None:
                         color="0.25")
         ax.set_xlabel("Gini of everyday deprivation")
         ax.set_ylabel("Gini of emergency deprivation")
+        env_note = ("\nbars = min-max Gini across curvature variants"
+                    if n_env else "")
         ax.set_title("Cities in the everyday-vs-emergency inequity plane\n"
-                     "(cross-sectional; size ~ log population)", fontsize=10)
+                     "(cross-sectional; size ~ log population)" + env_note,
+                     fontsize=10)
         ax.set_xlim(0, lim); ax.set_ylim(0, lim)
         _style(ax)
         fig.tight_layout()
@@ -305,6 +328,24 @@ def _service_accessibility_panel(surfaces, cfg, name, figdir, plt):
     fig.tight_layout(rect=(0, 0, 1, 0.97))
     fig.savefig(figdir / "accessibility_by_service.png", dpi=170, bbox_inches="tight")
     plt.close(fig)
+
+
+def _curvature_envelope(root, cfg, city):
+    """Min-max within-regime Gini across the deprivation-function CURVATURE
+    variants for one city, from its robustness table (form-swap variants are
+    excluded — they sit on the separate ``form_swap`` axis). Returns
+    {ev_lo, ev_hi, em_lo, em_hi} or None if the sweep has not been run."""
+    p = root / cfg["output"]["root"] / "sensitivity" / f"{city}_deprivation_sensitivity.csv"
+    if not p.exists():
+        return None
+    tbl = pd.read_csv(p)
+    cur = tbl[tbl.axis == "curvature"]
+    if cur.empty or cur.gini_everyday.dropna().empty:
+        return None
+    return {
+        "ev_lo": float(cur.gini_everyday.min()), "ev_hi": float(cur.gini_everyday.max()),
+        "em_lo": float(cur.gini_emergency.min()), "em_hi": float(cur.gini_emergency.max()),
+    }
 
 
 def _sensitivity_figure(cfg, city, root, name, figdir, plt):

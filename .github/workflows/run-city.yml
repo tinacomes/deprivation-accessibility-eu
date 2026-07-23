@@ -98,6 +98,21 @@ jobs:
             echo "skip sensitivity: surfaces.parquet not present yet"
           fi
 
+      # Layer-3 ACCESSIBILITY sensitivity (kappa / gamma / bandwidth / k_nearest
+      # / nearest-only / unreachable / everyday mode set), recomputed from the
+      # cached OD matrices — no re-routing. Single-city mode, so it needs no
+      # cityplane.csv and runs for the synthetic demo too. Writes
+      # data/derived/sensitivity/<city>_access_{sensitivity,acceptance}.csv +
+      # the flip-cell map (uploaded in the artifact below).
+      - name: Accessibility (Layer-3) sensitivity sweep — from cached OD
+        if: always()
+        run: |
+          if [ -f "data/derived/${{ inputs.city }}/surfaces.parquet" ]; then
+            depacc sensitivity --layer access --city "${{ inputs.city }}"
+          else
+            echo "skip access sensitivity: surfaces.parquet not present yet"
+          fi
+
       # Accumulate this city onto the depacc-results branch and refresh the
       # cross-city table. Only meaningful once divergence has produced a city
       # summary (full run or stage=divergence/equity/viz); the script no-ops

@@ -112,8 +112,16 @@ def main(argv: list[str] | None = None) -> int:
         default=Path(__file__).resolve().parents[2])
 
     sens = sub.add_parser(
-        "sensitivity", help="robustness sweep (curvature/form) over the stable "
-                            "rank targets for all cities in cityplane.csv")
+        "sensitivity", help="robustness sweep over the stable rank targets. "
+                            "--layer deprivation: curvature/form (Layers 1/2); "
+                            "--layer access: accessibility knobs (Layer 3) from "
+                            "cached OD — no re-routing")
+    sens.add_argument("--layer", choices=("deprivation", "access", "all"),
+                      default="deprivation",
+                      help="which sensitivity layer to run (default: deprivation)")
+    sens.add_argument("--city", default=None,
+                      help="restrict to one city (default: all in cityplane.csv). "
+                           "Layer 3 accepts a single --city without cityplane.csv.")
     sens.add_argument("--grid", type=Path, default=None,
                       help="sweep grid YAML (default: config/sensitivity.yaml)")
     sens.add_argument("--project-root", type=Path,
@@ -189,11 +197,18 @@ def main(argv: list[str] | None = None) -> int:
         import yaml
 
         from depacc.config import CONFIG_DIR
-        from depacc.sensitivity import run_sensitivity
 
         grid_path = args.grid or (CONFIG_DIR / "sensitivity.yaml")
         grid = (yaml.safe_load(open(grid_path)) or {}).get("sensitivity", {})
-        run_sensitivity(load_config(), grid, args.project_root)
+        if args.layer in ("deprivation", "all"):
+            from depacc.sensitivity import run_sensitivity
+
+            run_sensitivity(load_config(), grid, args.project_root)
+        if args.layer in ("access", "all"):
+            from depacc.sensitivity import run_access_sensitivity
+
+            run_access_sensitivity(load_config(), grid, args.project_root,
+                                   city=args.city)
         return 0
 
     cfg = load_config(args.city)

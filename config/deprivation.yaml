@@ -40,6 +40,96 @@ deprivation:
       Form from Wang et al. 2017; curvature calibrated to intra-urban travel
       range, NOT transferred from hours-scale estimates.
 
+    # ------------------------------------------------------------------------
+    # Per-service tolerated travel time. A single t0=15 across GP, pharmacy,
+    # supermarket, school and green space is wrong in both directions (too
+    # generous for dense near-daily goods-carrying services, too coarse for
+    # categories with an internal size hierarchy): tolerated travel time falls
+    # as usage frequency rises. `threshold_mode` selects the model:
+    #   uniform     -> every service uses the base t0/k above (DEFAULT; the
+    #                  defended simplification + the Phase-3 comparison variant).
+    #   per_service -> a service below overrides t0/k from its entry.
+    #
+    # t0 is a threshold on the EFFECTIVE time (soft-min over facilities,
+    # inflated by 2SFCA congestion), NOT raw walk time — see methods.md §3.1.
+    # Every value below is SEEDED from a named standard but flagged
+    # `verify: TODO`: confirm against the primary source (volume/page) before
+    # treating it as settled. Nothing is hardcoded in src/; nulls are rejected.
+    # ------------------------------------------------------------------------
+    threshold_mode: "uniform"    # uniform | per_service
+    per_service:
+      gp:
+        t0: 18.0
+        k: 0.20
+        verify: TODO
+        source: >-
+          GP is registration-based and less frequent (NL/UK): a longer
+          tolerated time than daily services. Seed anchored to the 15-minute-
+          city general threshold (Moreno et al. 2021) nudged up for
+          registration/appointment friction. VERIFY against primary GP-access
+          standards (e.g. RCGP/NHS access, NL huisarts catchment norms).
+      pharmacy:
+        t0: 8.0
+        k: 0.28
+        verify: TODO
+        source: >-
+          Pharmacies are dense, near-daily and location-regulated in several
+          countries (DE Apothekenbetriebsordnung; comparable EU pharmacy
+          location rules). Seed ~7-10 min. VERIFY against the national pharmacy
+          siting regulation and pharmacy-accessibility literature.
+      supermarket:
+        t0: 10.0
+        k: 0.25
+        verify: TODO
+        source: >-
+          Frequent, goods-carrying trips penalise distance; ~10 min. Seed
+          anchored to food-access "food desert" walking thresholds (USDA ERS;
+          DEFRA/ONS food accessibility). VERIFY against the primary food-access
+          standard used.
+      school_primary:
+        t0: 12.0
+        k: 0.22
+        verify: TODO
+        source: >-
+          Primary schooling is local and daily: short tolerated walk. Seed
+          ~10-15 min, anchored to statutory safe-walking-distance norms (e.g.
+          UK DfE statutory walking distance ~2 miles lower band; DE Schulweg
+          planning). VERIFY against the national primary-school catchment norm.
+      school_secondary:
+        t0: 27.0
+        k: 0.14
+        verify: TODO
+        source: >-
+          Secondary schools are sparser with wider catchments: a longer
+          tolerated time (~25-30 min). Seed anchored to statutory secondary
+          walking distance (UK DfE ~3 miles) / typical secondary catchments.
+          VERIFY against the national secondary-school catchment norm.
+        extract_alias_note: >-
+          Currently shares the `school` OSM extraction with school_primary
+          (see config/services.yaml extract_alias); split by isced:level /
+          school level tags once reliably available.
+      green_space_local:
+        t0: 5.0
+        k: 0.35
+        verify: TODO
+        source: >-
+          Local/pocket green space should be within a short walk: Natural
+          England ANGSt and WHO urban green-space guidance put a site within
+          ~300 m (~5 min walk) of every home. Seed ~5 min. VERIFY against
+          ANGSt (Natural England) and WHO Regional Office for Europe (2017).
+      green_space_district:
+        t0: 20.0
+        k: 0.15
+        verify: TODO
+        source: >-
+          District / larger sites are visited less often and tolerate a longer
+          trip (ANGSt tiers larger sites at 2 km / 5 km). Seed ~20 min. VERIFY
+          against the ANGSt distance tiers for larger accessible greenspace.
+        extract_alias_note: >-
+          Currently shares the `green_space` OSM extraction with
+          green_space_local (see config/services.yaml extract_alias); split by
+          min_area_m2 bands once park polygons/areas are extracted.
+
   emergency:
     # Emergency/disaster framing: monetary Deprivation Cost Function (DCF).
     # CONVEX Box-Cox — time-critical, so the cost escalates ever more steeply;
@@ -59,18 +149,49 @@ deprivation:
       Convex form per Cantillo 2018 / Delgado-Lindeman 2019; curvature
       calibrated to clinical time-to-care threshold (~45-60 min).
 
-  # Sensitivity analysis: each entry is an alternative specification that can
-  # be swapped in for either regime via `depacc run --deprivation-spec NAME`.
+  # Sensitivity analysis: each entry is an alternative FORM that can be swapped
+  # in for either regime via `depacc run --deprivation-spec NAME`, and that the
+  # robustness harness activates as Layer 2 (config/sensitivity.yaml
+  # form_swap). These are the honest counterpart of "form transferred, curvature
+  # calibrated": the FORM changes while the SAME domain anchors are held fixed,
+  # so the parameters below are CALIBRATED FROM THOSE ANCHORS, not invented. The
+  # anchor equations are recorded in each `note:` and are exactly reproducible.
   alternatives:
     everyday_box_cox:
+      # Saturating logistic DLF -> concave (lam<1) Box-Cox DLF, same 15/45-min
+      # anchors: passes through (15 min, 0.5) and (45 min, 1.0), i.e. the
+      # 15-minute-city half-max and the ~45-min saturation ceiling (Lmax=1).
       kind: "DLF"
       form: "box_cox"
-      params: { lam: null, scale: null, shift: null }
-      source: "TODO(cite): Box-Cox DLF variant from the Wang et al. line of work."
+      params: { lam: 0.546, scale: 0.077, shift: 1.0 }
+      source: >-
+        Form: Box-Cox DLF (Wang et al. 2017 line of work), swapped for the
+        logistic to test functional FORM at fixed anchors. See methods.md §7a
+        Layer 2.
+      note: >-
+        Anchors held fixed with the logistic (methods.md §3): shift fixed at
+        1 min (convention, matching the emergency DCF); lam solved from the
+        SHAPE anchor g(15)=0.5*g(45), i.e. ((15+1)^lam - 1)/((45+1)^lam - 1) =
+        0.5  ->  lam = 0.546 (concave, diminishing returns); scale solved from
+        the LEVEL anchor g(45)=1 (the logistic ceiling Lmax=1), i.e.
+        scale = lam/((45+1)^lam - 1) = 0.077. Curvature (lam) is thus the only
+        free shape parameter and it is fixed by the anchor, not chosen.
     emergency_exponential:
+      # Convex Box-Cox DCF -> exponential DCF, same clinical-threshold anchors:
+      # passes through the baseline Box-Cox at BOTH 45 and 60 min, so the
+      # g(60)/g(45) ratio (the ~45-60 min time-to-care escalation) is identical.
       kind: "DCF"
       form: "exponential"
-      params: { beta: null, scale: null }
+      params: { beta: 0.02437, scale: 273.7805 }
       source: >-
-        TODO(cite): exponential DCF variant (Holguín-Veras et al. line of
-        work).
+        Form: exponential DCF (Holguín-Veras et al. 2013 line of work), swapped
+        for the Box-Cox to test functional FORM at fixed anchors. See methods.md
+        §7a Layer 2.
+      note: >-
+        Anchors held fixed with the baseline Box-Cox DCF (lam=1.8, shift=1,
+        scale=1; methods.md §3): beta solved from the clinical-threshold RATIO
+        anchor g(60)/g(45) = (61^1.8 - 1)/(46^1.8 - 1) = 1.6627, i.e.
+        (exp(60*beta)-1)/(exp(45*beta)-1) = 1.6627  ->  beta = 0.02437; scale
+        solved so g_exp(45) = g_boxcox(45) = (46^1.8 - 1)/1.8, i.e.
+        scale = 273.7805. The exponential then coincides with the Box-Cox at
+        both 45 and 60 min, so only the FORM between/beyond the anchors differs.

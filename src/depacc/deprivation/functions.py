@@ -23,9 +23,15 @@ rejected by depacc.config.require_params):
                   monotone increasing, saturating at Lmax; inflection at t0.
                   (Not globally convex — convex below t0, concave above.)
     exponential : g(t) = scale * (exp(beta * t) - 1)             beta > 0
-    box_cox     : g(t) = scale * ((t + shift)**lam - shift**lam)/lam,  lam > 1
+    box_cox     : g(t) = scale * ((t + shift)**lam - shift**lam)/lam,  lam > 0
 
-exponential and box_cox satisfy g(0)=0, g'>0, g''>=0 (convex). The raw
+box_cox is convex for lam > 1 and concave for lam < 1; its curvature is
+therefore kind-specific. An escalating DCF (emergency) must be convex, so
+lam > 1 is enforced for kind="DCF". A saturating DLF (everyday) uses the
+concave branch (lam < 1) — the diminishing-returns, form-swapped counterpart
+of the logistic — so kind="DLF" allows any lam > 0. exponential is always
+convex (beta > 0). exponential and convex box_cox satisfy g(0)=0, g'>0,
+g''>=0; the concave box_cox is increasing with g(0)=0 but g''<0. The raw
 logistic has a small positive baseline g(0)=Lmax/(1+exp(k*t0)); with
 ``zero_anchor`` (default True) it is rescaled to
 g(t) = Lmax*(L(t)-L(0))/(Lmax-L(0)) so g(0)=0 and g(inf)=Lmax exactly,
@@ -104,12 +110,20 @@ class DeprivationFunction:
             if p["scale"] <= 0:
                 raise ConfigError("deprivation scale must be > 0")
         else:  # box_cox
-            if p["lam"] <= 1:
-                raise ConfigError("box_cox form requires lam > 1 for convexity in time")
+            if p["lam"] <= 0:
+                raise ConfigError("box_cox form requires lam > 0")
             if p["shift"] < 0:
                 raise ConfigError("box_cox form requires shift >= 0")
             if p["scale"] <= 0:
                 raise ConfigError("deprivation scale must be > 0")
+            # Convexity is kind-specific: an escalating DCF (emergency) must be
+            # convex (lam > 1); a saturating DLF (everyday) uses the concave
+            # branch (lam < 1) — the diminishing-returns counterpart of the
+            # logistic, calibrated to the same 15/45-min anchors.
+            if self.kind == "DCF" and p["lam"] <= 1:
+                raise ConfigError(
+                    "box_cox DCF (escalating emergency cost) requires lam > 1 "
+                    "for convexity in time")
 
     @classmethod
     def from_spec(cls, spec: Mapping[str, object], context: str = "deprivation function") -> "DeprivationFunction":

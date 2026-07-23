@@ -2,11 +2,14 @@
 curvature rank-robustness, flip-cells."""
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from depacc.config import load_config
 from depacc.sensitivity.harness import (
     Variant,
+    adjusted_rand,
+    city_calibration_targets,
     city_stable_targets,
     city_variant_table,
     expand_variants,
@@ -84,6 +87,99 @@ def test_city_variant_table_curvature_invariant_typology():
     # Threshold sweep changes the compounding (HH) share monotonically down.
     thr = tbl[tbl.axis == "threshold"].sort_values("threshold")
     assert thr["share_HH"].is_monotonic_decreasing
+
+
+def test_form_swap_resolves_named_alternatives():
+    """Layer 2: a form_swap entry referencing a named alternative resolves to
+    that alternative's anchor-calibrated spec, on the separate form_swap axis."""
+    cfg = load_config()
+    grid = {"form_swap": {"everyday": [{"alternative": "everyday_box_cox"}],
+                          "emergency": [{"alternative": "emergency_exponential"}]}}
+    variants = expand_variants(cfg, grid)
+    by_name = {v.name: v for v in variants}
+    assert by_name["formswap_everyday_box_cox"].layer == "form_swap"
+    assert by_name["formswap_emergency_exponential"].layer == "form_swap"
+    ev = by_name["formswap_everyday_box_cox"]
+    # everyday regime swapped to the concave Box-Cox DLF; emergency baseline kept.
+    assert ev.everyday["form"] == "box_cox" and ev.everyday["params"]["lam"] < 1
+    assert ev.emergency == cfg["deprivation"]["emergency"]
+    em = by_name["formswap_emergency_exponential"]
+    assert em.emergency["form"] == "exponential"
+    assert em.everyday == cfg["deprivation"]["everyday"]
+
+
+def test_form_swap_unknown_alternative_raises():
+    cfg = load_config()
+    with pytest.raises(KeyError, match="unknown alternative"):
+        expand_variants(cfg, {"form_swap": {"everyday": [{"alternative": "nope"}]}})
+
+
+def test_city_table_separates_form_swap_from_curvature():
+    """The curvature envelope (axis='curvature') must not absorb the Layer-2
+    form-swap Ginis (axis='form_swap')."""
+    cfg = load_config()
+    grid = {"emergency": {"lam": [1.4, 1.8, 2.2]},
+            "form_swap": {"emergency": [{"alternative": "emergency_exponential"}]}}
+    variants = expand_variants(cfg, grid)
+    rng = np.random.default_rng(5)
+    n = 300
+    t_ev, t_em = rng.uniform(0, 40, n), rng.uniform(0, 90, n)
+    pop = rng.uniform(1, 100, n)
+    tbl = city_variant_table(t_ev, t_em, pop, variants, "c")
+    assert (tbl.axis == "form_swap").any()
+    cur = tbl[tbl.axis == "curvature"]
+    assert not cur.variant.str.contains("formswap").any()
+
+
+def test_adjusted_rand_identity_and_none_dropped():
+    a = np.array(["LL", "HH", "HL", "LH", "HH"], dtype=object)
+    assert adjusted_rand(a, a) == pytest.approx(1.0)
+    b = np.array(["HH", "LL", "LH", "HL", "LL"], dtype=object)
+    assert -0.6 <= adjusted_rand(a, b) <= 1.0
+    # None pairs are dropped, not counted as a class.
+    c = np.array(["LL", "HH", None, "LH", "HH"], dtype=object)
+    assert adjusted_rand(a, c) == pytest.approx(1.0)
+
+
+def test_calibration_targets_uniform_vs_per_service():
+    cfg = load_config()  # everyday is logistic, per_service seeds present
+    rng = np.random.default_rng(3)
+    n = 400
+    surf = pd.DataFrame({
+        "population": rng.uniform(1, 500, n),
+        "t_regime_emergency": rng.uniform(0, 90, n),
+        "unreachable_everyday": np.zeros(n, dtype=bool),
+    })
+    for svc in cfg["everyday_services"]:
+        surf[f"t_eff_{svc}"] = rng.uniform(0, 40, n)
+    uni = city_calibration_targets(surf, cfg, "uniform")
+    per = city_calibration_targets(surf, cfg, "per_service")
+    for tgt in (uni, per):
+        assert 0 <= tgt["gini_everyday"] <= 1
+        assert {f"share_{c}" for c in ("LL", "LH", "HL", "HH")} <= set(tgt)
+    # Per-service thresholds change the everyday surface, so at least one stable
+    # target must differ (they are not identical by construction).
+    assert (uni["gini_everyday"] != pytest.approx(per["gini_everyday"])
+            or uni["share_HH"] != pytest.approx(per["share_HH"]))
+    # Emergency is held fixed across the calibration variant.
+    assert uni["gini_emergency"] == pytest.approx(per["gini_emergency"])
+
+
+def test_calibration_masks_no_path_cells():
+    cfg = load_config()
+    rng = np.random.default_rng(5)
+    n = 50
+    surf = pd.DataFrame({
+        "population": rng.uniform(1, 100, n),
+        "t_regime_emergency": rng.uniform(0, 90, n),
+        "unreachable_everyday": np.array([True] * 5 + [False] * (n - 5)),
+    })
+    for svc in cfg["everyday_services"]:
+        surf[f"t_eff_{svc}"] = rng.uniform(0, 40, n)
+    tgt = city_calibration_targets(surf, cfg, "per_service")
+    # Masked cells are unclassified (they carry NaN everyday deprivation), so
+    # the classified shares still sum to ~1 over the reachable cells.
+    assert sum(tgt[f"share_{c}"] for c in ("LL", "LH", "HL", "HH")) == pytest.approx(1.0)
 
 
 def test_flip_cells():

@@ -29,13 +29,28 @@ everyday_services:
     osm:
       - { key: "shop", value: "supermarket" }
     capacity: { source: "uniform", proxy: true }
-  school:
-    label: "School (primary/secondary)"
+  # Schools carry an internal size hierarchy (primary = local & daily;
+  # secondary = sparser, wider catchment), so they are split into two services
+  # with their own tolerated travel time (config/deprivation.yaml per_service).
+  # Until the OSM extraction can distinguish levels (isced:level / school
+  # level), school_secondary REUSES school_primary's extraction via
+  # `extract_alias` — same facilities routed once, two thresholds.
+  school_primary:
+    label: "School — primary"
     osm:
       - { key: "amenity", value: "school" }
     capacity: { source: "uniform", proxy: true }
-  green_space:
-    label: "Public green space"
+  school_secondary:
+    label: "School — secondary"
+    # TODO-refine: replace with a secondary-level extraction (e.g.
+    # isced:level 2/3, school=secondary) when tagging is reliable.
+    extract_alias: "school_primary"
+    capacity: { source: "uniform", proxy: true }
+  # Green space also has a size hierarchy (local/pocket vs district/larger),
+  # split the same way. Until park polygons are area-banded, green_space_district
+  # REUSES green_space_local's extraction via `extract_alias`.
+  green_space_local:
+    label: "Public green space — local"
     # Polygons; access is measured to entrances/boundary vertices of parks
     # above min_area_m2.
     geometry: "polygon"
@@ -43,6 +58,12 @@ everyday_services:
       - { key: "leisure", value: "park" }
       - { key: "landuse", value: "recreation_ground" }
     min_area_m2: 5000
+    capacity: { source: "area_m2", proxy: false }
+  green_space_district:
+    label: "Public green space — district/larger"
+    # TODO-refine: extract only larger sites (min_area_m2 band) once park
+    # areas are available; for now shares the local extraction.
+    extract_alias: "green_space_local"
     capacity: { source: "area_m2", proxy: false }
 
 emergency_services:

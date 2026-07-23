@@ -60,7 +60,8 @@ depacc run --city hamburg --stage access
 depacc make-city --fua-code DE002F --name Hamburg --country DE   # codes from `depacc list-fuas`
                                         # generate a Tier-1 fast-path config
 depacc cross                            # cross-city clustering + size gradient
-depacc sensitivity                      # deprivation-assumption robustness sweep
+depacc sensitivity                      # deprivation-assumption robustness sweep (Layers 1/2)
+depacc sensitivity --layer access --city hamburg   # accessibility sweep (Layer 3) from cached OD
 pytest                                  # unit tests (no downloads needed)
 ```
 
@@ -81,8 +82,15 @@ writes the **intermediary evidence** and **city-level indicators**:
   is area-weighted while the shares are population-weighted (methods §4.1).
 - `sensitivity/<city>_deprivation_sensitivity.csv` +
   `figures/sensitivity_deprivation.png` — how the result moves with the
-  deprivation-function curvature (Gins move; the rank-based typology does not)
+  deprivation-function curvature (Ginis move; the rank-based typology does not)
   and with the "high" threshold. See methods §7a.
+- `sensitivity/<city>_access_sensitivity.csv` +
+  `sensitivity/<city>_access_flip_cells.png` — the Layer-3 **accessibility**
+  sweep (`--layer access`): how the HH share, coupling ρ and Ginis move as the
+  soft-min κ, 2SFCA γ, catchment bandwidth, `k_nearest`, unreachable treatment
+  and everyday **mode set** vary — recomputed from the cached OD, no re-routing.
+  For Hamburg, `sensitivity/hamburg_access_acceptance.csv` ranks each knob
+  against the threshold axis.
 - `cityplane_row.csv` — the one-row city indicator sheet (Ginis, ρ,
   `divergence_gap`, compounding/Jaccard shares, level features).
 

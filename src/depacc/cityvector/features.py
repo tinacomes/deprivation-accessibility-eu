@@ -7,7 +7,10 @@ Four groups, none contaminated by the deprivation-function scale:
              time DIRECTLY — deprivation-function-free.
   EQUITY     gini_everyday, gini_emergency (scale-invariant) and the
              tail-robust p90_p50_ratio_emergency (the emergency Gini is
-             tail-driven, so report both).
+             tail-driven, so report both). gini_t_everyday, gini_t_emergency
+             are the DEPRIVATION-FUNCTION-FREE counterparts: the Gini of the
+             regime-representative TRAVEL TIME over reachable cells, so the
+             plane can be drawn without any DLF/DCF calibration.
   COUPLING   spearman_rho, divergence_gap.
   GRADIENT   fully standardised (SD-per-SD) regression betas of deprivation
              on density and on an income/rent proxy — scale-free.
@@ -30,7 +33,8 @@ LEVEL_PREFIX = "pop_share_beyond"
 # tolerated (dropped with a log line) so partial samples still cluster.
 FEATURE_GROUPS = {
     "level": [],  # filled dynamically from config thresholds
-    "equity": ["gini_everyday", "gini_emergency", "p90_p50_ratio_emergency"],
+    "equity": ["gini_everyday", "gini_emergency", "p90_p50_ratio_emergency",
+               "gini_t_everyday", "gini_t_emergency"],
     "coupling": ["spearman_rho", "divergence_gap"],
     "gradient": ["slope_density_everyday", "slope_density_emergency",
                  "slope_ses_everyday", "slope_ses_emergency"],

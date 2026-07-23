@@ -67,7 +67,7 @@ def test_logistic_raw_variant_has_baseline_and_half_at_t0():
     "form,params",
     [
         ("exponential", {"beta": -0.1, "scale": 1.0}),  # decreasing
-        ("box_cox", {"lam": 0.5, "scale": 1.0, "shift": 1.0}),  # concave
+        ("box_cox", {"lam": 0.0, "scale": 1.0, "shift": 1.0}),  # lam <= 0
         ("box_cox", {"lam": 2.0, "scale": -1.0, "shift": 1.0}),  # negative scale
         ("logistic", {"Lmax": 1.0, "t0": 15.0, "k": -0.2}),  # decreasing
         ("logistic", {"Lmax": -1.0, "t0": 15.0, "k": 0.2}),  # negative ceiling
@@ -78,6 +78,40 @@ def test_logistic_raw_variant_has_baseline_and_half_at_t0():
 def test_invalid_specs_rejected(form, params):
     with pytest.raises(ConfigError):
         DeprivationFunction(form=form, params=params)
+
+
+def test_box_cox_convexity_is_kind_aware():
+    """A saturating DLF may use the concave Box-Cox branch (lam<1); an
+    escalating DCF must stay convex (lam>1)."""
+    g = DeprivationFunction(form="box_cox", kind="DLF",
+                            params={"lam": 0.546, "scale": 0.077, "shift": 1.0})
+    y = g(np.array([0.0, 15.0, 45.0]))
+    assert y[0] == pytest.approx(0.0) and np.all(np.diff(y) > 0)  # increasing, g(0)=0
+    assert y[1] == pytest.approx(0.5 * y[2], rel=2e-3)            # 15/45 anchor
+    # concave second difference (saturating), the opposite of the convex DCF.
+    assert float(np.diff(np.diff(g(np.linspace(0, 60, 61))))[10]) < 0
+    with pytest.raises(ConfigError):
+        DeprivationFunction(form="box_cox", kind="DCF",
+                            params={"lam": 0.9, "scale": 1.0, "shift": 1.0})
+
+
+def test_shipped_alternatives_are_anchor_calibrated():
+    """The shipped Layer-2 alternatives build, are cited (no TODO), and hit the
+    SAME domain anchors as the baselines they swap in for."""
+    cfg = load_config()
+    bc = DeprivationFunction.from_spec(
+        deprivation_spec(cfg, "everyday", alternative="everyday_box_cox"))
+    assert bc.form == "box_cox" and bc.kind == "DLF"
+    assert float(bc(15.0)) == pytest.approx(0.5 * float(bc(45.0)), rel=2e-3)
+    assert float(bc(45.0)) == pytest.approx(1.0, rel=2e-3)  # logistic ceiling
+    ex = DeprivationFunction.from_spec(
+        deprivation_spec(cfg, "emergency", alternative="emergency_exponential"))
+    base = DeprivationFunction.from_spec(deprivation_spec(cfg, "emergency"))
+    assert ex.form == "exponential" and ex.kind == "DCF"
+    assert float(ex(60.0)) / float(ex(45.0)) == pytest.approx(
+        float(base(60.0)) / float(base(45.0)), rel=2e-3)  # clinical-threshold ratio
+    for g in (bc, ex):
+        assert g.source and "TODO(cite)" not in g.source
 
 
 def test_from_spec_round_trip():

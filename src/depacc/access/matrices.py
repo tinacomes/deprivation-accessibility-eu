@@ -60,6 +60,12 @@ def _sensitivity_access_modes(cfg: dict) -> set[str]:
     modes: set[str] = set()
     for m in axis.get("mode", []) or []:
         modes |= _SENS_MODE_ALIAS.get(str(m), {str(m)})
+    # Layer-3 everyday_modes variants ([[walk], [walk, car], ...]) declare the
+    # concrete everyday mode sets to sweep; keep the OD for every mode any
+    # declared variant needs so the sweep stays cheap (reuses saved matrices).
+    for modeset in axis.get("everyday_modes", []) or []:
+        for m in modeset if isinstance(modeset, (list, tuple)) else [modeset]:
+            modes |= _SENS_MODE_ALIAS.get(str(m), {str(m)})
     return modes
 
 
@@ -103,6 +109,8 @@ def run_access(cfg: dict, city: str, root: Path) -> None:
             f"miss on the first staged run). Re-dispatch stage 'ingest' (or "
             f"stage 'all') for '{city}', then 'access'."
         )
+    from depacc.config import service_extract_aliases
+
     cells = pd.read_parquet(cells_path)
     modes = cfg["routing"].get("modes") or cfg["tiers"]["tier1"]["modes"]
     services = list(cfg.get("everyday_services", {})) + list(cfg.get("emergency_services", {}))
@@ -110,6 +118,8 @@ def run_access(cfg: dict, city: str, root: Path) -> None:
     # the sensitivity Layer-3 modes for everyday services); routing every mode
     # for every service is wasted work — see _service_modes.
     service_modes = _service_modes(cfg, modes)
+    # Alias sub-types reuse a parent service's OD matrices (same facilities).
+    aliases = service_extract_aliases(cfg)
     k = int(cfg["routing"].get("k_nearest", 30))
 
     synthetic = bool(cfg["city"].get("synthetic"))
@@ -117,6 +127,19 @@ def run_access(cfg: dict, city: str, root: Path) -> None:
     network = None
     fua = None
     for service in services:
+        # Alias sub-types reuse the parent's OD matrices (same facilities) — no
+        # re-routing. The parent is listed first, so its OD already exists.
+        if service in aliases:
+            parent = aliases[service]
+            for mode in modes:
+                dst = out / f"od_{service}_{mode}.parquet"
+                src = out / f"od_{parent}_{mode}.parquet"
+                if dst.exists():
+                    continue
+                if src.exists():
+                    pd.read_parquet(src).to_parquet(dst)
+                    print(f"od[{service},{mode}]: aliased from '{parent}'")
+            continue
         fac_path = out / f"facilities_{service}.parquet"
         if not fac_path.exists():
             print(f"WARNING: no facilities for '{service}'; skipping")

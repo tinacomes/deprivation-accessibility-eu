@@ -26,9 +26,18 @@ from depacc.standardize import RegimeSurface, to_percentile
 
 def city_row(everyday_raw: RegimeSurface, emergency_raw: RegimeSurface,
              cfg: dict, city: str, name: str, country: str, tier: int,
-             synthetic: bool, population_total: float) -> dict:
+             synthetic: bool, population_total: float,
+             surfaces: pd.DataFrame | None = None) -> dict:
     """Assemble the per-city summary from RAW regime surfaces (standardised
-    internally where cross-regime comparison is required)."""
+    internally where cross-regime comparison is required).
+
+    When ``surfaces`` (the deprivation-stage frame carrying ``t_regime_*`` and
+    ``unreachable_*``) is supplied, the row also gains the
+    deprivation-function-FREE inequality columns ``gini_t_everyday`` /
+    ``gini_t_emergency`` — the Gini of the regime-representative travel time
+    over reachable cells — so the plane can be drawn without any DLF/DCF
+    calibration.
+    """
     thresholds = cfg.get("typology", {}).get("thresholds", [0.5, 0.75])
     e_p = to_percentile(everyday_raw)
     m_p = to_percentile(emergency_raw)
@@ -53,7 +62,34 @@ def city_row(everyday_raw: RegimeSurface, emergency_raw: RegimeSurface,
         key = f"{int(round(thr * 100)):02d}"
         row[f"compounding_pop_share_{key}"] = compounding_pop_share(e_p, m_p, thr)
         row[f"jaccard_high_{key}"] = jaccard_high(e_p, m_p, thr)
+    if surfaces is not None:
+        row.update(travel_time_ginis(surfaces))
     return row
+
+
+def travel_time_ginis(surfaces: pd.DataFrame) -> dict:
+    """Deprivation-function-FREE inequality: population-weighted Gini of the
+    regime-representative travel time (`t_regime_<regime>`) over REACHABLE cells
+    only. Under `cap_at_max_time` the unreachable cells carry the cutoff as a
+    placeholder time, so they are excluded (via `unreachable_<regime>`) rather
+    than allowed to distort the inequality; this mirrors the reachable-only
+    travel-time summaries (methods.md §2.4) and lets the everyday-vs-emergency
+    plane be drawn on travel time alone, with no DLF/DCF calibration."""
+    pop = surfaces["population"].to_numpy(float)
+    out = {}
+    for regime in ("everyday", "emergency"):
+        col = f"t_regime_{regime}"
+        if col not in surfaces.columns:
+            out[f"gini_t_{regime}"] = float("nan")
+            continue
+        t = surfaces[col].to_numpy(float)
+        reach = np.isfinite(t) & (pop > 0)
+        unreach_col = f"unreachable_{regime}"
+        if unreach_col in surfaces.columns:
+            reach &= ~surfaces[unreach_col].to_numpy(bool)
+        w = np.where(reach, pop, 0.0)
+        out[f"gini_t_{regime}"] = weighted_gini(t, w)
+    return out
 
 
 def _p90_p50(values, weights) -> float:
