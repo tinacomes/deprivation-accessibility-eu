@@ -74,6 +74,34 @@ def test_ses_regressions_survive_disjoint_suppression(tmp_path):
     assert (ses[ses.term != "const"].n > 100).all()
 
 
+def test_run_equity_writes_vulnerability_table(tmp_path):
+    rng = np.random.default_rng(2)
+    n = 300
+    age65 = np.linspace(0, 0.5, n)
+    surfaces = pd.DataFrame({
+        "population": rng.uniform(1, 100, n),
+        "deprivation_everyday": 0.2 + 0.6 * age65,
+        "deprivation_emergency": rng.uniform(0, 30, n),
+        "ses_age_share_ge65": age65,
+    }, index=[f"c{i}" for i in range(n)])
+    out = _write_surfaces(tmp_path, "vuln", surfaces)
+    # A row-aligned typology with HH concentrated in the elderly tail.
+    pd.DataFrame(
+        {"typology_50": np.where(age65 >= 0.375, "HH", "LL")}, index=surfaces.index,
+    ).to_parquet(out / "typology.parquet")
+
+    cfg = {**_base_cfg(), "equity": {"vulnerability_strata": [
+        {"name": "elderly", "column": "ses_age_share_ge65", "direction": "high",
+         "quantile": 0.75, "level": "age"}]}}
+    run_equity(cfg, "vuln", tmp_path)
+
+    vuln = pd.read_csv(out / "equity_vulnerability.csv")
+    assert list(vuln.stratum) == ["overall", "elderly"]
+    elderly = vuln[vuln.stratum == "elderly"].iloc[0]
+    assert elderly.mean_dep_everyday_ratio > 1.0
+    assert elderly.hh_share_gap > 0
+
+
 def test_ses_covariates_allow_list_restricts_regressions(tmp_path):
     df = _disjoint_suppression_surfaces()
     _write_surfaces(tmp_path, "allow", df)

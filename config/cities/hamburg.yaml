@@ -77,6 +77,27 @@ equity:
     - "ses_age_share_u18"
     - "ses_age_share_ge65"
     - "ses_net_rent_durchschnMieteQM"
+  # Vulnerability-stratified deprivation: each stratum is the population-weighted
+  # tail of a vulnerability variable. `level: age` strata are census-harmonised
+  # and cross-city comparable; `level: income_tier2` exists only where a fine
+  # SES grid does — never pool the two across cities. HH share uses the p50
+  # typology by default (vulnerability_hh_threshold).
+  vulnerability_strata:
+    - name: "elderly"
+      column: "ses_age_share_ge65"
+      direction: "high"
+      quantile: 0.75
+      level: "age"
+    - name: "children"
+      column: "ses_age_share_u18"
+      direction: "high"
+      quantile: 0.75
+      level: "age"
+    - name: "low_rent"
+      column: "ses_net_rent_durchschnMieteQM"
+      direction: "low"
+      quantile: 0.25
+      level: "income_tier2"
 
 routing:
   # Fast path: least-cost paths over the Weiss et al. friction surfaces

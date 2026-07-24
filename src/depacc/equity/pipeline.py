@@ -83,3 +83,20 @@ def run_equity(cfg: dict, city: str, root: Path) -> None:
         regs.to_csv(out / "equity_regressions.csv", index=False)
         slopes = regs[regs.term != "const"]
         print(slopes[["regime", "model", "term", "coef", "p"]].to_string(index=False))
+
+    # Vulnerability-stratified deprivation (needs the divergence typology for
+    # the HH share). Skipped cleanly when no strata are configured or the
+    # typology has not been written yet.
+    strata = equity_cfg.get("vulnerability_strata") or []
+    typ_path = out / "typology.parquet"
+    if strata and typ_path.exists():
+        from depacc.equity.vulnerability import vulnerability_strata
+
+        typology = pd.read_parquet(typ_path).reindex(surfaces.index)
+        hh_key = str(equity_cfg.get("vulnerability_hh_threshold", 50))
+        vuln = vulnerability_strata(surfaces, typology, strata, hh_key=hh_key)
+        vuln.to_csv(out / "equity_vulnerability.csv", index=False)
+        print(vuln.to_string(index=False))
+    elif strata:
+        print("NOTE: vulnerability_strata configured but typology.parquet "
+              "absent; run the divergence stage first")
