@@ -36,12 +36,45 @@ def fetch_ses_layers(cfg: dict, root: Path) -> dict[str, Path]:
     return out
 
 
-def load_inspire_csv_zip(path: Path, value_columns: list[str] | None = None) -> pd.DataFrame:
-    """Load a Zensus-2022-style INSPIRE 100 m grid CSV (semicolon-separated,
-    German decimal commas) from a zip. Returns a frame with x, y (EPSG:3035
-    cell centroids) plus the value columns."""
+_RES_TOKENS = {
+    "100m": ("100m", "100meter"),
+    "1km": ("1km", "1000m", "1kilometer"),
+    "10km": ("10km", "10000m", "10kilometer"),
+}
+
+
+def _select_grid_csv(names: list[str], resolution: str) -> str:
+    """Pick the CSV of the requested grid resolution from a Zensus archive.
+
+    Each theme zip bundles the 10 km / 1 km / 100 m CSVs together; grabbing the
+    first one silently loads the wrong resolution (a 1 km/10 km grid whose
+    centroids match no 100 m cell -> an all-NaN join). Match on the resolution
+    token in the filename, warning and falling back to the first CSV only if
+    nothing matches (single-CSV archives still work)."""
+    csvs = [n for n in names if n.lower().endswith(".csv")]
+    if not csvs:
+        raise ValueError("no CSV member in the SES archive")
+
+    def _norm(s: str) -> str:
+        return s.lower().replace(" ", "").replace("-", "").replace("_", "")
+
+    tokens = _RES_TOKENS.get(resolution, (_norm(resolution),))
+    matches = [n for n in csvs if any(t in _norm(n) for t in tokens)]
+    if not matches:
+        if len(csvs) > 1:
+            print(f"WARNING: no {resolution} CSV among {csvs}; using {csvs[0]}")
+        return csvs[0]
+    return min(matches, key=len)  # shortest = the grid file, not a doc variant
+
+
+def load_inspire_csv_zip(path: Path, value_columns: list[str] | None = None,
+                         resolution: str = "100m") -> pd.DataFrame:
+    """Load a Zensus-2022-style INSPIRE grid CSV (semicolon-separated, German
+    decimal commas) at the requested ``resolution`` from a multi-resolution zip.
+    Returns a frame with x, y (EPSG:3035 cell centroids) plus the value
+    columns."""
     with zipfile.ZipFile(path) as zf:
-        name = next(n for n in zf.namelist() if n.lower().endswith(".csv"))
+        name = _select_grid_csv(zf.namelist(), resolution)
         with zf.open(name) as fh:
             df = pd.read_csv(fh, sep=";", decimal=",", low_memory=False)
     xcol = next(c for c in df.columns if c.lower().startswith("x_mp"))

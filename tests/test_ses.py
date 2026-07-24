@@ -13,10 +13,35 @@ import pandas as pd
 
 from depacc.ingest.pipeline import _derive_ses_columns
 from depacc.ingest.ses import (
+    _select_grid_csv,
     age_group_shares,
     join_ses_to_cells,
     load_inspire_csv_zip,
 )
+
+
+def test_select_grid_csv_prefers_requested_resolution():
+    names = [
+        "Zensus2022_Eigentuemerquote-10km-Gitter.csv",
+        "Zensus2022_Eigentuemerquote-1km-Gitter.csv",
+        "Zensus2022_Eigentuemerquote-100m-Gitter.csv",
+        "Datensatzbeschreibung.xlsx",
+    ]
+    assert _select_grid_csv(names, "100m").endswith("100m-Gitter.csv")
+    assert _select_grid_csv(names, "1km").endswith("1km-Gitter.csv")
+    # 1km token must not be fooled by the 10km filename.
+    assert "10km" not in _select_grid_csv(names, "1km")
+
+
+def test_select_grid_csv_falls_back_to_only_csv():
+    names = ["grid_only.csv", "readme.txt"]
+    assert _select_grid_csv(names, "100m") == "grid_only.csv"
+
+
+def test_select_grid_csv_raises_without_csv():
+    import pytest as _pytest
+    with _pytest.raises(ValueError):
+        _select_grid_csv(["a.txt", "b.xlsx"], "100m")
 
 
 def _age_cfg():
@@ -81,6 +106,21 @@ def test_load_inspire_csv_zip_parses_german_format(tmp_path):
     # Suppressed cell coerces to NaN, not a string.
     assert np.isnan(df.loc[1, "Einwohner"])
     assert np.isnan(df.loc[1, "Durchschnittsalter"])
+
+
+def test_load_inspire_csv_zip_reads_100m_from_multi_resolution(tmp_path):
+    # Archive bundles 1km and 100m CSVs with different values; loader must read
+    # the 100m one, not whichever is first in the namelist.
+    header = "GITTER_ID;x_mp_100m;y_mp_100m;Eigentuemerquote"
+    zpath = tmp_path / "own.zip"
+    with zipfile.ZipFile(zpath, "w") as zf:
+        zf.writestr("Zensus2022_Eigentuemer-1km-Gitter.csv",
+                    header + "\nCRS3035RES1000mN2000E4000;4500;2500;99,9")
+        zf.writestr("Zensus2022_Eigentuemer-100m-Gitter.csv",
+                    header + "\nCRS3035RES100mN2000E4000;4050;2050;41,2")
+    df = load_inspire_csv_zip(zpath)
+    assert len(df) == 1
+    assert df.loc[0, "Eigentuemerquote"] == 41.2  # the 100m value, not 99.9
 
 
 def test_load_inspire_csv_zip_drops_annotation_column(tmp_path):
