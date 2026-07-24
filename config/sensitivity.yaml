@@ -46,6 +46,11 @@ sensitivity:
     nearest_only: true                     # add the hard-min (kappa->inf) variant
     unreachable: [cap_at_max_time, exclude]  # unreachable-cell policy (or a numeric cap in minutes)
     everyday_modes: [[walk], [walk, car]]  # everyday mode set (min travel time across modes)
+    # NOTE: the extra non-regime modes here (e.g. car for walk+car) are only
+    # ROUTED when routing.route_sensitivity_modes is true (or the env var
+    # DEPACC_ROUTE_SENSITIVITY_MODES=1) — off by default, since everyday×car
+    # ~doubles a friction city's access time (Workstream A.2). When off, the
+    # sweep skips the walk+car variant; the other knobs above still run cheaply.
     # EXPENSIVE variants (per-variant RE-ROUTING) are DEFERRED until the pilot
     # sample exists and are NOT run by --layer access:
     #   friction vs r5 engine  — Workstream E does this for Hamburg.

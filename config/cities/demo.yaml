@@ -25,6 +25,10 @@ city:
 
 routing:
   modes: ["walk", "car", "transit"]
+  # Route the Layer-3 sweep's extra everyday modes (opt-in elsewhere) so the
+  # synthetic fixture exercises the walk+car accessibility variant end-to-end.
+  # Cheap here: the demo router is straight-line, not a real Dijkstra.
+  route_sensitivity_modes: true
 
 deprivation:
   everyday:

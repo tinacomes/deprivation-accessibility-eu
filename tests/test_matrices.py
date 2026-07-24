@@ -1,11 +1,15 @@
 """Per-(service, mode) OD-matrix selection: only route the modes a service's
 regime consumes, plus the sensitivity Layer-3 accessibility modes for everyday
-services, intersected with the modes the run can actually route."""
+services (only when opted in), intersected with the modes the run can route."""
 
-from depacc.access.matrices import _service_modes, _sensitivity_access_modes
+from depacc.access.matrices import (
+    _route_sensitivity_modes,
+    _service_modes,
+    _sensitivity_access_modes,
+)
 
 
-def _cfg(sens_modes=None):
+def _cfg(sens_modes=None, route_sens=True, everyday_modes=None):
     cfg = {
         "everyday_services": {"gp": {}, "pharmacy": {}},
         "emergency_services": {"hospital": {}, "ambulance": {}},
@@ -13,9 +17,17 @@ def _cfg(sens_modes=None):
             "everyday": {"modes": ["walk"]},
             "emergency": {"modes": ["car"]},
         },
+        # Layer-3 extra-mode routing is opt-in; the routing tests below exercise
+        # the enabled path, so default the gate on here.
+        "routing": {"route_sensitivity_modes": route_sens},
     }
+    axis = {}
     if sens_modes is not None:
-        cfg["sensitivity"] = {"accessibility": {"mode": sens_modes}}
+        axis["mode"] = sens_modes
+    if everyday_modes is not None:
+        axis["everyday_modes"] = everyday_modes
+    if axis:
+        cfg["sensitivity"] = {"accessibility": axis}
     return cfg
 
 
@@ -47,5 +59,34 @@ def test_transit_dropped_when_run_cannot_route_it():
 
 def test_sensitivity_axis_alias_expansion():
     assert _sensitivity_access_modes(
-        {"sensitivity": {"accessibility": {"mode": ["walk_transit"]}}}
+        {"routing": {"route_sensitivity_modes": True},
+         "sensitivity": {"accessibility": {"mode": ["walk_transit"]}}}
     ) == {"walk", "transit"}
+
+
+# --- the opt-in gate (Workstream A.2 vs the Layer-3 walk+car variant) --------
+def test_sensitivity_modes_gated_off_by_default():
+    """Without the opt-in, the extra everyday modes are NOT routed, so a normal
+    run (and the many-city batch) pays only for the regime modes."""
+    cfg = _cfg(sens_modes=["walk", "walk_transit"],
+               everyday_modes=[["walk"], ["walk", "car"]], route_sens=False)
+    assert _sensitivity_access_modes(cfg) == set()
+    sm = _service_modes(cfg, available=["walk", "car", "transit"])
+    assert sm["gp"] == ["walk"]          # no transit, no car
+    assert sm["hospital"] == ["car"]
+
+
+def test_everyday_modes_car_routed_only_when_opted_in():
+    on = _cfg(everyday_modes=[["walk"], ["walk", "car"]], route_sens=True)
+    assert "car" in _sensitivity_access_modes(on)
+    assert _service_modes(on, available=["walk", "car"])["gp"] == ["walk", "car"]
+    off = _cfg(everyday_modes=[["walk"], ["walk", "car"]], route_sens=False)
+    assert _service_modes(off, available=["walk", "car"])["gp"] == ["walk"]
+
+
+def test_gate_enabled_by_env(monkeypatch):
+    cfg = {"routing": {}, "sensitivity": {"accessibility": {"mode": ["walk_transit"]}}}
+    assert _route_sensitivity_modes(cfg) is False
+    monkeypatch.setenv("DEPACC_ROUTE_SENSITIVITY_MODES", "1")
+    assert _route_sensitivity_modes(cfg) is True
+    assert _sensitivity_access_modes(cfg) == {"walk", "transit"}

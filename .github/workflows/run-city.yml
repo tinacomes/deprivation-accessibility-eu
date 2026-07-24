@@ -27,10 +27,17 @@ on:
         description: "Pipeline stage (all | ingest | access | deprivation | divergence | equity | viz)"
         required: false
         default: "all"
+      route_sensitivity_modes:
+        description: "Route the extra everyday modes (e.g. car) for the Layer-3 walk+car variant. Roughly doubles a friction city's access time; leave false for a fast run, set true for the full Layer-3 sweep."
+        required: false
+        default: "false"
 
 env:
   MPLBACKEND: Agg
   PYTHONUNBUFFERED: "1"   # stream pipeline progress into the live log
+  # Opt-in: route the extra everyday modes the Layer-3 sweep's mode variant
+  # needs (default false -> fast run; A.2 keeps the many-city batch cheap).
+  DEPACC_ROUTE_SENSITIVITY_MODES: "${{ inputs.route_sensitivity_modes }}"
 
 jobs:
   run-city:
