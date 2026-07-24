@@ -83,6 +83,19 @@ def test_load_inspire_csv_zip_parses_german_format(tmp_path):
     assert np.isnan(df.loc[1, "Durchschnittsalter"])
 
 
+def test_load_inspire_csv_zip_drops_annotation_column(tmp_path):
+    # The `werterlaeuternde_Zeichen` annotation field must not survive as data.
+    header = ("GITTER_ID_100m;x_mp_100m;y_mp_100m;"
+              "Eigentuemerquote;werterlaeuternde_Zeichen")
+    rows = "CRS3035RES100mN2000E4000;4050;2050;41,2;/"
+    zpath = tmp_path / "own.zip"
+    zpath.write_bytes(_make_inspire_zip(rows, header).getvalue())
+
+    df = load_inspire_csv_zip(zpath)
+    assert list(df.columns) == ["x", "y", "Eigentuemerquote"]
+    assert df.loc[0, "Eigentuemerquote"] == 41.2
+
+
 def test_load_inspire_csv_zip_respects_value_columns(tmp_path):
     header = "GITTER_ID_100m;x_mp_100m;y_mp_100m;Einwohner;Nettokaltmiete"
     rows = "CRS3035RES100mN2000E4000;4050;2050;10;7,80"

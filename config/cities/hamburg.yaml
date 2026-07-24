@@ -77,6 +77,8 @@ equity:
     - "ses_age_share_u18"
     - "ses_age_share_ge65"
     - "ses_net_rent_durchschnMieteQM"
+    - "ses_ownership_rate_Eigentuemerquote"
+    - "ses_vacancy_rate_Leerstandsquote"
   # Vulnerability-stratified deprivation: each stratum is the population-weighted
   # tail of a vulnerability variable. `level: age` strata are census-harmonised
   # and cross-city comparable; `level: income_tier2` exists only where a fine
@@ -95,6 +97,13 @@ equity:
       level: "age"
     - name: "low_rent"
       column: "ses_net_rent_durchschnMieteQM"
+      direction: "low"
+      quantile: 0.25
+      level: "income_tier2"
+    # Tenure insecurity: the quartile of population in the lowest-ownership
+    # (highest-renter) cells. Tier-2 only; not comparable across cities.
+    - name: "low_ownership"
+      column: "ses_ownership_rate_Eigentuemerquote"
       direction: "low"
       quantile: 0.25
       level: "income_tier2"

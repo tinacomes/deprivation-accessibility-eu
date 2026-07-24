@@ -46,8 +46,15 @@ def load_inspire_csv_zip(path: Path, value_columns: list[str] | None = None) -> 
             df = pd.read_csv(fh, sep=";", decimal=",", low_memory=False)
     xcol = next(c for c in df.columns if c.lower().startswith("x_mp"))
     ycol = next(c for c in df.columns if c.lower().startswith("y_mp"))
-    keep = value_columns or [c for c in df.columns
-                             if c not in (xcol, ycol) and not c.upper().startswith("GITTER")]
+    # Every Zensus theme carries a `werterlaeuternde_Zeichen` field — an
+    # annotation symbol explaining suppressed/zero values, NOT data. Drop it so
+    # it never becomes an all-NaN ses_ column that pollutes the covariate set.
+    keep = value_columns or [
+        c for c in df.columns
+        if c not in (xcol, ycol)
+        and not c.upper().startswith("GITTER")
+        and "werterlaeuternde" not in c.lower()
+    ]
     out = df[[xcol, ycol, *keep]].rename(columns={xcol: "x", ycol: "y"})
     # Zensus files use '–' / empty for suppressed cells -> NaN.
     for c in keep:
