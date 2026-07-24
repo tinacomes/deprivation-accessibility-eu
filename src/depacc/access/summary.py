@@ -6,13 +6,17 @@ scale, so it is directly interpretable and comparable across services and
 cities without any DLF/DCF calibration. For each service it reports the
 population-weighted mean / median / p90 of the regime-representative travel
 time (effective 2SFCA time for everyday services, nearest-facility time for
-emergency services). The mean/median/p90 are computed over REACHABLE cells
-only — a cell capped at the routing cutoff (cap_at_max_time policy) or NaN
-(exclude policy) is not a measured travel time and would otherwise flood the
-upper tail — so p90 is reported as ``pop_p90_time_min_reachable`` alongside the
-``unreachable_pop_share`` and the population share beyond each policy
-threshold. The per-regime composite rows summarise the same at the regime
-level.
+emergency services). The mean/median/p90 are computed over SERVED cells only —
+cells that actually reached a facility of the service. Two kinds of cell are
+excluded because neither carries a measured travel time: genuinely unroutable
+cells (no network path; ``unreachable_pop_share``) and reachable-but-service-
+deprived cells (routable, but no facility of this service in reach — finite-
+filled to the cutoff; ``pop_service_deprived_share``). Either would otherwise
+flood the upper tail and collapse p90 onto the cutoff. The three buckets —
+served / service-deprived / unreachable — partition the population and must be
+read together; the p90 (``pop_p90_time_min_reachable``) says how far the served
+population travels, the two shares say how much of the population is not served.
+The per-regime composite rows summarise the same at the regime level.
 
 These are written by the deprivation stage to:
     accessibility_by_service.csv   (one row per service)
@@ -78,6 +82,14 @@ def accessibility_indicators(surfaces: pd.DataFrame, cfg: dict,
     pop = surfaces["population"].to_numpy(float)
     thr_cfg = cfg.get("cityvector", {}).get("access_thresholds_min", {}) or {}
     srv_regime = _service_regime_map(cfg)
+    # Reachable-but-service-deprived cells are finite-filled to this value by the
+    # deprivation stage (>= any mode cutoff): it is NOT a measured travel time,
+    # so it must be excluded from the reachable quantiles too — otherwise, for a
+    # service with a large service-deprived periphery (e.g. ~12% of Hamburg has
+    # no walkable GP), the fill floods p90 onto the cutoff exactly as an
+    # unreachable cap would. Reported separately as pop_service_deprived_share.
+    finite_fill = float((cfg.get("unreachable") or {}).get("finite_fill_min")
+                        or (cfg.get("routing") or {}).get("max_time_min") or 120.0)
 
     def _row(label: str, regime: str, t: np.ndarray, unreach: np.ndarray | None,
              dep: np.ndarray | None, n_fac: float) -> dict:
@@ -93,15 +105,22 @@ def accessibility_indicators(surfaces: pd.DataFrame, cfg: dict,
         um = (np.asarray(unreach, bool) & pop_ok) if unreach is not None \
             else np.zeros(len(pop), dtype=bool)
         reachable = np.isfinite(t) & pop_ok & ~um
-        w_reach = np.where(reachable, pop, 0.0)
+        # SERVED = reached a facility of this service (a real travel time).
+        # Reachable-but-service-deprived cells were finite-filled to
+        # `finite_fill`; they belong in the deprived share, not the travel-time
+        # quantiles. The quantiles ("...reachable" — i.e. how far the served
+        # population travels) are therefore over served cells only.
+        service_deprived = reachable & (t >= finite_fill)
+        served = reachable & ~service_deprived
+        w_served = np.where(served, pop, 0.0)
         row = {
             "level": label if label in ("everyday", "emergency") else "service",
             "regime": regime,
             "service": label,
             "n_facilities": n_fac,
-            "pop_mean_time_min": _wmean(t, w_reach),
-            "pop_median_time_min": _wq(t, w_reach, 0.50),
-            "pop_p90_time_min_reachable": _wq(t, w_reach, 0.90),
+            "pop_mean_time_min": _wmean(t, w_served),
+            "pop_median_time_min": _wq(t, w_served, 0.50),
+            "pop_p90_time_min_reachable": _wq(t, w_served, 0.90),
         }
         # Share of the WHOLE population beyond each policy threshold: an
         # unreachable cell is by definition beyond every finite threshold.
@@ -110,6 +129,13 @@ def accessibility_indicators(surfaces: pd.DataFrame, cfg: dict,
             beyond = um | (reachable & (t > x))
             row[f"pop_share_beyond_{int(thr_min)}min"] = (
                 float(pop[beyond].sum()) / total_pop if total_pop > 0 else np.nan)
+        # Reachable-but-service-deprived population (routable, but no facility of
+        # this service in reach — finite-filled, kept on the map). Complements
+        # unreachable_pop_share (no network path) and the served quantiles: the
+        # three buckets — served / service-deprived / unreachable — partition the
+        # population, and must be read together.
+        row["pop_service_deprived_share"] = (
+            float(pop[service_deprived].sum()) / total_pop if total_pop > 0 else np.nan)
         if unreach is not None:
             row["unreachable_pop_share"] = (
                 float(pop[um].sum()) / total_pop if total_pop > 0 else np.nan)
@@ -157,7 +183,8 @@ def write_accessibility_summary(surfaces: pd.DataFrame, cfg: dict,
     per_service.to_csv(out / "accessibility_by_service.csv", index=False)
     per_regime.to_csv(out / "accessibility_by_regime.csv", index=False)
     cols = ["service", "regime", "n_facilities", "pop_median_time_min",
-            "pop_p90_time_min_reachable", "unreachable_pop_share"]
+            "pop_p90_time_min_reachable", "pop_service_deprived_share",
+            "unreachable_pop_share"]
     have = [c for c in cols if c in per_service.columns]
     print("accessibility by service (regime-representative travel time):")
     print(per_service[have].to_string(index=False))

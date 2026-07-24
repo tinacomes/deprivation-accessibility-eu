@@ -91,3 +91,36 @@ def test_reachable_quantiles_ignore_cap_and_report_unreachable_share(tmp_path):
     assert row["unreachable_pop_share"] == pytest.approx(0.20)
     # Unreachable cells count as beyond the 30-min threshold.
     assert row["pop_share_beyond_30min"] == pytest.approx(0.20)
+
+
+def test_service_deprived_finite_fill_excluded_from_p90(tmp_path):
+    """Reachable-but-service-deprived cells are finite-filled to the cutoff and
+    NOT flagged unreachable (no_path is 0). They must be excluded from the served
+    quantiles (else p90 collapses onto the fill) and reported as their own share
+    — the Hamburg gp/pharmacy p90=120 artefact."""
+    cfg = {
+        "everyday_services": {"gp": {}},
+        "emergency_services": {},
+        "unreachable": {"finite_fill_min": 120.0},
+        "routing": {"max_time_min": 120.0},
+        "cityvector": {"access_thresholds_min": {"everyday": [30]}},
+    }
+    n = 100
+    t = np.full(n, 8.0)                 # served cells at 8 min
+    t[:15] = 120.0                      # 15 routable-but-service-deprived (filled)
+    unreach = np.zeros(n, bool)         # NONE are no_path (routable everywhere)
+    surf = pd.DataFrame({
+        "population": np.ones(n),
+        "t_regime_gp": t,
+        "unreachable_gp": unreach,
+        "deprivation_gp": np.ones(n),
+    })
+    row = accessibility_indicators(surf, cfg, tmp_path)[0].set_index("service").loc["gp"]
+    # p90/median over SERVED cells only -> 8 min, not the 120 fill.
+    assert row["pop_p90_time_min_reachable"] == 8.0
+    assert row["pop_median_time_min"] == 8.0
+    # The finite-filled 15% is reported as its own bucket, not as unreachable.
+    assert row["pop_service_deprived_share"] == pytest.approx(0.15)
+    assert row["unreachable_pop_share"] == pytest.approx(0.0)
+    # ...but they ARE beyond the 30-min threshold (no facility in reach).
+    assert row["pop_share_beyond_30min"] == pytest.approx(0.15)
