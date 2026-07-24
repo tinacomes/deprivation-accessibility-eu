@@ -9,6 +9,8 @@ cross-city figures:
                                            percentile threshold)
     cities/<city>/equity_indices.csv       weighted mean / Gini / CI
     cities/<city>/equity_regressions.csv   density + SES gradients
+    cities/<city>/equity_vulnerability.csv stratified deprivation + HH share
+                                           within 65+/under-18/low-rent strata
     cities/<city>/accessibility_by_*.csv   per-service / per-regime travel-time
                                            accessibility indicators
     cross/                                 union cityplane, cityvector,
@@ -44,6 +46,7 @@ SUMMARY_FILES = (
     "cityplane_row.csv",
     "equity_indices.csv",
     "equity_regressions.csv",
+    "equity_vulnerability.csv",
     "accessibility_by_service.csv",
     "accessibility_by_regime.csv",
 )

@@ -11,11 +11,47 @@ import zipfile
 import numpy as np
 import pandas as pd
 
+from depacc.ingest.pipeline import _derive_ses_columns
 from depacc.ingest.ses import (
     age_group_shares,
     join_ses_to_cells,
     load_inspire_csv_zip,
 )
+
+
+def _age_cfg():
+    return {"sources": {"ses": {"derived": {"age_shares": {
+        "population_col": "ses_age_structure_Insgesamt_Bevoelkerung",
+        "bands": {
+            "ses_age_share_u18": ["ses_age_structure_Unter18"],
+            "ses_age_share_ge65": ["ses_age_structure_a65undaelter"],
+        }}}}}}
+
+
+def test_derive_ses_columns_adds_age_shares():
+    cells = pd.DataFrame({
+        "cell_id": ["a", "b"],
+        "ses_age_structure_Insgesamt_Bevoelkerung": [100.0, 200.0],
+        "ses_age_structure_Unter18": [18.0, 40.0],
+        "ses_age_structure_a65undaelter": [25.0, 60.0],
+    })
+    out = _derive_ses_columns(_age_cfg(), cells)
+    assert out.loc[0, "ses_age_share_u18"] == 0.18
+    assert out.loc[1, "ses_age_share_ge65"] == 0.30
+
+
+def test_derive_ses_columns_skips_when_columns_absent():
+    # A layer failed to join -> the source columns are missing; derivation is
+    # skipped (warned) rather than raising, so ingest still completes.
+    cells = pd.DataFrame({"cell_id": ["a"], "population": [10.0]})
+    out = _derive_ses_columns(_age_cfg(), cells)
+    assert "ses_age_share_u18" not in out.columns
+    assert list(out.columns) == ["cell_id", "population"]
+
+
+def test_derive_ses_columns_noop_without_config():
+    cells = pd.DataFrame({"cell_id": ["a"], "population": [10.0]})
+    assert _derive_ses_columns({}, cells).equals(cells)
 
 
 def _make_inspire_zip(rows: str, header: str, name: str = "grid_100m.csv") -> io.BytesIO:
@@ -45,6 +81,19 @@ def test_load_inspire_csv_zip_parses_german_format(tmp_path):
     # Suppressed cell coerces to NaN, not a string.
     assert np.isnan(df.loc[1, "Einwohner"])
     assert np.isnan(df.loc[1, "Durchschnittsalter"])
+
+
+def test_load_inspire_csv_zip_drops_annotation_column(tmp_path):
+    # The `werterlaeuternde_Zeichen` annotation field must not survive as data.
+    header = ("GITTER_ID_100m;x_mp_100m;y_mp_100m;"
+              "Eigentuemerquote;werterlaeuternde_Zeichen")
+    rows = "CRS3035RES100mN2000E4000;4050;2050;41,2;/"
+    zpath = tmp_path / "own.zip"
+    zpath.write_bytes(_make_inspire_zip(rows, header).getvalue())
+
+    df = load_inspire_csv_zip(zpath)
+    assert list(df.columns) == ["x", "y", "Eigentuemerquote"]
+    assert df.loc[0, "Eigentuemerquote"] == 41.2
 
 
 def test_load_inspire_csv_zip_respects_value_columns(tmp_path):
