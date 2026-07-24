@@ -57,6 +57,26 @@ sources:
       ownership_rate: "https://www.destatis.de/static/DE/zensus/gitterdaten/Eigentuemerquote_in_Gitterzellen.zip"
       vacancy_rate: "https://www.destatis.de/static/DE/zensus/gitterdaten/Leerstandsquote_in_Gitterzellen.zip"
     licence: "dl-de/by-2-0"
+    # Post-join derivations. The age-structure zip is "Alter in 5 Altersklassen"
+    # (Unter18 / 18-29 / 30-49 / 50-64 / 65+), so the youngest available cut is
+    # under-18, not under-15. Column names are the joined ses_age_structure_*
+    # from the run at run 30094277689.
+    derived:
+      age_shares:
+        population_col: "ses_age_structure_Insgesamt_Bevoelkerung"
+        bands:
+          ses_age_share_u18: ["ses_age_structure_Unter18"]
+          ses_age_share_ge65: ["ses_age_structure_a65undaelter"]
+
+# Equity stage: which SES column ranks the concentration index and which
+# columns enter the gradient regressions (each regressed univariately, so the
+# heterogeneously-suppressed rent/vacancy layers keep their own support).
+equity:
+  ses_rank_column: "ses_net_rent_durchschnMieteQM"
+  ses_covariates:
+    - "ses_age_share_u18"
+    - "ses_age_share_ge65"
+    - "ses_net_rent_durchschnMieteQM"
 
 routing:
   # Fast path: least-cost paths over the Weiss et al. friction surfaces

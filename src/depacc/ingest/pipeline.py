@@ -15,6 +15,32 @@ def derived_dir(cfg: dict, city: str, root: Path) -> Path:
     return d
 
 
+def _derive_ses_columns(cfg: dict, cells: pd.DataFrame) -> pd.DataFrame:
+    """Post-join SES derivations declared under ``sources.ses.derived``.
+
+    Currently: ``age_shares`` turns the joined raw age-class head-counts into
+    population shares (e.g. under-18 / 65-plus) so the vulnerability
+    stratification and gradient regressions consume shares, not counts. Missing
+    columns are skipped with a warning rather than raising."""
+    from depacc.ingest.ses import age_group_shares
+
+    derived = ((cfg.get("sources", {}).get("ses", {}) or {}).get("derived", {}) or {})
+    age = derived.get("age_shares")
+    if age:
+        bands = age.get("bands", {}) or {}
+        pop_col = age.get("population_col")
+        needed = {c for cols in bands.values() for c in cols}
+        if pop_col:
+            needed.add(pop_col)
+        missing = sorted(c for c in needed if c not in cells.columns)
+        if missing:
+            print(f"WARNING: age_shares skipped, absent joined columns: {missing}")
+        else:
+            cells = age_group_shares(cells, bands, pop_col)
+            print(f"SES age shares derived: {sorted(bands)}")
+    return cells
+
+
 def _materialise_aliases(cfg: dict, out: Path) -> None:
     """Copy each alias service's facilities from its ``extract_alias`` parent.
 
@@ -135,5 +161,6 @@ def run_ingest(cfg: dict, city: str, root: Path) -> None:
         if layer_zips:
             layers = {name: load_inspire_csv_zip(p) for name, p in layer_zips.items()}
             cells = join_ses_to_cells(cells, layers)
+            cells = _derive_ses_columns(cfg, cells)
             cells.to_parquet(cells_path)
             print(f"SES layers joined: {sorted(layer_zips)}")
