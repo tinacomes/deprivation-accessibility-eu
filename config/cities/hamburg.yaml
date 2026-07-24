@@ -35,17 +35,27 @@ sources:
         url: "https://download.gtfs.de/germany/free/latest.zip"
         licence: "CC-BY 4.0 (gtfs.de aggregation of DELFI open data)"
   ses:
-    # Germany Zensus 2022 100 m INSPIRE grid CSVs (open data). Layer file
-    # names are resolved by the ingest module; the base page is stable.
+    # Germany Zensus 2022 100 m INSPIRE grid CSVs (open data). Each zip bundles
+    # the 10 km / 1 km / 100 m grid CSVs for one theme (destatis "Gitterdaten"
+    # release). The ingest loader reads the 100 m CSV (semicolon-separated,
+    # German decimal commas) and snaps it to the GHS grid; the provenance
+    # sidecar records the URL + SHA-256 actually fetched.
     provider: "zensus2022_de_100m"
-    base_url: "https://www.zensus2022.de/DE/Ergebnisse-des-Zensus/_inhalt.html"
+    base_url: "https://www.zensus2022.de/DE/Ergebnisse-des-Zensus/gitterzellen.html"
     layers:
       - "population"        # Einwohnerzahl
-      - "age_structure"     # Durchschnittsalter / Altersgruppen
+      - "age_structure"     # Alter in 5 Altersklassen (-> under-15 / 65+ shares)
       - "household_size"    # Durchschnittliche Haushaltsgroesse
       - "net_rent"          # Durchschnittliche Nettokaltmiete
       - "ownership_rate"    # Eigentuemerquote
       - "vacancy_rate"      # Leerstandsquote
+    urls:
+      population: "https://www.destatis.de/static/DE/zensus/gitterdaten/Zensus2022_Bevoelkerungszahl.zip"
+      age_structure: "https://www.destatis.de/static/DE/zensus/gitterdaten/Alter_in_5_Altersklassen.zip"
+      household_size: "https://www.destatis.de/static/DE/zensus/gitterdaten/Durchschnittliche_Haushaltsgroesse_in_Gitterzellen.zip"
+      net_rent: "https://www.destatis.de/static/DE/zensus/gitterdaten/Zensus2022_Durchschn_Nettokaltmiete.zip"
+      ownership_rate: "https://www.destatis.de/static/DE/zensus/gitterdaten/Eigentuemerquote_in_Gitterzellen.zip"
+      vacancy_rate: "https://www.destatis.de/static/DE/zensus/gitterdaten/Leerstandsquote_in_Gitterzellen.zip"
     licence: "dl-de/by-2-0"
 
 routing:

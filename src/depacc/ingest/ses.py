@@ -55,6 +55,39 @@ def load_inspire_csv_zip(path: Path, value_columns: list[str] | None = None) -> 
     return out
 
 
+def age_group_shares(df: pd.DataFrame, bands: dict[str, list[str]],
+                     population_col: str | None = None) -> pd.DataFrame:
+    """Derive population shares from raw age-band count columns.
+
+    The Zensus age-structure grid ships absolute head-counts per 5-year band,
+    but the downstream vulnerability stratification (share < 15, share >= 65)
+    and the EU-census age layer both want *shares*. ``bands`` maps an output
+    share name to the count columns that make it up, e.g.
+    ``{"share_u15": ["u3", "3_5", "6_14"], "share_ge65": ["65_74", "ge75"]}``.
+    Shares are taken over ``population_col`` when given (the correct choice for
+    partial bands such as under-15 + 65-plus, which skip the middle of the age
+    range). Without it the denominator is the row-sum of every column named
+    across all bands, which is only meaningful when those bands are EXHAUSTIVE
+    (partition the whole population). Missing counts are treated as zero; a
+    zero/NaN denominator yields NaN.
+    """
+    out = df.copy()
+
+    def _counts(cols: list[str]) -> pd.Series:
+        # Suppressed ('–'/empty) cells parse to NaN; treat as a zero count so
+        # one missing band does not void the whole share.
+        return out[cols].apply(pd.to_numeric, errors="coerce").fillna(0.0).sum(axis=1)
+
+    if population_col is not None:
+        denom = pd.to_numeric(out[population_col], errors="coerce")
+    else:
+        denom = _counts(sorted({c for cols in bands.values() for c in cols}))
+    denom = denom.where(denom > 0)  # zero/NaN denominator -> NaN share
+    for name, cols in bands.items():
+        out[name] = _counts(cols) / denom
+    return out
+
+
 def join_ses_to_cells(cells: pd.DataFrame, layers: dict[str, pd.DataFrame]) -> pd.DataFrame:
     """Join SES layers onto GHS cells by snapping both to the same 100 m
     EPSG:3035 grid cell (INSPIRE convention: coordinates are cell centres)."""
