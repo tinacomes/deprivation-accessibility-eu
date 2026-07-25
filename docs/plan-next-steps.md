@@ -275,13 +275,34 @@ ONE variable in every city, whereas `ses_rank_column` is per-city and Tier-2
 cities point it at their rent grid. The covariate actually used is recorded as
 `slope_ses_column`.
 
-> **Deviation 1 (URL not byte-verified).** The implementation environment's
-> egress policy blocks `gisco-services.ec.europa.eu` and `ec.europa.eu`, so the
-> configured URL could not be fetched to confirm its filename, CSV member or
-> column codes. Rather than fabricate them, the config carries the
-> search-resolved release URL plus `verify: TODO` and a note recording exactly
-> what was and was not verified; the loader is written to survive being wrong
-> about all of it. **Confirm before publishing any census-based number.**
+> **Deviation 1 (partly verified upstream).** The implementation environment's
+> egress policy blocks `gisco-services.ec.europa.eu`, so nothing about the
+> published file could be confirmed at implementation time; the config carried
+> the search-resolved URL plus `verify: TODO`. A subsequent run **confirmed the
+> URL** and, by failing, the archive's real shape:
+>
+> ```
+> CENSUS_INS21ES_A_IT_2021_0000_TOTAL _POPULATION.zip   nested INSPIRE delivery
+> ESMS_Census_Grid 2021.pdf                             metadata
+> ESTAT_Census_2021_V1-0.gpkg                           <- the attribute table
+> ESTAT_OBS-VALUE-T_2021_V1-0.tiff                      total-population raster
+> read.me
+> ```
+>
+> The tabular data is a **GeoPackage**, not a CSV. `_data_member` now picks it
+> by extension preference (`.gpkg` > `.geoparquet`/`.parquet` > `.csv`, never the
+> raster or the docs), extracts it once, and `_load_census_geo` reads it
+> bbox-filtered through the layer's spatial index, taking cell centres from
+> `GRD_ID` and falling back to polygon representative points. The CSV path is
+> retained because the landing page also advertises CSV and GeoParquet
+> distributions. The extraction goes under `output.cache_root`, **not**
+> `data/raw`: the workflows cache `data/raw` wholesale per city, so an unpacked
+> continental GeoPackage there would be stored once per city and could evict the
+> far more expensive OSM extracts. Still unverified: the **variable codes**
+> (`T`, `Y_LT15`, `Y_GE65`, `EMP`, `Y_15-64`, `EU_OTH`, `OTH`) — the loader
+> prints the GeoPackage's real column list, and each share whose columns are
+> absent is skipped by name, so the next run resolves this. **Confirm before
+> publishing any census-based number.**
 
 **D.2 — DE Zensus for Hamburg.** Already landed in `e541b0c`/`d3c92a4`: the six
 per-layer zensus2022 URLs are in `config/cities/hamburg.yaml`, the SES fetch is

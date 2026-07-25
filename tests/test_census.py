@@ -106,6 +106,52 @@ def test_load_census_grid_member_selects_the_named_csv(tmp_path):
     assert len(grid) == 4
 
 
+def test_data_member_skips_raster_and_documentation(tmp_path):
+    """The real v1.0 archive: the tabular data is a GeoPackage, and the other
+    members (raster, PDF, read.me, a nested INSPIRE country zip) must never be
+    mistaken for it."""
+    from depacc.ingest.census import _data_member
+
+    path = tmp_path / "Eurostat_Census-GRID_2021_V1-0.zip"
+    with zipfile.ZipFile(path, "w") as zf:
+        zf.writestr("CENSUS_INS21ES_A_IT_2021_0000_TOTAL _POPULATION.zip", "x" * 900)
+        zf.writestr("ESMS_Census_Grid 2021.pdf", "x" * 500)
+        zf.writestr("ESTAT_Census_2021_V1-0.gpkg", "x" * 100)
+        zf.writestr("ESTAT_OBS-VALUE-T_2021_V1-0.tiff", "x" * 800)
+        zf.writestr("read.me", "x")
+    with zipfile.ZipFile(path) as zf:
+        # Picked on extension preference, not on being the largest member.
+        assert _data_member(zf, None) == "ESTAT_Census_2021_V1-0.gpkg"
+        assert _data_member(zf, "OBS-VALUE") == "ESTAT_OBS-VALUE-T_2021_V1-0.tiff"
+
+
+def test_data_member_prefers_gpkg_over_a_metadata_csv(tmp_path):
+    from depacc.ingest.census import _data_member
+
+    path = tmp_path / "census.zip"
+    with zipfile.ZipFile(path, "w") as zf:
+        zf.writestr("codes.csv", "x" * 5000)
+        zf.writestr("ESTAT_Census_2021_V1-0.gpkg", "x" * 10)
+    with zipfile.ZipFile(path) as zf:
+        assert _data_member(zf, None).endswith(".gpkg")
+
+
+def test_extract_member_is_cached(tmp_path):
+    from depacc.ingest.census import _extract_member
+
+    path = tmp_path / "census.zip"
+    payload = b"gpkg-bytes" * 100
+    with zipfile.ZipFile(path, "w") as zf:
+        zf.writestr("ESTAT_Census_2021_V1-0.gpkg", payload)
+    with zipfile.ZipFile(path) as zf:
+        first = _extract_member(zf, "ESTAT_Census_2021_V1-0.gpkg", tmp_path / "unpacked")
+        assert first.read_bytes() == payload
+        mtime = first.stat().st_mtime_ns
+        again = _extract_member(zf, "ESTAT_Census_2021_V1-0.gpkg", tmp_path / "unpacked")
+    # Second call reuses the extracted copy (same size) rather than rewriting it.
+    assert again == first and again.stat().st_mtime_ns == mtime
+
+
 def test_load_census_grid_warns_on_absent_column(tmp_path, capsys):
     path = tmp_path / "census.csv"
     path.write_text(_census_csv(), encoding="utf-8")
@@ -217,7 +263,7 @@ def test_ses_join_resolutions_flags_broadcast_layers():
 
 def _census_cfg(tmp_path, url: str) -> dict:
     return {
-        "output": {"raw_root": "raw"},
+        "output": {"raw_root": "raw", "cache_root": "cache"},
         "sources": {"census": {
             "url": url, "resolution_m": 1000, "id_column": "GRD_ID",
             "shares": SHARE_SPEC, "licence": "CC-BY 4.0",
@@ -278,11 +324,12 @@ def test_census_layer_returns_none_when_no_cell_overlaps(tmp_path, monkeypatch):
                         _Elsewhere()) is None
 
 
-def test_load_census_grid_rejects_an_archive_without_csv(tmp_path):
+def test_load_census_grid_rejects_an_archive_with_no_readable_table(tmp_path):
     path = tmp_path / "census.zip"
     with zipfile.ZipFile(path, "w") as zf:
-        zf.writestr("grid.gpkg", "not a csv")
-    with pytest.raises(ValueError, match="No .csv member"):
+        zf.writestr("ESTAT_OBS-VALUE-T_2021_V1-0.tiff", "raster only")
+        zf.writestr("read.me", "docs")
+    with pytest.raises(ValueError, match="No readable census table"):
         load_census_grid(path)
 
 
@@ -293,11 +340,11 @@ def test_load_census_grid_rejects_a_missing_id_column(tmp_path):
         load_census_grid(path)
 
 
-def test_csv_member_error_lists_the_archive_contents(tmp_path):
+def test_member_error_lists_the_archive_contents(tmp_path):
     path = tmp_path / "census.zip"
     with zipfile.ZipFile(path, "w") as zf:
         zf.writestr("grid_1km.csv", _census_csv())
-    with pytest.raises(ValueError, match="matches no .csv"):
+    with pytest.raises(ValueError, match="matches nothing"):
         load_census_grid(path, member="nope")
 
 
@@ -310,3 +357,100 @@ def test_bytesio_fixture_helper_is_unused_but_zip_roundtrips(tmp_path):
     path = tmp_path / "stream.zip"
     path.write_bytes(buf.getvalue())
     assert len(load_census_grid(path, columns=["T"])) == 4
+
+
+# ---------------------------------------------------------------------------
+# The GeoPackage path — the form the v1.0 GISCO release actually ships. Needs
+# geopandas, which is an optional extra, so it skips on the light CI install.
+# ---------------------------------------------------------------------------
+
+def _write_census_gpkg(path, *, with_grd_id: bool = True):
+    gpd = pytest.importorskip("geopandas")
+    from shapely.geometry import box
+
+    rows = [
+        (FULL_ID, 4341000, 2696000, 1000, 150, 600, 250, 420),
+        ("CRS3035RES1000mN2696000E4342000", 4342000, 2696000, 500, 50, 300, 150, 180),
+        ("CRS3035RES1000mN5000000E9000000", 9000000, 5000000, 10, 1, 8, 1, 4),
+    ]
+    frame = gpd.GeoDataFrame(
+        {
+            "GRD_ID": [r[0] for r in rows],
+            "T": [r[3] for r in rows],
+            "Y_LT15": [r[4] for r in rows],
+            "Y_15-64": [r[5] for r in rows],
+            "Y_GE65": [r[6] for r in rows],
+            "EMP": [r[7] for r in rows],
+        },
+        geometry=[box(r[1], r[2], r[1] + 1000, r[2] + 1000) for r in rows],
+        crs="EPSG:3035",
+    )
+    if not with_grd_id:
+        frame = frame.drop(columns=["GRD_ID"])
+    frame.to_file(path, driver="GPKG")
+    return path
+
+
+def test_load_census_grid_reads_a_geopackage_clipped_to_the_fua(tmp_path):
+    pytest.importorskip("geopandas")
+    gpkg = _write_census_gpkg(tmp_path / "ESTAT_Census_2021_V1-0.gpkg")
+    bbox = (4341000.0, 2696000.0, 4343000.0, 2697000.0)
+    grid = load_census_grid(gpkg, bbox=bbox, columns=["T", "Y_GE65"])
+    assert list(grid.columns) == ["x", "y", "T", "Y_GE65"]
+    # Cell centres from GRD_ID, and the far-away cell clipped out.
+    assert sorted(grid.x) == [4341500.0, 4342500.0]
+    assert grid.loc[grid.x == 4341500.0, "Y_GE65"].iloc[0] == 250.0
+    assert "geometry" not in grid.columns
+
+
+def test_load_census_grid_falls_back_to_geometry_without_grd_id(tmp_path):
+    pytest.importorskip("geopandas")
+    gpkg = _write_census_gpkg(tmp_path / "nogrd.gpkg", with_grd_id=False)
+    grid = load_census_grid(gpkg, columns=["T"])
+    # Polygon representative points recover the same cell centres.
+    assert sorted(grid.x)[:2] == [4341500.0, 4342500.0]
+
+
+def test_load_census_grid_reads_the_gpkg_out_of_the_published_zip(tmp_path):
+    """End to end on an archive shaped like the real one: gpkg + raster + docs."""
+    pytest.importorskip("geopandas")
+    gpkg = _write_census_gpkg(tmp_path / "ESTAT_Census_2021_V1-0.gpkg")
+    archive = tmp_path / "Eurostat_Census-GRID_2021_V1-0.zip"
+    with zipfile.ZipFile(archive, "w") as zf:
+        zf.write(gpkg, "ESTAT_Census_2021_V1-0.gpkg")
+        zf.writestr("ESTAT_OBS-VALUE-T_2021_V1-0.tiff", "x" * 10_000)
+        zf.writestr("ESMS_Census_Grid 2021.pdf", "x" * 5_000)
+        zf.writestr("read.me", "docs")
+    gpkg.unlink()  # only the archive remains, as after a fresh download
+
+    grid = load_census_grid(archive, bbox=(4341000.0, 2696000.0, 4343000.0, 2697000.0),
+                            columns=["T", "Y_GE65", "Y_15-64", "EMP"])
+    assert sorted(grid.x) == [4341500.0, 4342500.0]
+    # The gpkg was unpacked once beside the archive, for the batch's re-reads.
+    assert (tmp_path / "unpacked" / "ESTAT_Census_2021_V1-0.gpkg").exists()
+
+    shares = share_columns(grid, SHARE_SPEC)
+    assert shares.loc[shares.x == 4341500.0, "share_ge65"].iloc[0] == 0.25
+    assert shares.loc[shares.x == 4341500.0, "employment_share"].iloc[0] == pytest.approx(0.7)
+
+
+def test_census_layer_unpacks_under_the_cache_root_not_data_raw(tmp_path):
+    """The workflows cache data/raw wholesale per city, so a continental
+    GeoPackage unpacked there would be stored once per city and could evict the
+    OSM extracts. It belongs under the cache root."""
+    pytest.importorskip("geopandas")
+    gpkg = _write_census_gpkg(tmp_path / "ESTAT_Census_2021_V1-0.gpkg")
+    url = "https://example.invalid/Eurostat_Census-GRID_2021_V1-0.zip"
+    archive = tmp_path / "raw" / "census" / url.rsplit("/", 1)[-1]
+    archive.parent.mkdir(parents=True)
+    with zipfile.ZipFile(archive, "w") as zf:
+        zf.write(gpkg, "ESTAT_Census_2021_V1-0.gpkg")
+    gpkg.unlink()
+    # A cached archive is one with its provenance sidecar; no network needed.
+    archive.with_name(archive.name + ".provenance.json").write_text("{}")
+
+    cfg = _census_cfg(tmp_path, url)
+    layer = census_layer(cfg, tmp_path, _Bounds())  # archive already cached
+    assert layer is not None and not layer.empty
+    assert (tmp_path / "cache" / "census" / "ESTAT_Census_2021_V1-0.gpkg").exists()
+    assert not (tmp_path / "raw" / "census" / "unpacked").exists()

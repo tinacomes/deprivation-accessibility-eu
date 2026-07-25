@@ -412,7 +412,7 @@ covariate is prefixed `ses_*`, which is what carries it into the equity stage
 
 | level | source | resolution | availability |
 |---|---|---|---|
-| `age_census` | **Eurostat Census 2021 1 km grid** (GISCO, EPSG:3035, INSPIRE `GRD_ID`); variables of EU Reg. 2018/1799 — total population, sex, broad age (< 15 / 15–64 / ≥ 65), employed persons (voluntary), country of birth, prior residence. Prefix `ses_census_*` (`ingest/census.py`) | 1 km → **broadcast** to 100 m | **every city** |
+| `age_census` | **Eurostat Census 2021 1 km grid** (GISCO, EPSG:3035, INSPIRE `GRD_ID`, delivered as a GeoPackage); variables of EU Reg. 2018/1799 — total population, sex, broad age (< 15 / 15–64 / ≥ 65), employed persons (voluntary), country of birth, prior residence. Prefix `ses_census_*` (`ingest/census.py`) | 1 km → **broadcast** to 100 m | **every city** |
 | `age_national`, `income_tier2` | national fine SES grids — DE Zensus 2022 100 m (population, age, household size, net rent, ownership, vacancy), NL CBS 100 m, FR INSEE Filosofi 200 m, UK LSOA+IMD. Prefix `ses_<layer>_*` (`ingest/ses.py`) | 100–200 m, native | Tier-2 countries |
 
 **The broadcast is a real limitation, stated not hidden.** A 1 km census value

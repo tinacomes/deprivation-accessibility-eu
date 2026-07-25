@@ -60,26 +60,28 @@ sources:
     provider: "eurostat_census_2021_1km"
     landing_page: "https://ec.europa.eu/eurostat/web/gisco/geodata/population-distribution/population-grids"
     url: "https://gisco-services.ec.europa.eu/census/2021/Eurostat_Census-GRID_2021_V1-0.zip"
-    verify: TODO
     note: >-
-      The URL above is the GISCO census-2021 grid release (v1.0). It could NOT
-      be byte-verified at implementation time (this environment's egress policy
-      blocks gisco-services.ec.europa.eu), so it is flagged verify: TODO —
-      confirm it against the landing page, and check whether the later release
-      under https://gisco-services.ec.europa.eu/pub/population-grid/2021/
-      supersedes it, before treating any published number as final. The
-      provenance sidecar records the URL + SHA-256 actually fetched, and a
-      failed download degrades to "no census layer" with a warning rather than
-      killing the run. Nothing here is hardcoded in src/: id_column, member and
-      the variable codes below are all config, and shares whose source columns
-      are missing from the file are skipped with a note listing them (the first
-      run therefore prints the file's real column list — correct these codes
-      from that, do not guess).
+      URL CONFIRMED by download. The archive contains
+      ESTAT_Census_2021_V1-0.gpkg (the attribute table), a total-population
+      GeoTIFF, the ESMS metadata PDF, a read.me and a nested INSPIRE country
+      delivery — so the tabular data is a GeoPackage, NOT a CSV; the loader
+      picks it by extension preference and extracts it once. Still to confirm:
+      the variable codes under `shares` below (see their own verify: TODO) and
+      whether the later release under
+      https://gisco-services.ec.europa.eu/pub/population-grid/2021/ supersedes
+      v1.0. The provenance sidecar records the URL + SHA-256 actually fetched,
+      and a failed download degrades to "no census layer" with a warning rather
+      than killing the run.
     licence: "CC-BY 4.0 — © European Union, Eurostat/GISCO (census 2021 grid)"
     resolution_m: 1000
     id_column: "GRD_ID"
-    # CSV member inside the archive (substring match); null -> largest .csv.
+    # Data member inside the archive (case-insensitive substring). null lets the
+    # loader pick by extension: .gpkg > .geoparquet/.parquet > .csv, largest of
+    # that kind, never the raster or the documentation members.
     member: null
+    # GeoPackage layer name, when the file carries more than one; null -> the
+    # driver's default (first) layer.
+    layer: null
     # Vulnerability shares derived from the raw counts. Numerator and
     # denominator are both LISTS so a share can sum published categories and
     # pick its own base. Variable codes per Reg. 2018/1799 — verify: TODO.
