@@ -59,30 +59,55 @@ sources:
     # ------------------------------------------------------------------------
     provider: "eurostat_census_2021_1km"
     landing_page: "https://ec.europa.eu/eurostat/web/gisco/geodata/population-distribution/population-grids"
-    url: "https://gisco-services.ec.europa.eu/census/2021/Eurostat_Census-GRID_2021_V1-0.zip"
-    verify: TODO
+    # V3 — the current release. V1-0 (which we tried first) has no CSV at all
+    # and its GeoPackage's default layer carries only ['GRD_ID','OBS_VALUE_T'],
+    # i.e. total population and nothing else; V2-0 (16-06-2024) is what the JRC
+    # 100 m disaggregation was built from. V3 ships ONE WIDE TABLE with every
+    # variable, in GeoPackage, CSV, Parquet and GeoTIFF.
+    url: "https://gisco-services.ec.europa.eu/census/2021/Eurostat_Census-GRID_2021_V3.zip"
     note: >-
-      The URL above is the GISCO census-2021 grid release (v1.0). It could NOT
-      be byte-verified at implementation time (this environment's egress policy
-      blocks gisco-services.ec.europa.eu), so it is flagged verify: TODO —
-      confirm it against the landing page, and check whether the later release
-      under https://gisco-services.ec.europa.eu/pub/population-grid/2021/
-      supersedes it, before treating any published number as final. The
-      provenance sidecar records the URL + SHA-256 actually fetched, and a
-      failed download degrades to "no census layer" with a warning rather than
-      killing the run. Nothing here is hardcoded in src/: id_column, member and
-      the variable codes below are all config, and shares whose source columns
-      are missing from the file are skipped with a note listing them (the first
-      run therefore prints the file's real column list — correct these codes
-      from that, do not guess).
+      URL, member and variable codes all CONFIRMED against the release read.me.
+      Variables per cell: GRD_ID, CNTR_ID (reporting countries), T/M/F,
+      Y_LT15 / Y_1564 / Y_GE65 (note: Y_1564, NOT Y_15-64), EMP, NAT / EU_OTH /
+      OTH (place of birth), SAME / CHG_IN / CHG_OUT (residence one year prior),
+      LAND_SURFACE (km2 in [0,1], float) and POPULATED (1/0). All integers
+      except GRD_ID, CNTR_ID (text) and LAND_SURFACE.
+      We read the CSV member rather than the GeoPackage: same wide table,
+      streams out of the zip in chunks with no 1.3 GB extraction, and needs no
+      geometry stack. The GeoTIFF is int64 and therefore cannot carry GRD_ID,
+      CNTR_ID or LAND_SURFACE at all — never a substitute for the table.
+      Rows keyed "CC_unallocated" (FR, IT, FI, BG, EL, SE, DK, NO, BE, LV, LU,
+      SI) hold population that could not be placed in any cell; they have no
+      geometry, so they are dropped with a reported count.
+      Not used here, but published alongside: ESTAT_Census_2021_country.csv.zip
+      (raw per-country CSVs) and ESTAT_Census_2021_V2_SDMX_Metadata.zip (the
+      NSIs' original SDMX metadata). The continental table is what a
+      multi-country FUA needs, so per-country files would only add bookkeeping.
     licence: "CC-BY 4.0 — © European Union, Eurostat/GISCO (census 2021 grid)"
     resolution_m: 1000
     id_column: "GRD_ID"
-    # CSV member inside the archive (substring match); null -> largest .csv.
-    member: null
+    # Data member inside the archive (case-insensitive substring). Named
+    # explicitly: the V3 zip holds GeoPackage, CSV, Parquet AND GeoTIFF, and the
+    # extension preference would take the 1.3 GB GeoPackage. null falls back to
+    # .gpkg > .geoparquet/.parquet > .csv, largest of that kind.
+    member: "ESTAT_Census_2021_V3.csv"
+    # GeoPackage layer name; only consulted on the GeoPackage/Parquet path. null
+    # lets the loader enumerate layers and, when there are several, read the ones
+    # whose names carry a code used by `shares` (a per-variable GeoPackage, as
+    # V1-0 appears to be), merging them on the cell centroid.
+    layer: null
+    # Per-variable downloads, {code: url}, for a release that ships one file per
+    # variable instead of a wide table — mirrors sources.ses.urls. Merged with
+    # whatever `url` above provides, on the cell centroid. Not needed for V3.
+    urls: {}
+    # Reserved missing-data codes (release read.me): -8888 withheld for
+    # confidentiality, -9999 unavailable for other reasons. These MUST be
+    # stripped — a share of -8888/1000 does not read as an error, it reads as an
+    # extreme vulnerability score and would drag the cell into a stratum tail.
+    missing_values: [-8888, -9999]
     # Vulnerability shares derived from the raw counts. Numerator and
     # denominator are both LISTS so a share can sum published categories and
-    # pick its own base. Variable codes per Reg. 2018/1799 — verify: TODO.
+    # pick its own base.
     shares:
       share_u15:
         numerator: ["Y_LT15"]
@@ -93,9 +118,10 @@ sources:
       employment_share:
         # Employed persons over the WORKING-AGE population, not the total: an
         # employment share over everyone is confounded by age structure, which
-        # is the other vulnerability layer here.
+        # is the other vulnerability layer here. EMP is voluntary under
+        # Reg. 2018/1799, so this share is absent in some countries.
         numerator: ["EMP"]
-        denominator: ["Y_15-64"]
+        denominator: ["Y_1564"]
       foreign_born_share:
         # "Where published": born in another EU country + born elsewhere. Both
         # codes absent -> the share is skipped, not zero-filled.

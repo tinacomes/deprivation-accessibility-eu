@@ -206,7 +206,9 @@ def run_ingest(cfg: dict, city: str, root: Path) -> None:
                 continue
             want = float(per_layer_res.get(name, default_res))
             layers[name] = load_inspire_csv_zip(
-                p, member=members.get(name), resolution_m=want)
+                p, member=members.get(name), resolution_m=want,
+                # National grid, one FUA: clip on read (see load_inspire_csv_zip).
+                bbox=tuple(fua.total_bounds), pad_m=max(want, 1000.0))
             # The loader reports the resolution it read off the file; trust that
             # over the config so the join always keys on the real grid.
             resolutions[name] = float(layers[name].attrs.get("resolution_m", want))
@@ -214,6 +216,17 @@ def run_ingest(cfg: dict, city: str, root: Path) -> None:
                   f"({resolutions[name]:g} m, {len(layers[name])} cells)")
 
     if layers:
+        # Drop every ses_* column carried in from a cached cells.parquet before
+        # re-joining. A previous run's columns are not harmless: a release that
+        # changes its published columns (or a fix that filters an annotation
+        # field) renames them, so stale and fresh names coexist — and
+        # equity.ses_covariates defaults to EVERY ses_ column, which would then
+        # regress on last week's data under a name nothing produces any more.
+        stale = [c for c in cells.columns if c.startswith("ses_")]
+        if stale:
+            print(f"dropping {len(stale)} ses_* column(s) from the cached cells "
+                  f"before re-joining: {stale}")
+            cells = cells.drop(columns=stale)
         cells = join_ses_to_cells(cells, layers, resolutions=resolutions)
         cells = _derive_ses_columns(cfg, cells)
         cells.to_parquet(cells_path)

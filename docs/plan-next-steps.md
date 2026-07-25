@@ -275,13 +275,67 @@ ONE variable in every city, whereas `ses_rank_column` is per-city and Tier-2
 cities point it at their rent grid. The covariate actually used is recorded as
 `slope_ses_column`.
 
-> **Deviation 1 (URL not byte-verified).** The implementation environment's
-> egress policy blocks `gisco-services.ec.europa.eu` and `ec.europa.eu`, so the
-> configured URL could not be fetched to confirm its filename, CSV member or
-> column codes. Rather than fabricate them, the config carries the
-> search-resolved release URL plus `verify: TODO` and a note recording exactly
-> what was and was not verified; the loader is written to survive being wrong
-> about all of it. **Confirm before publishing any census-based number.**
+> **Deviation 1 (partly verified upstream).** The implementation environment's
+> egress policy blocks `gisco-services.ec.europa.eu`, so nothing about the
+> published file could be confirmed at implementation time; the config carried
+> the search-resolved URL plus `verify: TODO`. A subsequent run **confirmed the
+> URL** and, by failing, the archive's real shape:
+>
+> ```
+> CENSUS_INS21ES_A_IT_2021_0000_TOTAL _POPULATION.zip   nested INSPIRE delivery
+> ESMS_Census_Grid 2021.pdf                             metadata
+> ESTAT_Census_2021_V1-0.gpkg                           <- the attribute table
+> ESTAT_OBS-VALUE-T_2021_V1-0.tiff                      total-population raster
+> read.me
+> ```
+>
+> The tabular data is a **GeoPackage**, not a CSV. `_data_member` now picks it
+> by extension preference (`.gpkg` > `.geoparquet`/`.parquet` > `.csv`, never the
+> raster or the docs), extracts it once, and `_load_census_geo` reads it
+> bbox-filtered through the layer's spatial index, taking cell centres from
+> `GRD_ID` and falling back to polygon representative points. The CSV path is
+> retained because the landing page also advertises CSV and GeoParquet
+> distributions. The extraction goes under `output.cache_root`, **not**
+> `data/raw`: the workflows cache `data/raw` wholesale per city, so an unpacked
+> continental GeoPackage there would be stored once per city and could evict the
+> far more expensive OSM extracts.
+>
+> **Resolved: we were reading a superseded release.** V1-0 has no CSV at all and
+> its GeoPackage's default layer holds only `['GRD_ID', 'OBS_VALUE_T']` — total
+> population, which GHS-POP already gives us at 100 m. The current release is
+> **V3** (`Eurostat_Census-GRID_2021_V3.zip`; V2-0 of 16-06-2024 is what the JRC
+> 100 m disaggregation was built from), and it ships **one wide table** in
+> GeoPackage, CSV, Parquet and GeoTIFF with every variable of Reg. 2018/1799.
+> Config now points there, and three details from its read.me are wired in:
+>
+> - **`Y_1564`, not `Y_15-64`** — the employment-share denominator was wrong.
+> - **The CSV member is read, not the GeoPackage** (`sources.census.member:
+>   ESTAT_Census_2021_V3.csv`): same wide table, streams out of the zip in
+>   chunks, no 1.3 GB extraction, no geometry stack. The extension preference
+>   would otherwise take the GeoPackage. The GeoTIFF is int64 and so cannot carry
+>   `GRD_ID`, `CNTR_ID` or `LAND_SURFACE` at all — never a substitute.
+> - **Reserved missing-data codes `-8888` (confidential) and `-9999`
+>   (unavailable)** are stripped to NaN (`sources.census.missing_values`). This
+>   one is not cosmetic: left in place, `share_ge65` for a withheld cell reads
+>   −17.8, which is not an outlier a reader would catch — it is an extreme
+>   vulnerability score that would pull the cell into a stratum tail.
+> - Rows keyed `CC_unallocated` (FR, IT, FI, BG, EL, SE, DK, NO, BE, LV, LU, SI)
+>   hold population that could not be placed in any cell. They have no geometry
+>   and are dropped with a reported count.
+>
+> The layer-enumeration and `OBS_VALUE_` unwrapping machinery built for V1-0 is
+> kept: it costs nothing and covers a future release reorganising again.
+
+> **Row-level suppression must not become a zero.** Found while wiring the
+> sentinels, and it affected the *published* D.3 numbers. Both share helpers
+> filled a missing count with 0 before dividing, so a cell whose elderly count is
+> withheld got `share_ge65 = 0.0` — not merely lost but placed at the **bottom**
+> of the distribution, inside the "low elderly share" comparison group of the
+> stratification. Both now use `min_count=1`: a share summing several categories
+> keeps its partial sum when some are withheld (foreign-born survives one
+> confidential origin group), but a share whose categories are ALL withheld is
+> NaN. Hamburg's Zensus bands are a single column each, so this was every
+> suppressed cell in `equity_vulnerability.csv`.
 
 **D.2 — DE Zensus for Hamburg.** Already landed in `e541b0c`/`d3c92a4`: the six
 per-layer zensus2022 URLs are in `config/cities/hamburg.yaml`, the SES fetch is
@@ -308,8 +362,54 @@ resolution token (`sources.ses.resolution_m`, with per-layer `resolutions` /
 than guessing; the resolution is re-derived from the loaded file's own
 `x_mp_<res>` / `GITTER_ID_<res>` columns, cross-checked against the config, and
 used for the join (the data wins over the config promise); and
-`join_ses_to_cells` warns when a layer matches no analysis cell — or fewer than
-half — instead of yielding a silent empty covariate.
+`join_ses_to_cells` reports coverage instead of yielding a silent empty
+covariate.
+
+**…and the member was only half of it.** With the fix in place the next run
+loaded the right members — `Zensus2022_Eigentuemerquote_100m-Gitter.csv`
+(2 525 440 cells) and `Zensus2022_Leerstandsquote_100m-Gitter.csv` (2 566 712) —
+and **both still matched no analysis cell**, while `net_rent` (25.3 %) and
+`household_size` (44.5 %) joined normally off the same grid. Two follow-ups
+landed for this:
+
+- The coverage diagnostic conflated two different failures. It now reports
+  **grid coverage** (`key.isin(layer index)`) separately from **value presence**
+  (a covered cell whose value is withheld), and prints the value columns that
+  were actually joined — so the next run says whether these layers miss the grid
+  or are simply suppressed across the whole FUA, rather than leaving it to
+  inference.
+- The joined column name no longer depends on how many value columns a release
+  publishes. It was `ses_<layer>_<col>` for a multi-column layer and
+  `ses_<layer>` for a single-column one, so dropping the
+  `werterlaeuternde_Zeichen` annotation column silently renamed
+  `ses_net_rent_durchschnMieteQM` to `ses_net_rent` — breaking every config key
+  that named it. Now **always** `ses_<layer>_<col>`. The same run showed the
+  consequence: stale and fresh spellings coexisted in the cached
+  `cells.parquet` (`ses_net_rent` beside `ses_net_rent_durchschnMieteQM`,
+  `ses_household_size_werterlaeuternde_Zeichen` from before the annotation
+  filter), and since `equity.ses_covariates` defaults to *every* `ses_*` column,
+  the regressions would have run on last week's data under names nothing
+  produces any more. Ingest now drops every `ses_*` column from the cached cells
+  before re-joining, and the annotation filter also catches umlaut/`_Zeichen`
+  spellings.
+
+**National and continental sources are fetched once, not once per city.** Both
+demographic levels are published as whole territories — one EU census grid, one
+Zensus theme file covering all 3.09 M German 100 m cells — so a many-city batch
+that fetches them per runner does the same multi-hundred-MB download N times.
+`depacc prefetch --city … --city …` (new) downloads exactly the shared set —
+URAU boundaries, the census grid, the national SES grids per *country*, the
+GHS-POP tiles — deduplicated across the cities named, and the Tier-1 batch runs
+it in a `warm` job before the matrix fans out. The raw cache is split to match:
+a shared cache (`boundaries`, `census`, `ghs`, `ses`, keyed on the committed
+configs, not the city) and a per-city one (`friction`, `gtfs`, `osm`,
+`overpass`). That split matters beyond bandwidth: one `data/raw` cache per city
+stored the continental archives once per city and could push the repo past
+GitHub's 10 GB cache limit, evicting the far more expensive OSM extracts. The
+split is declared in `depacc.ingest.prefetch` and regression-tested against both
+workflow files so code and YAML cannot drift. National grids are additionally
+clipped to the FUA bbox *as they are read*, so one city's ingest no longer puts
+~18 M rows (six Zensus themes) through memory.
 
 **D.3 — new outputs.** Concentration index, SES gradient regressions,
 `slope_ses_*` and vulnerability-stratified deprivation are all live.

@@ -30,6 +30,22 @@ on:
 env:
   MPLBACKEND: Agg
   PYTHONUNBUFFERED: "1"   # stream pipeline progress into the live log
+  # Raw-data cache split (see depacc.ingest.prefetch.SHARED_RAW_DIRS). SHARED
+  # holds the national/continental archives — one EU census grid, one Zensus
+  # theme set per country, the URAU boundary layer, the GHS-POP tiles — and is
+  # keyed on the committed configs, NOT on the city, so the whole batch shares
+  # one copy. CITY holds what genuinely differs per FUA.
+  SHARED_RAW_PATHS: |
+    data/raw/boundaries
+    data/raw/census
+    data/raw/ghs
+    data/raw/ses
+  CITY_RAW_PATHS: |
+    data/raw/friction
+    data/raw/gtfs
+    data/raw/osm
+    data/raw/overpass
+  SHARED_RAW_KEY: depacc-raw-shared-v1-${{ hashFiles('config/defaults.yaml', 'config/cities/*.yaml') }}
 
 jobs:
   plan:
@@ -60,8 +76,48 @@ jobs:
           with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
               fh.write("matrix=" + json.dumps({"include": entries}) + "\n")
 
-  city:
+  # Download the NATIONAL / CONTINENTAL sources once, before the matrix fans
+  # out. The EU census grid is one file for all of Europe and a Zensus theme is
+  # one file for all of Germany, so without this every city's runner fetches the
+  # same archives again (and, on a first run, all of them race to save the same
+  # cache key). The city jobs restore this cache read-only.
+  warm:
     needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11", cache: "pip" }
+      - name: Install depacc (geo extra for the boundary/GHS layers)
+        run: pip install -e ".[geo]"
+      - name: Restore/seed the SHARED raw-data cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.SHARED_RAW_PATHS }}
+          key: ${{ env.SHARED_RAW_KEY }}
+          restore-keys: depacc-raw-shared-v1-
+      - name: Generate configs for cities that have none
+        shell: bash
+        run: |
+          echo '${{ needs.plan.outputs.matrix }}' \
+            | python -c '
+          import json, subprocess, sys
+          for e in json.load(sys.stdin)["include"]:
+              if e["spec"]:
+                  code, name, cc = [p.strip() for p in e["spec"].split(",")]
+                  subprocess.run(["depacc", "make-city", "--fua-code", code,
+                                  "--name", name, "--country", cc,
+                                  "--city-id", e["city"]], check=True)'
+      - name: Prefetch shared sources for every city in the batch
+        shell: bash
+        run: |
+          ARGS=$(echo '${{ needs.plan.outputs.matrix }}' \
+            | python -c 'import json,sys; print(" ".join("--city "+e["city"] for e in json.load(sys.stdin)["include"]))')
+          depacc prefetch $ARGS
+
+  city:
+    needs: [plan, warm]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     strategy:
@@ -76,12 +132,24 @@ jobs:
           cache: "pip"
       - name: Install depacc (geo + stats + viz; no Java needed)
         run: pip install -e ".[geo,stats,viz,dev]"
-      - name: Restore raw-data cache
+      # Two caches, deliberately: the shared national/continental archives (one
+      # copy for the whole batch, seeded by `warm`) and this city's own raw data
+      # (friction window, Overpass extract, OSM clip, GTFS — unshareable). One
+      # `data/raw` cache per city would store the continental files N times over
+      # and can push the repo past the 10 GB cache limit, evicting the expensive
+      # OSM extracts.
+      - name: Restore the SHARED raw-data cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.SHARED_RAW_PATHS }}
+          key: ${{ env.SHARED_RAW_KEY }}
+          restore-keys: depacc-raw-shared-v1-
+      - name: Restore this city's raw-data cache
         uses: actions/cache@v4
         with:
-          path: data/raw
-          key: depacc-raw-${{ matrix.city }}-t1
-          restore-keys: depacc-raw-
+          path: ${{ env.CITY_RAW_PATHS }}
+          key: depacc-raw-city-${{ matrix.city }}-t1
+          restore-keys: depacc-raw-city-${{ matrix.city }}-
       - name: Generate config if needed
         if: matrix.spec != ''
         run: |

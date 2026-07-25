@@ -26,12 +26,40 @@ Two things to keep honest about this layer:
   broadcast happens in :func:`depacc.ingest.ses.join_ses_to_cells` (see its
   ``resolutions`` argument) and the per-layer grid resolution is recorded in
   ``ses_resolutions.json`` next to ``cells.parquet``.
-* **Column codes.** Everything about the published file — its URL, the CSV
-  member inside the archive, the id column and the variable codes — comes from
+* **Column codes.** Everything about the published file — its URL, the member
+  inside the archive, the id column and the variable codes — comes from
   ``sources.census`` in the config, never from this module. Shares whose source
   columns are absent from the file are skipped with a warning (this is what
   makes "foreign-born share *where published*" work), and the loaded column
   list is printed so a first run tells you precisely what to correct.
+
+The release in use is **V3** (``Eurostat_Census-GRID_2021_V3.zip``), which ships
+GeoPackage, CSV, Parquet and GeoTIFF of one WIDE table — every variable as a
+column, per its read.me::
+
+    GRD_ID  cell code (INSPIRE)       T       total population
+    CNTR_ID reporting country(ies)    M / F   male / female
+    Y_LT15  age < 15                  Y_1564  age 15-64        Y_GE65  age >= 65
+    EMP     employed persons
+    NAT     born in reporting country EU_OTH  born other EU    OTH     born elsewhere
+    SAME    residence unchanged 1y    CHG_IN  moved within     CHG_OUT moved in from abroad
+    LAND_SURFACE  land area of the cell, km2 in [0,1]
+    POPULATED     1 populated / 0 not
+
+We read the **CSV** member (``sources.census.member``): it carries the same wide
+table as the GeoPackage, streams straight out of the zip in chunks with no
+1.3 GB extraction, and needs no geometry stack. The GeoPackage/Parquet path is
+kept for releases organised differently — the earlier V1-0 archive had no CSV at
+all and its GeoPackage's default layer held only ``OBS_VALUE_T``, which is why
+:func:`_data_member`, :func:`list_geo_layers` and :func:`code_matches` exist.
+
+Two release conventions that must not be taken literally: values are integers
+with ``-8888`` (confidential) and ``-9999`` (unavailable) as reserved codes,
+stripped by :func:`_coerce_values` — a share of -8888/1000 would not read as an
+error, it would read as an extreme vulnerability score; and rows keyed
+``CC_unallocated`` hold per-country population that could not be placed in any
+cell (FR, IT, FI, BG, EL, SE, DK, NO, BE, LV, LU, SI), which have no geometry
+and are dropped with a count.
 """
 
 from __future__ import annotations
@@ -84,22 +112,68 @@ def parse_grid_id(ids: pd.Series) -> pd.DataFrame:
     )
 
 
-def _csv_member(zf: zipfile.ZipFile, member: str | None) -> str:
-    """Pick the CSV inside the archive: the configured ``member`` (substring
-    match) or, failing that, the largest .csv — GISCO archives bundle small
-    metadata/lookup CSVs alongside the data table."""
-    csvs = [i for i in zf.infolist() if i.filename.lower().endswith(".csv")]
-    if not csvs:
-        raise ValueError(f"No .csv member in {zf.filename}; "
-                         f"members: {[i.filename for i in zf.infolist()]}")
+# Readable data members of a GISCO census archive, most preferred first — used
+# only when sources.census.member does not name one (V3 does). The GeoTIFF is
+# never a candidate: its int64 datatype cannot carry GRD_ID, CNTR_ID or
+# LAND_SURFACE at all, so it is not a substitute for the table.
+DATA_EXTENSIONS = (".gpkg", ".geoparquet", ".parquet", ".csv")
+
+# Reserved missing-data codes of the census release (its read.me): -8888 =
+# withheld for confidentiality, -9999 = unavailable for other reasons. The
+# default here is only a default — `sources.census.missing_values` is authority.
+MISSING_VALUES = (-8888.0, -9999.0)
+
+
+def _data_member(zf: zipfile.ZipFile, member: str | None) -> str:
+    """Pick the tabular data member of the archive.
+
+    ``member`` (a case-insensitive substring) wins; otherwise the first
+    extension in :data:`DATA_EXTENSIONS` that is present, largest file of that
+    kind — GISCO archives bundle small metadata/lookup tables beside the data.
+    Raster and documentation members are never candidates.
+    """
+    infos = zf.infolist()
+    listing = [i.filename for i in infos]
     if member:
-        hits = [i for i in csvs if member.lower() in i.filename.lower()]
+        hits = [i for i in infos if member.lower() in i.filename.lower()]
         if not hits:
             raise ValueError(
-                f"sources.census.member '{member}' matches no .csv in "
-                f"{zf.filename}; members: {[i.filename for i in csvs]}")
-        csvs = hits
-    return max(csvs, key=lambda i: i.file_size).filename
+                f"sources.census.member '{member}' matches nothing in "
+                f"{zf.filename}; members: {listing}")
+        return max(hits, key=lambda i: i.file_size).filename
+    for ext in DATA_EXTENSIONS:
+        hits = [i for i in infos if i.filename.lower().endswith(ext)]
+        if hits:
+            return max(hits, key=lambda i: i.file_size).filename
+    raise ValueError(
+        f"No readable census table ({', '.join(DATA_EXTENSIONS)}) in "
+        f"{zf.filename}; members: {listing}. Set sources.census.member to name "
+        f"one explicitly.")
+
+
+def _extract_member(zf: zipfile.ZipFile, name: str, dest_dir: Path) -> Path:
+    """Extract one archive member once and cache it beside the archive.
+
+    GDAL can read a GeoPackage through /vsizip/, but only by random access into
+    the compressed stream, which is punishing on a continental file. Extracting
+    once keeps the reads cheap. Callers put ``dest_dir`` under the CACHE root,
+    not ``data/raw``: the workflows cache ``data/raw`` wholesale per city, so an
+    unpacked continental GeoPackage there would be stored once per city and
+    could evict the far more expensive OSM extracts. Re-extracting per run is a
+    single decompress; a lost .pbf cache is a re-download.
+    """
+    dest = dest_dir / Path(name).name
+    if dest.exists() and dest.stat().st_size == zf.getinfo(name).file_size:
+        return dest
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    part = dest.with_name(dest.name + ".part")
+    with zf.open(name) as src, open(part, "wb") as fh:
+        while chunk := src.read(1 << 20):
+            fh.write(chunk)
+    part.replace(dest)
+    print(f"census: extracted {name} -> {dest} "
+          f"({dest.stat().st_size / 1e6:.0f} MB)")
+    return dest
 
 
 def _sniff_sep(header: bytes) -> str:
@@ -110,12 +184,247 @@ def _sniff_sep(header: bytes) -> str:
         return ","
 
 
+def _norm(name: str) -> str:
+    """Normalise a column / layer name for code matching: upper case, '-' and
+    '.' unified to '_'."""
+    return re.sub(r"[-.\s]+", "_", str(name).strip()).upper()
+
+
+def code_matches(name: str, code: str) -> bool:
+    """Does ``name`` carry the census variable ``code``?
+
+    GISCO wraps the Reg. 2018/1799 codes: total population arrives as the column
+    ``OBS_VALUE_T`` and (in the per-variable distributions) as members/layers
+    like ``ESTAT_OBS-VALUE-Y_LT15_2021_V1-0``. So a code matches its own name, a
+    trailing ``_<CODE>``, or an embedded ``_<CODE>_`` — never a partial word, so
+    ``T`` does not match ``Y_LT15``.
+    """
+    n, c = _norm(name), _norm(code)
+    return n == c or n.endswith(f"_{c}") or f"_{c}_" in n
+
+
 def _resolve_columns(wanted: list[str], available: list[str]) -> dict[str, str]:
-    """Map configured column codes onto the file's actual column names,
-    case-insensitively (releases differ on ``Y_GE65`` vs ``y_ge65``). Absent
-    codes are simply missing from the result."""
+    """Map configured variable codes onto the file's actual column names.
+
+    Exact (case-insensitive) matches win; otherwise the GISCO ``OBS_VALUE_*``
+    wrapping is unwrapped via :func:`code_matches`. A code matching several
+    columns is reported and skipped rather than silently taking one. Absent
+    codes are simply missing from the result — that is how a share whose
+    variables this file does not publish gets skipped.
+    """
     lookup = {c.lower(): c for c in available}
-    return {w: lookup[w.lower()] for w in wanted if w.lower() in lookup}
+    out: dict[str, str] = {}
+    for code in wanted:
+        if code.lower() in lookup:
+            out[code] = lookup[code.lower()]
+            continue
+        hits = [c for c in available if code_matches(c, code)]
+        if len(hits) == 1:
+            out[code] = hits[0]
+        elif len(hits) > 1:
+            print(f"WARNING: census code '{code}' matches {hits} — skipping it; "
+                  f"name the column exactly in sources.census.shares")
+    return out
+
+
+def _cell_coordinates(frame: pd.DataFrame, id_column: str, label: str,
+                      geometry=None) -> pd.DataFrame:
+    """Cell-centre x/y for a loaded census table.
+
+    The INSPIRE ``GRD_ID`` is preferred over geometry: it is exact, needs no
+    geometry engine, and is present in every published form. Geometry (a
+    GeoPackage's cell polygons or points) is the fallback.
+    """
+    id_col = _resolve_columns([id_column], list(frame.columns)).get(id_column)
+    if id_col is not None:
+        return parse_grid_id(frame[id_col])[["x", "y"]]
+    if geometry is not None:
+        centres = geometry.representative_point()
+        return pd.DataFrame({"x": centres.x.to_numpy(), "y": centres.y.to_numpy()},
+                            index=frame.index)
+    raise ValueError(
+        f"census id column '{id_column}' not in {label} and no geometry to fall "
+        f"back on; columns: {list(frame.columns)}")
+
+
+def _select_value_columns(frame: pd.DataFrame, columns: list[str] | None,
+                          id_column: str, label: str) -> dict[str, str]:
+    available = [c for c in frame.columns if c != "geometry"]
+    id_col = _resolve_columns([id_column], available).get(id_column)
+    wanted = columns if columns is not None else [c for c in available if c != id_col]
+    resolved = _resolve_columns(wanted, available)
+    missing = sorted(set(wanted) - set(resolved))
+    if missing:
+        print(f"WARNING: census columns absent from {label}: {missing}")
+    print(f"census grid columns in {label}: {available}")
+    return resolved
+
+
+def _clip(frame: pd.DataFrame, bbox, pad_m: float) -> pd.DataFrame:
+    # Rows whose id did not parse are dropped here. That is deliberate and it is
+    # what handles the release's "CC_unallocated" rows — per-country totals for
+    # population that could not be placed in any cell (FR, IT, FI, BG, EL, SE,
+    # DK, NO, BE, LV, LU, SI), which carry no geometry and must never enter a
+    # spatial join.
+    frame = frame[frame.x.notna() & frame.y.notna()]
+    if bbox is None:
+        return frame
+    minx, miny, maxx, maxy = bbox
+    return frame[frame.x.between(minx - pad_m, maxx + pad_m)
+                 & frame.y.between(miny - pad_m, maxy + pad_m)]
+
+
+def _coerce_values(frame: pd.DataFrame, missing_values) -> pd.DataFrame:
+    """Numeric value columns with the release's missing-data sentinels removed.
+
+    Every variable is published as an INTEGER with reserved negative codes:
+    ``-8888`` = withheld for confidentiality, ``-9999`` = unavailable for other
+    reasons. Left in place they are catastrophic rather than merely wrong — a
+    share of ``-8888 / 1000`` is not an outlier a reader would notice, and the
+    cell would land at the extreme end of a vulnerability stratum. Any other
+    non-numeric flag (Eurostat's ':') also becomes NaN.
+    """
+    out = frame.apply(pd.to_numeric, errors="coerce")
+    sentinels = [float(v) for v in (missing_values or [])]
+    return out.mask(out.isin(sentinels)) if sentinels else out
+
+
+def _load_census_csv(opener, label: str, *, bbox, columns, id_column,
+                     chunksize: int, pad_m: float, missing_values) -> pd.DataFrame:
+    """Stream a census CSV in chunks, clipping each chunk before concatenating —
+    the published table is continental (millions of rows)."""
+    with opener() as fh:
+        sep = _sniff_sep(fh.readline())
+    frames: list[pd.DataFrame] = []
+    resolved: dict[str, str] = {}
+    unplaced = 0
+    with opener() as fh:
+        for i, chunk in enumerate(pd.read_csv(fh, sep=sep, chunksize=chunksize,
+                                              dtype=str, low_memory=False)):
+            if i == 0:
+                resolved = _select_value_columns(chunk, columns, id_column, label)
+                if not _resolve_columns([id_column], list(chunk.columns)):
+                    raise ValueError(
+                        f"census id column '{id_column}' not in {label}; "
+                        f"columns: {list(chunk.columns)}")
+            coords = _cell_coordinates(chunk, id_column, label)
+            unplaced += int(coords.x.isna().sum())
+            block = pd.concat(
+                [coords, _coerce_values(chunk[list(resolved.values())],
+                                        missing_values)],
+                axis=1,
+            )
+            block = _clip(block, bbox, pad_m)
+            if not block.empty:
+                frames.append(block)
+    if unplaced:
+        print(f"census: {unplaced} row(s) of {label} carry no parseable cell id "
+              f"(the release's 'CC_unallocated' country totals) — dropped")
+    if not frames:
+        return pd.DataFrame(columns=["x", "y", *resolved])
+    out = pd.concat(frames, ignore_index=True)
+    return out.rename(columns={v: k for k, v in resolved.items()})
+
+
+def list_geo_layers(path: Path) -> list[str]:
+    """Layer names in a GeoPackage, or ``[]`` if they cannot be enumerated.
+
+    A GeoPackage can hold one layer per census variable, in which case reading
+    the driver's default (first) layer yields only that variable — which is
+    exactly how the first run came back with nothing but ``OBS_VALUE_T``.
+    """
+    try:
+        import pyogrio
+
+        return [str(n) for n in pyogrio.list_layers(path)[:, 0]]
+    except Exception:  # pyogrio absent or unreadable schema
+        try:
+            import fiona
+
+            return list(fiona.listlayers(str(path)))
+        except Exception:
+            return []
+
+
+def _read_geo_layer(path: Path, layer: str | None, padded, label: str):
+    import geopandas as gpd
+
+    if path.suffix.lower() in (".parquet", ".geoparquet"):
+        try:
+            return gpd.read_parquet(path)
+        except (ValueError, KeyError):  # plain (non-geo) parquet
+            return pd.read_parquet(path)
+    kwargs = {"layer": layer} if layer else {}
+    try:
+        frame = gpd.read_file(path, bbox=padded, **kwargs)
+    except (TypeError, ValueError) as err:
+        print(f"NOTE: bbox-filtered read unavailable for {label} ({err}); "
+              f"reading the whole layer and clipping afterwards")
+        frame = gpd.read_file(path, **kwargs)
+    if getattr(frame, "crs", None) is not None and frame.crs.to_epsg() != 3035:
+        # The dataset is EPSG:3035, matching the analysis CRS and the bbox; a
+        # re-versioned release in another CRS is reprojected rather than trusted.
+        frame = frame.to_crs("EPSG:3035")
+    return frame
+
+
+def _load_census_geo(path: Path, *, bbox, columns, id_column, layer: str | None,
+                     pad_m: float, missing_values) -> pd.DataFrame:
+    """Load a GeoPackage / (Geo)Parquet census table as cell centroids.
+
+    Two published shapes are handled. A **wide** table carries every variable as
+    a column of one layer. A **per-variable** GeoPackage carries one layer per
+    variable (each just the grid id plus its own ``OBS_VALUE_*``); those layers
+    are read individually — only the ones a configured share actually needs —
+    and merged on the cell centroid. Reads are bbox-filtered through the layer's
+    spatial index where the driver supports it, with a read-all-then-clip
+    fallback for older stacks.
+    """
+    padded = None if bbox is None else (bbox[0] - pad_m, bbox[1] - pad_m,
+                                        bbox[2] + pad_m, bbox[3] + pad_m)
+    available_layers = [] if path.suffix.lower() != ".gpkg" else list_geo_layers(path)
+    if available_layers:
+        print(f"census: {len(available_layers)} layer(s) in {path.name}: "
+              f"{available_layers}")
+
+    # Which layers to read: the configured one, else those matching a wanted
+    # code, else the default layer.
+    targets: list[tuple[str | None, str | None]] = [(layer, None)]
+    if layer is None and len(available_layers) > 1 and columns:
+        matched = [(lyr, code) for code in columns
+                   for lyr in available_layers if code_matches(lyr, code)]
+        if matched:
+            targets = matched
+            print(f"census: per-variable layers matched "
+                  f"{[(c, lyr) for lyr, c in matched]}")
+        else:
+            print(f"WARNING: none of the requested codes {sorted(columns)} names "
+                  f"a layer of {path.name}; reading its default layer only")
+
+    frames: list[pd.DataFrame] = []
+    for target_layer, code in targets:
+        label = f"{path.name}:{target_layer}" if target_layer else path.name
+        frame = _read_geo_layer(path, target_layer, padded, label)
+        geometry = getattr(frame, "geometry", None)
+        # A per-variable layer holds exactly one value column, whose name is the
+        # wrapped code (OBS_VALUE_T); ask for that code alone and let
+        # _resolve_columns unwrap it.
+        want = [code] if code else columns
+        resolved = _select_value_columns(frame, want, id_column, label)
+        if not resolved:
+            continue
+        values = _coerce_values(frame[list(resolved.values())], missing_values)
+        block = pd.concat(
+            [_cell_coordinates(frame, id_column, label, geometry), values], axis=1)
+        frames.append(_clip(block, bbox, pad_m).rename(
+            columns={v: k for k, v in resolved.items()}).reset_index(drop=True))
+
+    if not frames:
+        return pd.DataFrame(columns=["x", "y"])
+    out = frames[0]
+    for extra in frames[1:]:
+        out = out.merge(extra, on=["x", "y"], how="outer")
+    return out.reset_index(drop=True)
 
 
 def load_census_grid(
@@ -125,84 +434,49 @@ def load_census_grid(
     columns: list[str] | None = None,
     id_column: str = "GRD_ID",
     member: str | None = None,
+    layer: str | None = None,
+    unpack_dir: Path | None = None,
+    missing_values: list[float] | None = MISSING_VALUES,
     chunksize: int = 500_000,
     pad_m: float = 2000.0,
 ) -> pd.DataFrame:
-    """Load the census grid CSV (plain or inside a zip) as cell centroids.
+    """Load the census grid table as cell centroids, whatever form it ships in.
 
-    The published table is continental (millions of rows), so it is read in
-    chunks and clipped to ``bbox`` (minx, miny, maxx, maxy in the grid's CRS,
-    padded by ``pad_m`` so cells straddling the FUA edge survive) before
-    anything is concatenated. Returns ``x``, ``y`` plus the requested value
-    columns coerced to numeric (Eurostat's ':' confidentiality marker and any
-    other non-numeric flag become NaN).
+    ``path`` may be the published zip (the data member is picked by
+    :func:`_data_member` and, unless it is a CSV, extracted once into
+    ``unpack_dir`` — the cache root, see :func:`_extract_member`) or an
+    already-unpacked ``.gpkg`` / ``.parquet`` / ``.csv``.
+    Everything is clipped to ``bbox`` — (minx, miny, maxx, maxy) in EPSG:3035,
+    padded by ``pad_m`` so a 1 km cell straddling the FUA edge survives — and
+    value columns are coerced to numeric, so Eurostat's ':' confidentiality
+    marker and any other flag become NaN.
+
+    NB the census code for total population is literally ``T``, which collides
+    with ``DataFrame.T`` — always subscript these columns.
     """
     path = Path(path)
-    is_zip = zipfile.is_zipfile(path)
-
-    def _open():
-        if is_zip:
-            zf = zipfile.ZipFile(path)
-            return zf, zf.open(_csv_member(zf, member))
-        return None, open(path, "rb")
-
-    zf, fh = _open()
-    try:
-        sep = _sniff_sep(fh.readline())
-    finally:
-        fh.close()
-        if zf is not None:
-            zf.close()
-
-    zf, fh = _open()
-    frames: list[pd.DataFrame] = []
-    resolved: dict[str, str] = {}
-    seen: list[str] = []
-    try:
-        reader = pd.read_csv(fh, sep=sep, chunksize=chunksize,
-                             dtype=str, low_memory=False)
-        for chunk in reader:
-            if not seen:
-                seen = list(chunk.columns)
-                id_col = _resolve_columns([id_column], seen).get(id_column)
-                if id_col is None:
-                    raise ValueError(
-                        f"census id column '{id_column}' not in {path.name}; "
-                        f"columns: {seen}")
-                wanted = columns if columns is not None else [
-                    c for c in seen if c != id_col]
-                resolved = _resolve_columns(wanted, seen)
-                missing = sorted(set(wanted) - set(resolved))
-                if missing:
-                    print(f"WARNING: census columns absent from "
-                          f"{path.name}: {missing}")
-            geo = parse_grid_id(chunk[id_col])
-            block = pd.concat(
-                [geo[["x", "y"]],
-                 chunk[list(resolved.values())].apply(pd.to_numeric,
-                                                      errors="coerce")],
-                axis=1,
-            )
-            block = block[block.x.notna() & block.y.notna()]
-            if bbox is not None:
-                minx, miny, maxx, maxy = bbox
-                block = block[block.x.between(minx - pad_m, maxx + pad_m)
-                              & block.y.between(miny - pad_m, maxy + pad_m)]
-            if not block.empty:
-                frames.append(block)
-    finally:
-        fh.close()
-        if zf is not None:
-            zf.close()
-
-    print(f"census grid columns in {path.name}: {seen}")
-    if not frames:
-        return pd.DataFrame(columns=["x", "y", *resolved])
-    out = pd.concat(frames, ignore_index=True)
-    # Config codes, not the file's casing, name the columns downstream. NB the
-    # census code for total population is literally "T", which collides with
-    # DataFrame.T — always subscript these columns, never attribute-access them.
-    return out.rename(columns={v: k for k, v in resolved.items()})
+    if zipfile.is_zipfile(path):
+        with zipfile.ZipFile(path) as zf:
+            name = _data_member(zf, member)
+            print(f"census: reading '{name}' from {path.name}")
+            if name.lower().endswith(".csv"):
+                return _load_census_csv(
+                    lambda: zipfile.ZipFile(path).open(name), f"{path.name}:{name}",
+                    bbox=bbox, columns=columns, id_column=id_column,
+                    chunksize=chunksize, pad_m=pad_m,
+                    missing_values=missing_values)
+            data_path = _extract_member(
+                zf, name, unpack_dir or path.parent / "unpacked")
+    else:
+        data_path = path
+    if data_path.suffix.lower() == ".csv":
+        return _load_census_csv(
+            lambda: open(data_path, "rb"), data_path.name, bbox=bbox,
+            columns=columns, id_column=id_column, chunksize=chunksize,
+            pad_m=pad_m, missing_values=missing_values)
+    return _load_census_geo(data_path, bbox=bbox, columns=columns,
+                            id_column=id_column, layer=layer, pad_m=pad_m,
+                            missing_values=missing_values)
 
 
 def share_columns(df: pd.DataFrame, spec: dict) -> pd.DataFrame:
@@ -216,6 +490,14 @@ def share_columns(df: pd.DataFrame, spec: dict) -> pd.DataFrame:
     whose numerator or denominator columns are absent is SKIPPED with a note:
     that is how "where published" is honoured for the voluntary variables.
     A non-positive or missing denominator yields NaN, never a division blow-up.
+
+    Suppression *within* a present column is handled per ROW, and the rule
+    matters. A numerator that sums several categories keeps its partial sum when
+    SOME are withheld (foreign-born stays usable when only one origin group is
+    confidential), but a numerator whose categories are ALL withheld yields NaN,
+    never 0. Zero-filling would not merely lose the cell: it would place it at
+    the *bottom* of the vulnerability distribution — inside the "low elderly
+    share" comparison group — which is worse than excluding it.
     """
     out = df.copy()
     for name, entry in (spec or {}).items():
@@ -226,39 +508,54 @@ def share_columns(df: pd.DataFrame, spec: dict) -> pd.DataFrame:
             print(f"NOTE: census share '{name}' skipped; columns absent: "
                   f"{absent or 'numerator/denominator not configured'}")
             continue
-        # A suppressed category counts as zero so one missing band does not
-        # void the whole share; the denominator must be genuinely present.
-        numerator = out[num].apply(pd.to_numeric, errors="coerce").fillna(0.0).sum(axis=1)
-        denominator = out[den].apply(pd.to_numeric, errors="coerce").sum(axis=1)
+        # min_count=1 -> NaN only when EVERY component is missing (see above).
+        numerator = out[num].apply(pd.to_numeric, errors="coerce").sum(
+            axis=1, min_count=1)
+        denominator = out[den].apply(pd.to_numeric, errors="coerce").sum(
+            axis=1, min_count=1)
         out[name] = numerator / denominator.where(denominator > 0)
     return out
 
 
-def fetch_census_grid(cfg: dict, root: Path) -> Path | None:
-    """Download the configured census-grid archive (cached, provenance-logged).
+def fetch_census_grid(cfg: dict, root: Path) -> dict[str, Path]:
+    """Download the configured census-grid file(s) (cached, provenance-logged).
 
-    Returns ``None`` — with a warning, never an exception — when no URL is
-    configured or the download fails, so a stale upstream URL degrades one
-    city's covariates instead of killing an all-city batch run.
+    ``sources.census.url`` fetches one archive holding the grid;
+    ``sources.census.urls`` is a ``{variable code: url}`` mapping for the
+    per-variable distributions, mirroring how ``sources.ses.urls`` already
+    works — the frames are merged on the cell centroid downstream. Both may be
+    set: the wide archive plus extra per-variable files it does not carry.
+
+    Returns ``{label: path}``, empty — with a warning, never an exception — when
+    nothing is configured or every download fails, so a stale upstream URL
+    degrades one city's covariates instead of killing an all-city batch run.
     """
     census = (cfg.get("sources", {}) or {}).get("census") or {}
-    url = census.get("url")
-    if not url:
-        print("NOTE: no sources.census.url configured; skipping the EU census "
-              "1 km demographics layer")
-        return None
-    dest = (root / cfg["output"]["raw_root"] / "census"
-            / (census.get("filename") or url.rsplit("/", 1)[-1]))
-    try:
-        return download(url, dest, licence=census.get("licence", ""),
-                        note=str(census.get("provider", "")))
-    except (OSError, ValueError) as err:
-        # A moved GISCO release (404) or a network failure degrades ONE city's
-        # covariates; it must not kill an all-city batch. requests' exceptions
-        # are OSError subclasses, so this covers HTTP errors and timeouts.
-        print(f"WARNING: census grid download failed ({url}): {err}; "
-              f"continuing without the EU census demographics layer")
-        return None
+    wanted: dict[str, str] = {}
+    if census.get("url"):
+        wanted["grid"] = census["url"]
+    wanted.update(census.get("urls") or {})
+    if not wanted:
+        print("NOTE: no sources.census.url / .urls configured; skipping the EU "
+              "census 1 km demographics layer")
+        return {}
+    raw = root / cfg["output"]["raw_root"] / "census"
+    out: dict[str, Path] = {}
+    for label, url in wanted.items():
+        name = (census.get("filename") if label == "grid" else None) \
+            or url.rsplit("/", 1)[-1]
+        try:
+            out[label] = download(url, raw / name,
+                                  licence=census.get("licence", ""),
+                                  note=str(census.get("provider", "")))
+        except (OSError, ValueError) as err:
+            # A moved GISCO release (404) or a network failure degrades ONE
+            # city's covariates; it must not kill an all-city batch. requests'
+            # exceptions are OSError subclasses, so HTTP errors and timeouts
+            # both land here.
+            print(f"WARNING: census download failed for '{label}' ({url}): "
+                  f"{err}; continuing without it")
+    return out
 
 
 def census_layer(cfg: dict, root: Path, fua) -> pd.DataFrame | None:
@@ -271,27 +568,48 @@ def census_layer(cfg: dict, root: Path, fua) -> pd.DataFrame | None:
     no census cell overlapping the FUA) and is a warning, not an error.
     """
     census = (cfg.get("sources", {}) or {}).get("census") or {}
-    path = fetch_census_grid(cfg, root)
-    if path is None:
+    paths = fetch_census_grid(cfg, root)
+    if not paths:
         return None
     shares = census.get("shares") or {}
     keep = sorted({c for entry in shares.values()
                    for c in (entry.get("numerator") or [])
                    + (entry.get("denominator") or [])})
     bbox = tuple(fua.total_bounds) if fua is not None else None
-    grid = load_census_grid(
-        path, bbox=bbox, columns=keep or None,
-        id_column=str(census.get("id_column", "GRD_ID")),
-        member=census.get("member"),
-    )
-    if grid.empty:
+    unpack = root / cfg["output"].get("cache_root", "data/cache") / "census"
+    # One frame per configured source, merged on the cell centroid: a wide
+    # release contributes every variable at once, a per-variable release one
+    # each, and a mix of the two works without special-casing.
+    frames = []
+    for label, path in paths.items():
+        grid = load_census_grid(
+            path, bbox=bbox, columns=keep or None,
+            id_column=str(census.get("id_column", "GRD_ID")),
+            member=census.get("member"), layer=census.get("layer"),
+            missing_values=census.get("missing_values", MISSING_VALUES),
+            # Unpack under the cache root, never the workflow-cached data/raw.
+            unpack_dir=unpack,
+        )
+        if grid.empty or list(grid.columns) == ["x", "y"]:
+            print(f"NOTE: census source '{label}' contributed no usable cells "
+                  f"over the FUA")
+            continue
+        frames.append(grid)
+    if not frames:
         print("WARNING: no census 1 km cells overlap the FUA; skipping the "
               "EU census demographics layer")
         return None
+    grid = frames[0]
+    for extra in frames[1:]:
+        grid = grid.merge(extra, on=["x", "y"], how="outer")
     derived = share_columns(grid, shares)
     share_cols = [c for c in shares if c in derived.columns]
     if not share_cols:
-        print("WARNING: no census shares could be derived; skipping the layer")
+        print(f"WARNING: no census shares could be derived from "
+              f"{sorted(paths)}; the loaded variables were "
+              f"{[c for c in grid.columns if c not in ('x', 'y')]}. Correct "
+              f"sources.census.shares (or add per-variable sources.census.urls) "
+              f"to match what the release publishes; skipping the layer.")
         return None
     out = derived[["x", "y", *share_cols]]
     print(f"census 1 km grid: {len(out)} cells over the FUA, "

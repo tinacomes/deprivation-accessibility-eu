@@ -122,11 +122,11 @@ def test_join_ses_to_cells_snaps_to_100m_grid():
     out = join_ses_to_cells(cells, {"net_rent": rent})
 
     # Single-value layer -> flat 'ses_<name>' column (no per-column suffix).
-    assert "ses_net_rent" in out.columns
-    assert out.loc[0, "ses_net_rent"] == 8.0
-    assert out.loc[1, "ses_net_rent"] == 9.5
+    assert "ses_net_rent_Nettokaltmiete" in out.columns
+    assert out.loc[0, "ses_net_rent_Nettokaltmiete"] == 8.0
+    assert out.loc[1, "ses_net_rent_Nettokaltmiete"] == 9.5
     # Cell with no SES cell in the layer -> NaN, never a wrong neighbour.
-    assert np.isnan(out.loc[2, "ses_net_rent"])
+    assert np.isnan(out.loc[2, "ses_net_rent_Nettokaltmiete"])
     # Original columns are preserved.
     assert list(out["population"]) == [100.0, 50.0, 10.0]
 
@@ -146,7 +146,7 @@ def test_join_ses_to_cells_dedupes_layer_grid_collisions():
     layer = pd.DataFrame({"x": [4010.0, 4090.0], "y": [2010.0, 2090.0],
                           "v": [1.0, 2.0]})
     out = join_ses_to_cells(cells, {"layer": layer})
-    assert out.loc[0, "ses_layer"] == 1.0
+    assert out.loc[0, "ses_layer_v"] == 1.0
 
 
 def test_age_group_shares_over_explicit_population():
@@ -182,15 +182,28 @@ def test_age_group_shares_over_band_rowsum_default():
     assert out.loc[0, ["share_u15", "share_mid", "share_ge65"]].sum() == 1.0
 
 
-def test_age_group_shares_treats_suppressed_as_zero():
+def test_age_group_shares_yields_nan_when_a_band_is_fully_suppressed():
     df = pd.DataFrame({"pop": [100.0], "young": [np.nan], "old": [30.0]})
     out = age_group_shares(
         df, bands={"share_u15": ["young"], "share_ge65": ["old"]},
         population_col="pop")
-    # A single suppressed band count contributes nothing rather than nuking
-    # the whole share to NaN (min_count=1 keeps a partial sum).
-    assert out.loc[0, "share_u15"] == 0.0
+    # A band whose ONLY count is suppressed must be NaN, not 0.0. Zero-filling
+    # does not merely lose the cell — it puts it at the bottom of the
+    # distribution, i.e. inside the "low under-15 share" comparison group of the
+    # vulnerability stratification. Hamburg's configured bands are one column
+    # each, so this was every suppressed Zensus cell.
+    assert np.isnan(out.loc[0, "share_u15"])
+    # An unsuppressed band alongside it is unaffected.
     assert out.loc[0, "share_ge65"] == 0.30
+
+
+def test_age_group_shares_keeps_a_partial_sum_across_bands():
+    # Several counts make up one band and only some are suppressed: the partial
+    # sum survives (that is what min_count=1 buys over dropna).
+    df = pd.DataFrame({"pop": [100.0], "u3": [np.nan], "a3_14": [12.0]})
+    out = age_group_shares(df, bands={"share_u15": ["u3", "a3_14"]},
+                           population_col="pop")
+    assert out.loc[0, "share_u15"] == 0.12
 
 
 # ---------------------------------------------------------------------------
@@ -276,8 +289,8 @@ def test_join_warns_when_a_layer_matches_no_cell(capsys):
     cells = pd.DataFrame({"cell_id": ["a"], "x": [4050.0], "y": [2050.0]})
     coarse = pd.DataFrame({"x": [4004500.0], "y": [2004500.0], "v": [7.3]})
     out = join_ses_to_cells(cells, {"vacancy_rate": coarse})
-    assert np.isnan(out.loc[0, "ses_vacancy_rate"])
-    assert "matched NO analysis cell" in capsys.readouterr().out
+    assert np.isnan(out.loc[0, "ses_vacancy_rate_v"])
+    assert "covers NO analysis cell" in capsys.readouterr().out
 
 
 def test_resolution_token_round_trips():
@@ -287,3 +300,35 @@ def test_resolution_token_round_trips():
     assert resolution_token(200) == "200m"
     assert resolution_token(1000) == "1km"
     assert resolution_token(10000) == "10km"
+
+
+def test_load_inspire_csv_zip_clips_a_national_grid_on_read(tmp_path):
+    """A Zensus theme is ~3.1 M rows for Germany and a single FUA needs well
+    under 1 % of them, so the read is chunked and clipped rather than fully
+    materialised (six themes would otherwise put ~18 M rows through memory)."""
+    header = "GITTER_ID_100m;x_mp_100m;y_mp_100m;Einwohner"
+    rows = "\n".join([
+        "CRS3035RES100mN2000E4000;4050;2050;10",     # inside
+        "CRS3035RES100mN2000E4100;4150;2050;20",     # inside
+        "CRS3035RES100mN9000E9000;9050;9050;30",     # far away -> dropped
+    ])
+    zpath = tmp_path / "pop.zip"
+    zpath.write_bytes(_make_inspire_zip(rows, header).getvalue())
+
+    df = load_inspire_csv_zip(zpath, resolution_m=100, chunksize=1,
+                              bbox=(4000.0, 2000.0, 4200.0, 2100.0), pad_m=0.0)
+    assert list(df.x) == [4050, 4150]
+    assert list(df.Einwohner) == [10, 20]
+    # Unclipped read still returns everything.
+    assert len(load_inspire_csv_zip(zpath, resolution_m=100)) == 3
+
+
+def test_load_inspire_csv_zip_keeps_the_schema_when_the_bbox_is_empty(tmp_path):
+    header = "GITTER_ID_100m;x_mp_100m;y_mp_100m;Einwohner"
+    zpath = tmp_path / "pop.zip"
+    zpath.write_bytes(_make_inspire_zip(
+        "CRS3035RES100mN2000E4000;4050;2050;10", header).getvalue())
+    df = load_inspire_csv_zip(zpath, resolution_m=100,
+                              bbox=(0.0, 0.0, 100.0, 100.0), pad_m=0.0)
+    # No rows, but the columns survive so the caller still sees the schema.
+    assert df.empty and list(df.columns) == ["x", "y", "Einwohner"]

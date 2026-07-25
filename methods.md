@@ -412,7 +412,7 @@ covariate is prefixed `ses_*`, which is what carries it into the equity stage
 
 | level | source | resolution | availability |
 |---|---|---|---|
-| `age_census` | **Eurostat Census 2021 1 km grid** (GISCO, EPSG:3035, INSPIRE `GRD_ID`); variables of EU Reg. 2018/1799 — total population, sex, broad age (< 15 / 15–64 / ≥ 65), employed persons (voluntary), country of birth, prior residence. Prefix `ses_census_*` (`ingest/census.py`) | 1 km → **broadcast** to 100 m | **every city** |
+| `age_census` | **Eurostat Census 2021 1 km grid**, release V3 (GISCO, EPSG:3035, INSPIRE `GRD_ID`; one wide table as GeoPackage/CSV/Parquet/GeoTIFF). Variables of EU Reg. 2018/1799 — `T`/`M`/`F`, broad age `Y_LT15`/`Y_1564`/`Y_GE65`, employed persons `EMP` (voluntary), place of birth, prior residence; `-8888` withheld for confidentiality and `-9999` otherwise unavailable are stripped to NaN. Prefix `ses_census_*` (`ingest/census.py`) | 1 km → **broadcast** to 100 m | **every city** |
 | `age_national`, `income_tier2` | national fine SES grids — DE Zensus 2022 100 m (population, age, household size, net rent, ownership, vacancy), NL CBS 100 m, FR INSEE Filosofi 200 m, UK LSOA+IMD. Prefix `ses_<layer>_*` (`ingest/ses.py`) | 100–200 m, native | Tier-2 countries |
 
 **The broadcast is a real limitation, stated not hidden.** A 1 km census value
@@ -423,6 +423,19 @@ Both levels are joined by the same mechanism, each keyed on its own grid
 (`ingest/ses.py::join_ses_to_cells`), and the resolution actually used per layer
 — plus a `broadcast_to_analysis_grid` flag — is written to
 `data/derived/<city>/ses_resolutions.json`.
+
+**One download, many cities.** Both demographic levels are published as *whole
+territories*: one EU-wide census grid, one Zensus theme file for all of Germany
+(3.09 M 100 m cells). They are downloaded once per checkout into
+`data/raw/{census,ses}` — shared, not city-scoped — and `depacc prefetch --city
+… --city …` populates them for a whole batch before the per-city jobs start, so
+a ten-city run fetches each national archive once rather than ten times. The
+workflows split the raw cache to match: a shared cache
+(`boundaries`, `census`, `ghs`, `ses`, keyed on the configs) and a per-city one
+(`friction`, `gtfs`, `osm`, `overpass`); the split is declared in
+`depacc.ingest.prefetch` and regression-tested against both workflow files. Each
+national grid is then clipped to the FUA bounding box *as it is read*, so one
+city's ingest never materialises six national themes in memory.
 
 **Selecting the right grid out of a national archive.** Each destatis
 "Gitterdaten" zip bundles the *same* theme at 10 km, 1 km and 100 m (plus a
@@ -460,6 +473,13 @@ to `equity_vulnerability.csv` (one row per stratum, so a separate file from the
 per-regime `equity_indices.csv`). Each row carries its `level`; a stratum whose
 column is absent drops out with a note, which is how income strata simply
 disappear for Tier-1 cities.
+
+**A withheld count is not a zero.** Both grids suppress cells for
+confidentiality (census `-8888`/`-9999`; Zensus `–`/empty). A share whose
+categories are *all* withheld is NaN, never 0 — zero-filling would place the
+cell at the bottom of the distribution, i.e. inside the low-vulnerability
+comparison group, which is worse than excluding it. A share summing several
+published categories keeps its partial sum when only some are withheld.
 
 **Read the ratios, not the absolute means, across regimes.** The everyday DLF
 is a fraction of its saturation ceiling and the emergency DCF is unbounded

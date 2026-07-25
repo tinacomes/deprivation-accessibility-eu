@@ -127,6 +127,19 @@ def main(argv: list[str] | None = None) -> int:
     sens.add_argument("--project-root", type=Path,
                       default=Path(__file__).resolve().parents[2])
 
+    pre = sub.add_parser(
+        "prefetch", help="download the raw sources that are national or "
+                         "continental (census grid, national SES grids, URAU "
+                         "boundaries, GHS-POP tiles) ONCE for a set of cities — "
+                         "run before a many-city batch fans out")
+    pre.add_argument("--city", action="append", default=None,
+                     help="city id; repeatable. Default: every config in "
+                          "config/cities/")
+    pre.add_argument("--all-cities", action="store_true",
+                     help="explicitly prefetch for every configured city")
+    pre.add_argument("--project-root", type=Path,
+                     default=Path(__file__).resolve().parents[2])
+
     lf = sub.add_parser(
         "list-fuas", help="list Functional Urban Areas (codes + names) from "
                           "the Eurostat URAU layer, for choosing cities")
@@ -136,6 +149,15 @@ def main(argv: list[str] | None = None) -> int:
                     default=Path(__file__).resolve().parents[2])
 
     args = parser.parse_args(argv)
+
+    if args.command == "prefetch":
+        from depacc.ingest.prefetch import configured_cities, prefetch_shared
+
+        cities = args.city or configured_cities()
+        print(f"prefetching shared sources for {len(cities)} city config(s): "
+              f"{cities}", flush=True)
+        prefetch_shared(cities, args.project_root)
+        return 0
 
     if args.command == "list-fuas":
         from depacc.ingest.fua_sample import list_fuas

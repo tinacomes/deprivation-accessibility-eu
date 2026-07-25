@@ -38,6 +38,19 @@ env:
   # Opt-in: route the extra everyday modes the Layer-3 sweep's mode variant
   # needs (default false -> fast run; A.2 keeps the many-city batch cheap).
   DEPACC_ROUTE_SENSITIVITY_MODES: "${{ inputs.route_sensitivity_modes }}"
+  # Raw-data cache split; must match .github/workflows/tier1-batch.yml and
+  # depacc.ingest.prefetch.SHARED_RAW_DIRS / CITY_RAW_DIRS.
+  SHARED_RAW_PATHS: |
+    data/raw/boundaries
+    data/raw/census
+    data/raw/ghs
+    data/raw/ses
+  CITY_RAW_PATHS: |
+    data/raw/friction
+    data/raw/gtfs
+    data/raw/osm
+    data/raw/overpass
+  SHARED_RAW_KEY: depacc-raw-shared-v1-${{ hashFiles('config/defaults.yaml', 'config/cities/*.yaml') }}
 
 jobs:
   run-city:
@@ -65,14 +78,30 @@ jobs:
       - name: Install depacc (full stack)
         run: pip install -e ".[full,dev]"
 
-      - name: Restore raw-data cache
+      # Two raw caches, deliberately. SHARED holds the national/continental
+      # archives — one EU census grid for all of Europe, one Zensus theme set for
+      # all of Germany, the URAU boundary layer, the GHS-POP tiles — keyed on the
+      # committed configs rather than the city, so it is the SAME cache the
+      # many-city batch seeds and every city reuses one copy. CITY holds what
+      # genuinely differs per FUA (friction window, Overpass extract, OSM clip,
+      # GTFS). Keeping them in one per-city `data/raw` cache stored the
+      # continental files once per city and risked evicting the expensive OSM
+      # extracts at the 10 GB repo cache limit.
+      - name: Restore/seed the SHARED raw-data cache
         uses: actions/cache@v4
         with:
-          path: data/raw
-          key: depacc-raw-${{ inputs.city }}-${{ hashFiles('config/cities/*.yaml') }}
+          path: ${{ env.SHARED_RAW_PATHS }}
+          key: ${{ env.SHARED_RAW_KEY }}
+          restore-keys: depacc-raw-shared-v1-
+
+      - name: Restore this city's raw-data cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CITY_RAW_PATHS }}
+          key: depacc-raw-city-${{ inputs.city }}-${{ hashFiles('config/cities/*.yaml') }}
           restore-keys: |
+            depacc-raw-city-${{ inputs.city }}-
             depacc-raw-${{ inputs.city }}-
-            depacc-raw-
 
       # Carry the per-city derived outputs (cells, facilities, OD matrices,
       # surfaces) BETWEEN separate stage dispatches. A fresh runner has no

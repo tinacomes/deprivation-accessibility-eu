@@ -102,7 +102,10 @@ def fetch_ses_layers(cfg: dict, root: Path) -> dict[str, Path]:
 
 def load_inspire_csv_zip(path: Path, value_columns: list[str] | None = None,
                          *, member: str | None = None,
-                         resolution_m: float | None = None) -> pd.DataFrame:
+                         resolution_m: float | None = None,
+                         bbox: tuple[float, float, float, float] | None = None,
+                         pad_m: float = 1000.0,
+                         chunksize: int = 500_000) -> pd.DataFrame:
     """Load a Zensus-2022-style INSPIRE grid CSV (semicolon-separated, German
     decimal commas) from a zip. Returns a frame with x, y (EPSG:3035 cell
     centroids) plus the value columns, and ``attrs["resolution_m"]`` set to the
@@ -120,8 +123,14 @@ def load_inspire_csv_zip(path: Path, value_columns: list[str] | None = None,
         name = select_grid_member(zf.namelist(), member=member,
                                   resolution_m=resolution_m,
                                   archive=str(path))
+        # These are NATIONAL grids — a Zensus theme is ~3.1 M rows for Germany,
+        # of which a single FUA needs well under 1 %. Read in chunks and clip to
+        # the FUA bbox (padded, so a cell on the boundary survives) so six themes
+        # do not put ~18 M rows through memory for one city.
         with zf.open(name) as fh:
-            df = pd.read_csv(fh, sep=";", decimal=",", low_memory=False)
+            reader = pd.read_csv(fh, sep=";", decimal=",", low_memory=False,
+                                 chunksize=chunksize if bbox is not None else None)
+            df = _read_clipped(reader, bbox, pad_m) if bbox is not None else reader
     xcol = next(c for c in df.columns if c.lower().startswith("x_mp"))
     ycol = next(c for c in df.columns if c.lower().startswith("y_mp"))
     # The coordinate column carries the grid it belongs to (`x_mp_100m`), as
@@ -135,22 +144,51 @@ def load_inspire_csv_zip(path: Path, value_columns: list[str] | None = None,
             f"(column '{xcol}') but sources.ses declares "
             f"{resolution_token(resolution_m)} — joining it would silently "
             f"produce empty ses_ columns. Fix the resolution or the member.")
-    # Every Zensus theme carries a `werterlaeuternde_Zeichen` field — an
-    # annotation symbol explaining suppressed/zero values, NOT data. Drop it so
-    # it never becomes an all-NaN ses_ column that pollutes the covariate set.
-    keep = value_columns or [
-        c for c in df.columns
-        if c not in (xcol, ycol)
-        and not c.upper().startswith("GITTER")
-        and "werterlaeuternde" not in c.lower()
-    ]
+    keep = value_columns or [c for c in df.columns
+                             if c not in (xcol, ycol) and not _is_annotation(c)]
     out = df[[xcol, ycol, *keep]].rename(columns={xcol: "x", ycol: "y"})
     # Zensus files use '–' / empty for suppressed cells -> NaN.
     for c in keep:
         out[c] = pd.to_numeric(out[c], errors="coerce")
     out.attrs["resolution_m"] = float(found or resolution_m or 100.0)
     out.attrs["member"] = name
+    print(f"  {path.name}:{name} -> value columns {keep}")
     return out
+
+
+def _read_clipped(reader, bbox: tuple[float, float, float, float],
+                  pad_m: float) -> pd.DataFrame:
+    """Concatenate a chunked INSPIRE CSV read, keeping only rows whose cell
+    centroid falls in the padded ``bbox`` (EPSG:3035). An empty result keeps the
+    columns, so the caller still sees the file's schema."""
+    minx, miny, maxx, maxy = bbox
+    kept, header = [], None
+    for chunk in reader:
+        if header is None:
+            header = chunk.iloc[:0]
+        xcol = next(c for c in chunk.columns if c.lower().startswith("x_mp"))
+        ycol = next(c for c in chunk.columns if c.lower().startswith("y_mp"))
+        x = pd.to_numeric(chunk[xcol], errors="coerce")
+        y = pd.to_numeric(chunk[ycol], errors="coerce")
+        block = chunk[x.between(minx - pad_m, maxx + pad_m)
+                      & y.between(miny - pad_m, maxy + pad_m)]
+        if not block.empty:
+            kept.append(block)
+    if not kept:
+        return header if header is not None else pd.DataFrame()
+    return pd.concat(kept, ignore_index=True)
+
+
+def _is_annotation(column: str) -> bool:
+    """Non-data columns of a Zensus theme file: the grid id and the
+    ``werterlaeuternde_Zeichen`` annotation symbol explaining suppressed/zero
+    values. Matched loosely — releases spell the annotation with and without
+    the umlaut transliteration — so it never becomes an all-NaN ses_ column
+    that pollutes the covariate set."""
+    low = column.lower()
+    return (column.upper().startswith("GITTER")
+            or "werterl" in low
+            or low.endswith("_zeichen"))
 
 
 def age_group_shares(df: pd.DataFrame, bands: dict[str, list[str]],
@@ -166,15 +204,22 @@ def age_group_shares(df: pd.DataFrame, bands: dict[str, list[str]],
     partial bands such as under-15 + 65-plus, which skip the middle of the age
     range). Without it the denominator is the row-sum of every column named
     across all bands, which is only meaningful when those bands are EXHAUSTIVE
-    (partition the whole population). Missing counts are treated as zero; a
-    zero/NaN denominator yields NaN.
+    (partition the whole population). A zero/NaN denominator yields NaN.
+
+    Suppression is handled per ROW: a band that sums several published counts
+    keeps its partial sum when some are withheld, but a band whose counts are
+    ALL withheld yields NaN, never 0. This is not a nicety — Hamburg's configured
+    bands are a single column each, so zero-filling put every suppressed cell at
+    a share of 0.0, i.e. inside the LOW-vulnerability tail of the stratification
+    rather than outside it.
     """
     out = df.copy()
 
     def _counts(cols: list[str]) -> pd.Series:
-        # Suppressed ('–'/empty) cells parse to NaN; treat as a zero count so
-        # one missing band does not void the whole share.
-        return out[cols].apply(pd.to_numeric, errors="coerce").fillna(0.0).sum(axis=1)
+        # Suppressed ('–'/empty) cells parse to NaN. min_count=1 keeps a partial
+        # sum across bands but returns NaN when every named count is missing.
+        return out[cols].apply(pd.to_numeric, errors="coerce").sum(
+            axis=1, min_count=1)
 
     if population_col is not None:
         denom = pd.to_numeric(out[population_col], errors="coerce")
@@ -218,6 +263,12 @@ def join_ses_to_cells(
     per layer is returned by :func:`ses_join_resolutions` for the provenance
     sidecar.
 
+    Joined columns are ALWAYS named ``ses_<layer>_<column>``. The name must not
+    depend on how many value columns a release happens to publish: when the
+    suffix was conditional on that, dropping one annotation column silently
+    renamed ``ses_net_rent_durchschnMieteQM`` to ``ses_net_rent``, breaking
+    every config that referenced it.
+
     An analysis cell with no covering layer cell gets NaN — never a nearest
     neighbour's value.
     """
@@ -229,25 +280,45 @@ def join_ses_to_cells(
         values = layer.drop(columns=["x", "y"]).set_index(lkey)
         values = values[~values.index.duplicated(keep="first")]
         joined = values.reindex(key)
-        matched = float(joined.notna().any(axis=1).mean()) if len(joined) else 0.0
-        if matched == 0.0:
-            # Every join key missed. The usual cause is a resolution mismatch
-            # (a 1 km member keyed on the 100 m grid), and the symptom used to
-            # be an all-NaN covariate that quietly dropped out of the
-            # regressions and produced an empty vulnerability stratum.
-            print(f"WARNING: SES layer '{name}' matched NO analysis cell at "
-                  f"{res:g} m resolution (member "
-                  f"{layer.attrs.get('member', '?')}) — the resulting ses_"
-                  f"{name}* columns are entirely empty; check the layer's grid "
-                  f"resolution.")
-        elif matched < 0.5:
-            print(f"NOTE: SES layer '{name}' covers {matched:.1%} of analysis "
-                  f"cells at {res:g} m (suppression or partial extent).")
+        _report_join(name, layer, res, key, values, joined)
         for col in values.columns:
-            out[f"ses_{name}_{col}" if len(values.columns) > 1 else f"ses_{name}"] = (
-                joined[col].to_numpy()
-            )
+            out[f"ses_{name}_{col}"] = joined[col].to_numpy()
     return out
+
+
+def _report_join(name: str, layer: pd.DataFrame, res: float, key: pd.Series,
+                 values: pd.DataFrame, joined: pd.DataFrame) -> None:
+    """Diagnose a join, keeping the two failure modes apart.
+
+    A grid MISS (no layer cell covers the analysis cell) usually means a
+    resolution or projection mismatch and is a bug; SUPPRESSION (the cell is
+    covered but the value is withheld) is normal for the confidentiality-heavy
+    themes and merely limits that covariate's support. Both used to look like a
+    silently all-NaN column, so they are now reported separately with the value
+    columns that were actually joined.
+    """
+    member = layer.attrs.get("member", "?")
+    if values.empty or not len(joined):
+        print(f"WARNING: SES layer '{name}' ({member}) contributed NO value "
+              f"columns — every column was filtered as grid id / annotation. "
+              f"Check the file's header.")
+        return
+    covered = float(key.isin(values.index).mean())
+    with_value = float(joined.notna().any(axis=1).mean())
+    cols = list(values.columns)
+    if covered == 0.0:
+        print(f"WARNING: SES layer '{name}' ({member}) covers NO analysis cell "
+              f"at {res:g} m — not one join key matched, so ses_{name}_* is "
+              f"entirely empty. This is a grid mismatch (resolution or CRS), "
+              f"not suppression. Columns: {cols}")
+    elif with_value == 0.0:
+        print(f"WARNING: SES layer '{name}' ({member}) covers {covered:.1%} of "
+              f"analysis cells at {res:g} m but every joined value is missing — "
+              f"the theme is fully suppressed here, or {cols} parsed to NaN.")
+    else:
+        print(f"SES layer '{name}' joined: {covered:.1%} of analysis cells "
+              f"covered, {with_value:.1%} carry a value at {res:g} m; "
+              f"columns {cols}")
 
 
 def _layer_resolution(name: str, layer: pd.DataFrame, default: float,
@@ -269,11 +340,11 @@ def ses_join_resolutions(
     out = {}
     for name, layer in layers.items():
         cols = [c for c in layer.columns if c not in ("x", "y")]
-        prefix = f"ses_{name}"
         res = float(_layer_resolution(name, layer, resolution_m, resolutions))
         out[name] = {
             "resolution_m": res,
-            "columns": [f"{prefix}_{c}" for c in cols] if len(cols) > 1 else [prefix],
+            "member": layer.attrs.get("member"),
+            "columns": [f"ses_{name}_{c}" for c in cols],
             # Coarser than the 100 m analysis grid -> the value is replicated
             # over every analysis cell inside it (no within-cell variation).
             "broadcast_to_analysis_grid": res > 100.0,
