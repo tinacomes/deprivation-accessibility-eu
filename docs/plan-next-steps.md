@@ -365,12 +365,22 @@ used for the join (the data wins over the config promise); and
 `join_ses_to_cells` reports coverage instead of yielding a silent empty
 covariate.
 
-**…and the member was only half of it.** With the fix in place the next run
-loaded the right members — `Zensus2022_Eigentuemerquote_100m-Gitter.csv`
-(2 525 440 cells) and `Zensus2022_Leerstandsquote_100m-Gitter.csv` (2 566 712) —
-and **both still matched no analysis cell**, while `net_rent` (25.3 %) and
-`household_size` (44.5 %) joined normally off the same grid. Two follow-ups
-landed for this:
+**…and the member was only half of it — the rest was a decimal comma.** With the
+member fix in place the run loaded the right files and the split diagnostic
+showed the true shape: ownership covered **43.9 %** of analysis cells and vacancy
+**44.3 %** (comparable to household_size's 44.5 %), yet *every joined value was
+missing*. Not a grid mismatch, and not credibly suppression either.
+
+The cause: `read_csv(decimal=",")` only converts a column it can parse **entirely**
+as numeric. These two themes mark suppressed cells with an en dash rather than
+leaving the field empty, so the column arrived as **strings** — and
+`pd.to_numeric("41,2")` is NaN. Every value in both themes was destroyed on load.
+Net-rent and household-size were unaffected because their suppressed cells are
+empty, which lets the whole column parse as numeric on read. `_parse_values` now
+normalises a string column properly (decimal comma to point, plus percent sign
+and non-breaking/thin spaces) and, if a column still yields nothing while holding
+non-marker text, prints the **raw sample values** so the format is identifiable
+from one run rather than inferred over three. Two follow-ups also landed:
 
 - The coverage diagnostic conflated two different failures. It now reports
   **grid coverage** (`key.isin(layer index)`) separately from **value presence**
@@ -567,3 +577,251 @@ specification; and document the p50 typology's single degree of freedom
 (§1.1) so the class-share table is not over-read. A continuous compounding
 intensity (e.g. pop-weighted min(ev_pct, em_pct)) removes the threshold's
 leverage on the headline number.
+
+---
+
+## 5. Review of run 30158804263 (Hamburg, 25 Jul 2026, commit `d200e4e`)
+
+Run succeeded, 6.5 min wall (everything but ingest served from the derived
+cache). Reviewed against the artifact and against `depacc-results` @ `6796401`.
+
+### 5.1 What the run confirms as landed
+
+- **A.1 persist** — `typology_summary_50/75.csv`, `accessibility_by_*.csv` and
+  seven `sensitivity/` tables are all on `depacc-results`. Fixed.
+- **A.3 reachability split** — the two meanings are now genuinely separate:
+  `routability: 0/176137 cells have no network path`, so `unreachable_pop_share`
+  is 0.00 % for every service and the old 12.1 % appears where it belongs, as
+  `pop_service_deprived_share` for gp. `pop_p90_time_min_reachable` is a travel
+  time again (gp 12.1 min, not 120).
+- **A.4** — `congestion_factor(..., reference_weights=demand)` is passed
+  (`deprivation/surfaces.py:172`).
+- **B.2** — `gini_t_everyday` (0.740) / `gini_t_emergency` (0.420) are on the
+  city row.
+- **D.1–D.3** — the census CSV member is read and parsed
+  (`['GRD_ID','T','M','F','Y_LT15','Y_1564','Y_GE65','EMP','NAT','EU_OTH','OTH',…]`),
+  13 `CC_unallocated` rows dropped, the census layer joins 100 % of analysis
+  cells with 94.3 % carrying a value, the stale-`ses_*`-column purge fires
+  (21 columns dropped before re-joining), and the decimal-comma fix works:
+  `ownership_rate` went from 0 % to **35.1 %** value presence and now carries a
+  gradient (β = 0.260, n = 61 903) instead of an empty stratum.
+- **Emergency units** — `weighted_mean` 0.0289 with
+  `units = "DCF: multiples of g(45 min) [anchored]"`. The typology identity of
+  §1.1 also checks out exactly at both cuts (p75: HL = LH = 0.25 − HH = 0.122,
+  LL = 0.5 + HH = 0.628 ✓).
+
+So **D is done** in the sense the plan meant. What follows are defects the run
+*newly exposes* — two of them in the Layer-3 machinery that landed with C, and
+they invalidate C's headline before E or F can build on it.
+
+### 5.2 Defects, ranked
+
+**(1) BLOCKER — the Layer-3 sweep evaluates a different model than the pipeline.**
+The pipeline composites *deprivations*: `deprivation_everyday = Σ w_s g(t_s) / Σ w_s`
+(`deprivation/pipeline.py:137`). The sweep composites *times* and then applies g
+once: `RegimeSurface(g_ev(t_everyday), …)` where `t_everyday` is the weighted
+mean of per-service `t_eff` (`sensitivity/access.py:312`). g is nonlinear, so
+these are not the same estimator, and the sweep's own "baseline" row does not
+reproduce the run:
+
+| | pipeline | Layer-3 "baseline" |
+|---|---|---|
+| gini_everyday | 0.657 | 0.705 |
+| gini_emergency | 0.621 | 0.603 |
+| spearman ρ | 0.426 | 0.462 |
+| HH @ p50 | 0.3155 | 0.3224 |
+
+Every Layer-3 number, including the acceptance table, is measured against a
+fixed point that is not the model's. Fix: build per-service deprivation inside
+`everyday_t_regime` / `access_variant_targets` and take the weighted row mean of
+`g(t_s)`, exactly as `deprivation/pipeline.py` does; assert in a test that the
+`baseline` variant reproduces `surfaces.parquet` to within float tolerance.
+Emergency has the same mismatch (it applies g to the mean of the two nearest
+times rather than averaging the two deprivations) — that is why
+`gini_emergency` is a constant 0.603 across the sweep instead of 0.621.
+
+**(2) BLOCKER — "kappa is the knob that moves HH most" is a tie-handling
+artifact.** `hamburg_access_acceptance.csv` reports `kappa` (HH range 0.1778)
+and `everyday_mode` (0.1778 — the *same* number) as the movers. Both ranges come
+from a single degenerate value: `kappa_0.1` and `everyday_modes_walk+car` each
+return `share_LL = share_LH = 0.0`, `share_HL ≈ share_HH ≈ 0.4999`, i.e. **100 %
+of the population classified everyday-high**, with `flip_pop_share = 0.4998`.
+
+Two independent causes meet:
+
+- `to_percentile` assigns each tie group the **top** of its cumulative weight
+  (`standardize/surface.py:82`, "ties share the group's top cumulative weight").
+  So a tie block holding ≥ 50 % of the population is labelled "high" *whatever
+  its value* — including when that value is the minimum. A bottom-heavy tie
+  block is the one case where the upper-inclusive rank inverts the meaning of
+  the cut. Mid-rank (average) ties would place a 90 % zero-block at 0.45 → low,
+  which is what "population-weighted percentile" should mean.
+- The tie block is manufactured by the softmin floor. `softmin ≥ min − ln(n)/κ`,
+  and `t_eff` is clipped at 0 (`deprivation/surfaces.py:184`). At κ = 0.1 with
+  k_nearest = 30 the substitutability bonus is ln(30)/0.1 ≈ **34 minutes**, so
+  effectively every cell in the core floors to exactly 0 for every service.
+  `gini_everyday` = 0.826 at κ = 0.1 (vs 0.705 baseline) is the same fact seen
+  from the other side: most of the mass is at zero.
+
+  The walk+car variant reaches the same place by a different route: Hamburg runs
+  the **friction** engine (`config/cities/hamburg.yaml:154`), whose car surface
+  is 1 km, so a cell sharing its pixel with a facility gets car time 0; `min` over
+  modes then zeroes ~95 % of the FUA (`gini_everyday` 0.955). That variant is
+  measuring friction-raster quantisation, not the everyday mode set.
+
+Fix, in order: (a) mid-rank ties in `to_percentile` (and a test with a >50 %
+tie block); (b) guard the softmin — reject or warn on κ where `ln(k)/κ` exceeds
+a fraction of the mode's cutoff, and record the clipped share per variant;
+(c) drop or re-label the walk+car variant until E.1 says what the friction car
+surface is worth at 100 m. Until then, **the honest reading of the Layer-3
+sweep is `gamma` (ρ range 0.147) and nothing else** — every knob's ρ already
+"exceeds threshold" only because the threshold axis has ρ range 0.0 by
+construction (ρ is computed on percentiles, which the threshold does not touch),
+so `rho_exceeds_threshold` is a vacuous test and should be dropped.
+
+**(3) The `unreachable` sensitivity axis tests a knob that affects zero cells.**
+The grid varies `policy ∈ {cap_at_max_time, exclude}` (`sensitivity/access.py:69`),
+but after A.3 that policy only governs genuinely-unroutable cells, of which
+Hamburg has **0** — hence the identical rows and `hh_share_range = 0.0`. The knob
+that now sets the deprivation of 12–13 % of Hamburg's population is
+`unreachable.finite_fill_min` (`config/defaults.yaml:238`, null → 120 min), and
+it is not swept. It also leaks into the supposedly deprivation-function-free
+level features: `pop_share_beyond_everyday_30` = 0.134 ≈ the gp service-deprived
+share, because a cell missing one service has its composite *time* pulled toward
+120. As the cross-city comparable level feature for F, that is a problem — it
+reads "share missing ≥ 1 everyday service", not "share beyond 30 minutes".
+Fix: sweep `finite_fill_min ∈ {60, 90, 120, 180}` as the `unreachable` axis, and
+either compute the level features on per-service times with an explicit
+"service-deprived" count column, or state plainly in methods that they are
+composite-time features containing the fill constant.
+
+**(4) The EU-harmonised SES covariate is dead in Germany, and fails silently
+across cities.** `ses_census_employment_share` is non-null on **295** analysis
+cells and constant 0.0 there — EMP is voluntary under Reg. 2018/1799 and DE did
+not report it. Both regressions were correctly skipped with a NOTE (the
+`37e1b10` guard doing its job). But it is the default for *both*
+`equity.ses_rank_column` and `equity.cityvector_ses_column`
+(`config/defaults.yaml:250,256`), and the fallback chain in
+`cityvector/features.py:94-102` quietly substituted the German rent grid:
+`slope_ses_column = ses_net_rent_durchschnMieteQM`. That is exactly what the
+separate key was created to prevent — in a 10-city pilot each city falls back to
+whatever it has, and `slope_ses_everyday` pools incommensurable betas in one
+cross-city column. Fix before F.5: make the harmonised slope **NaN + a recorded
+reason** when the harmonised column is unusable, never a per-city substitute;
+add a coverage gate (`min_valid_share`, e.g. 0.20) so a covariate on 295 cells
+never enters a regression at all; and pick the replacement harmonised covariate
+— `foreign_born_share` is already ingested at 94.3 % coverage and used nowhere
+(it is absent from Hamburg's `ses_covariates` allow-list).
+
+**(5) Vulnerability ratios compare a covered subsample against the whole FUA.**
+`equity_vulnerability.csv` reports `low_ownership` with
+`mean_dep_everyday_ratio = 0.273` and `hh_share_gap = −0.232` — a huge effect.
+But `ownership_rate` carries a value on only 35.1 % of cells, and Destatis
+publishes it where there are enough dwellings, i.e. preferentially in the dense
+core. The stratum is the bottom quartile of *that* subsample; the reference
+(`overall`) is all 176 137 cells including the car-dependent periphery. The
+ratio therefore mostly measures "cells with published tenure data are urban".
+Same defect, smaller, for `low_rent` (25.3 % coverage). The census strata
+(94.3 %) are unaffected. Fix: compute every stratum's ratio against the
+**covered-cell** reference for that column, and add `coverage_pop_share` and `n`
+columns to the table.
+
+**(6) Minor — `vacancy_rate` is reported on 2.6 % of cells.** Grid coverage is
+44.3 % but only 2.6 % carry a value, and it still produces the largest everyday
+gradient in the table (β = 0.521, p = 8.6e-48, **n = 4633**). Not wrong — `n` is
+reported — but it is the headline coefficient of a 2.6 % selected subsample and
+needs the coverage gate of (4). Worth one check that the residual 94 % really is
+Destatis suppression rather than a second parse issue: the fix diagnostic prints
+raw samples only when a column yields *nothing*, and this one yields something.
+
+### 5.3 Revised next steps
+
+The plan's sequencing (§3) put F.1+F.5 next and E "once the pilot exists". The
+run changes that: F.5 would multiply defect (4) across ten cities and would draw
+its comparable level features through defect (3), while defect (2) means the
+one thing C was supposed to settle — *do city rankings survive the accessibility
+sweep?* — is not yet settled. Revised order:
+
+1. **A′ — the six fixes above** (small, all in code already written; ~1 day).
+   Acceptance: the Layer-3 `baseline` row reproduces `cityplane_row.csv` to
+   1e-9; no variant returns a degenerate 0/0/½/½ split; `hamburg_access_acceptance.csv`
+   re-read to see which knob actually moves HH once κ = 0.1 and walk+car are
+   sound. Re-run Hamburg (6 min from cache).
+2. **E.1 — r5 engine cross-check on Hamburg**, now the highest-value validation
+   rather than the last. Defect (2) showed the friction car surface zeroes ~95 %
+   of the FUA at 1 km, which is precisely the quantity E.1 was designed to bound,
+   and it decides whether walk+car everyday (Workstream C's expected dominant
+   knob) is even askable on the Tier-1 fast path. Runs any time, Hamburg-only,
+   1–3 h of runner budget, blocks nothing.
+3. **F.1 in parallel** — `config/fua_population.csv` is pure data assembly, no
+   compute, no dependency on any of the above.
+4. **F.5 pilot (~10 cities)** once A′ lands and F.1 exists. E.1's result feeds
+   the pilot's mode-set decision but does not gate it.
+5. E.2–E.5 and the full stratified F.2 sample after the pilot, unchanged.
+
+Recommendation: **A′ then E.1**, with F.1 alongside. E before F, contrary to the
+original sequencing, because E.1 answers a question the pilot would otherwise
+inherit ten times over.
+
+### 5.4 A′ — the six fixes, implemented
+
+All six landed; the full suite passes and a demo end-to-end run plus Layer-3
+sweep is clean. Per defect:
+
+1. **Layer-3 composite.** `sensitivity/access.py` now builds the everyday
+   per-service deprivations and composites them with the same weighted row mean
+   the pipeline uses (`everyday_t_regime` → `everyday_regime`, returning
+   deprivation, the deprivation-free composite time, and a zero-floor
+   diagnostic). Emergency is read straight from `surfaces.parquet`'s
+   `deprivation_emergency` rather than re-derived as `g` of the mean nearest
+   time. `test_baseline_recompute_matches_pipeline` now pins **both** the
+   deprivation composite and `t_regime_everyday` to the saved columns at 1e-9 —
+   the acceptance criterion of §5.3.
+2. **Tie handling.** `to_percentile` is mid-rank: a tie group sits at the
+   midpoint of its own weight span, not the top. New tests cover a 90 % bottom
+   tie block (0.45, reads low — it read 0.90 and "high" before) and the property
+   §1.1's identity actually needs, that cutting at q leaves (1−q) above the cut.
+   Degeneracy is now detected on its own terms: `max_tie_pop_share` in
+   `standardize/`, and any variant whose largest tie block exceeds 50 % of the
+   population is printed, marked `degenerate` in the per-variant table alongside
+   `max_tie_everyday` / `zero_floor_pop_share`, excluded from the acceptance
+   ranges, and excluded from the union flip-cell map. On the demo fixture the
+   mechanism reproduces exactly as diagnosed — *κ = 0.1: a single tie block holds
+   95.2 % of the population, 99.9 % floored at t_eff = 0* — and with it removed
+   the top mover becomes `gamma`, as §5.2 predicted for Hamburg.
+3. **`unreachable` axis.** Now sweeps `finite_fill_min` ∈ {60, 90, 180} instead
+   of a policy that governs zero cells; `finite_fill` is a first-class variant
+   parameter and `finite_fill_min` a column in the table. String grid entries
+   still expand to policy variants for an unroutable-heavy city. The vacuous
+   `rho_exceeds_threshold` column is gone (`n_variants` / `n_degenerate` replace
+   it); `rho_range` is still reported as a magnitude.
+4. **SES support gate.** `equity.min_covariate_valid_share` (default 0.2) gates
+   every `ses_*` column — including constants — *before* anything selects one, so
+   it governs the gradient covariates, the concentration-index rank column and
+   the strata alike. `equity_ses_coverage.csv` (n_cells, cell_share, pop_share,
+   n_distinct) is written every run and persisted to `depacc-results`.
+   `equity.cityvector_ses_strict` (default true) stops the cross-city
+   `slope_ses_*` from silently substituting a per-city column: a city without the
+   harmonised covariate now gets no feature and a NOTE. `ses_census_foreign_born_share`
+   is added to Hamburg's covariate list — at 94.3 % coverage it is the live
+   candidate to replace the employment share as `cityvector_ses_column`, and the
+   next run's gradient should inform that choice. **That choice is the one open
+   decision left from A′** — the default still points at the dead column, which
+   under strict mode means Tier-1 cities get no `slope_ses_*` until it moves.
+5. **Vulnerability reference.** Each stratum now carries both references:
+   `*_ratio` against the whole FUA and `*_ratio_covered` against the cells where
+   its own column is published, plus `coverage_pop_share`, `n_cells` and the
+   `ref_*` levels. New test: a covariate published only on the low-deprivation
+   half reads 0.2 against the FUA and ~1.0 against its own support.
+6. **Vacancy.** Covered by the gate (2.6 % ≪ 20 %, so it no longer supplies the
+   largest everyday gradient). The SES join also gained the in-between warning
+   the two existing branches missed — a layer that reaches the grid but keeps a
+   value on under a quarter of the cells it covers now says so explicitly,
+   instead of leaving "genuine suppression or a second parse bug?" to inference.
+
+`methods.md` §5 (percentile transform), §6.1 (support gate, strict cross-city
+covariate), §6.2 (two references) and §7 (Layer-3) are updated to match.
+
+**Next:** re-run Hamburg (~6 min from cache) and read the corrected
+`hamburg_access_acceptance.csv` and `equity_ses_coverage.csv` before choosing
+between E.1 and the F pilot.

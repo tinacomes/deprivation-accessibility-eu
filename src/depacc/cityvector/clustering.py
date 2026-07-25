@@ -82,8 +82,12 @@ def size_gradient(vectors: pd.DataFrame,
     for outcome in outcomes:
         if outcome not in vectors.columns:
             continue
-        df = vectors[["log10_population", outcome]].dropna()
-        if len(df) < 4:
+        df = vectors[["log10_population", outcome]].replace(
+            [np.inf, -np.inf], np.nan).dropna()
+        # A non-finite or zero-variance regressor makes statsmodels raise
+        # MissingDataError, which is not a ValueError and would abort the whole
+        # cross stage — the pilot's most valuable output — over one outcome.
+        if len(df) < 4 or df["log10_population"].std(ddof=0) == 0:
             continue
         X = sm.add_constant(df["log10_population"])
         fit = sm.OLS(df[outcome], X).fit(cov_type="HC1")

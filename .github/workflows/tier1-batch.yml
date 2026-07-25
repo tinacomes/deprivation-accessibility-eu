@@ -45,7 +45,6 @@ env:
     data/raw/gtfs
     data/raw/osm
     data/raw/overpass
-  SHARED_RAW_KEY: depacc-raw-shared-v1-${{ hashFiles('config/defaults.yaml', 'config/cities/*.yaml') }}
 
 jobs:
   plan:
@@ -95,7 +94,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.SHARED_RAW_PATHS }}
-          key: ${{ env.SHARED_RAW_KEY }}
+          key: depacc-raw-shared-v1-${{ hashFiles('config/defaults.yaml', 'config/cities/*.yaml') }}
           restore-keys: depacc-raw-shared-v1-
       - name: Generate configs for cities that have none
         shell: bash
@@ -142,7 +141,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ env.SHARED_RAW_PATHS }}
-          key: ${{ env.SHARED_RAW_KEY }}
+          key: depacc-raw-shared-v1-${{ hashFiles('config/defaults.yaml', 'config/cities/*.yaml') }}
           restore-keys: depacc-raw-shared-v1-
       - name: Restore this city's raw-data cache
         uses: actions/cache@v4

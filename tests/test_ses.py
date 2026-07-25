@@ -332,3 +332,91 @@ def test_load_inspire_csv_zip_keeps_the_schema_when_the_bbox_is_empty(tmp_path):
                               bbox=(0.0, 0.0, 100.0, 100.0), pad_m=0.0)
     # No rows, but the columns survive so the caller still sees the schema.
     assert df.empty and list(df.columns) == ["x", "y", "Einwohner"]
+
+
+# ---------------------------------------------------------------------------
+# A theme column that parses to NOTHING is a format problem, not suppression.
+# The ownership-rate and vacancy-rate layers matched 44% of cells yet every
+# joined value was missing, and the cause was invisible until the raw values
+# were reported.
+# ---------------------------------------------------------------------------
+
+def test_all_nan_value_column_reports_its_raw_values(tmp_path, capsys):
+    header = "GITTER_ID_100m;x_mp_100m;y_mp_100m;Eigentuemerquote"
+    rows = "\n".join([
+        "CRS3035RES100mN2000E4000;4050;2050;n/a",
+        "CRS3035RES100mN2000E4100;4150;2050;k.A.",
+        "CRS3035RES100mN2000E4200;4250;2050;–",   # genuinely suppressed
+    ])
+    zpath = tmp_path / "own.zip"
+    zpath.write_bytes(_make_inspire_zip(rows, header).getvalue())
+
+    df = load_inspire_csv_zip(zpath, resolution_m=100)
+    out = capsys.readouterr().out
+    assert df["Eigentuemerquote"].isna().all()
+    # The report names the column, the count of non-empty values and samples of
+    # the RAW text, so one run identifies the format.
+    assert "NONE parse as numbers" in out
+    assert "Eigentuemerquote" in out
+    assert "k.A." in out
+    # 'n/a' is already one of pandas' NA strings and the en dash is a destatis
+    # suppression marker, so only the genuinely unexplained value is counted.
+    assert "1 non-empty" in out
+
+
+def test_percent_decorated_rate_column_is_recovered(tmp_path, capsys):
+    """A rate column carrying '%' or a non-breaking space parses rather than
+    silently becoming an empty covariate."""
+    header = "GITTER_ID_100m;x_mp_100m;y_mp_100m;Leerstandsquote"
+    rows = "\n".join([
+        "CRS3035RES100mN2000E4000;4050;2050;7,3 %",
+        "CRS3035RES100mN2000E4100;4150;2050;11,8 %",
+    ])
+    zpath = tmp_path / "vac.zip"
+    zpath.write_bytes(_make_inspire_zip(rows, header).getvalue())
+
+    df = load_inspire_csv_zip(zpath, resolution_m=100)
+    assert list(df.Leerstandsquote) == [7.3, 11.8]
+    assert "NONE parse" not in capsys.readouterr().out
+
+
+def test_ordinary_suppression_stays_quiet(tmp_path, capsys):
+    """A column that parses for SOME cells is normal Zensus suppression and must
+    not produce a warning — only a column with no parseable value at all does."""
+    header = "GITTER_ID_100m;x_mp_100m;y_mp_100m;durchschnMieteQM"
+    rows = "\n".join([
+        "CRS3035RES100mN2000E4000;4050;2050;8,50",
+        "CRS3035RES100mN2000E4100;4150;2050;–",
+    ])
+    zpath = tmp_path / "rent.zip"
+    zpath.write_bytes(_make_inspire_zip(rows, header).getvalue())
+
+    df = load_inspire_csv_zip(zpath, resolution_m=100)
+    assert df.durchschnMieteQM.iloc[0] == 8.5 and np.isnan(df.durchschnMieteQM.iloc[1])
+    out = capsys.readouterr().out
+    assert "NONE parse" not in out and "decoration stripping" not in out
+
+
+def test_comma_decimals_survive_an_en_dash_suppression_marker(tmp_path):
+    """THE ownership/vacancy bug. read_csv(decimal=",") only converts a column it
+    can parse entirely as numeric, so one '–' marker leaves the whole column as
+    strings — and pd.to_numeric("41,2") is NaN. Every value in the ownership and
+    vacancy themes vanished this way while net-rent (empty-field suppression)
+    was fine."""
+    header = "GITTER_ID_100m;x_mp_100m;y_mp_100m;Eigentuemerquote"
+    rows = "\n".join([
+        "CRS3035RES100mN2000E4000;4050;2050;41,2",
+        "CRS3035RES100mN2000E4100;4150;2050;–",     # forces the column to object
+        "CRS3035RES100mN2000E4200;4250;2050;57,9",
+    ])
+    zpath = tmp_path / "own.zip"
+    zpath.write_bytes(_make_inspire_zip(rows, header).getvalue())
+
+    df = load_inspire_csv_zip(zpath, resolution_m=100)
+    assert df.Eigentuemerquote.iloc[0] == 41.2
+    assert np.isnan(df.Eigentuemerquote.iloc[1])
+    assert df.Eigentuemerquote.iloc[2] == 57.9
+    # And the join now carries values instead of an empty covariate.
+    cells = pd.DataFrame({"cell_id": ["a"], "x": [4050.0], "y": [2050.0]})
+    out = join_ses_to_cells(cells, {"ownership_rate": df})
+    assert out.loc[0, "ses_ownership_rate_Eigentuemerquote"] == 41.2

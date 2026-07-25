@@ -42,11 +42,34 @@ def test_percentile_invariant_to_increasing_rescale():
 
 
 def test_percentile_population_weighted_and_ties():
-    # Cell with huge population dominates the weighted CDF; ties share a value.
+    # Cell with huge population dominates the weighted CDF; ties share a value
+    # and sit at the MIDPOINT of their block, not its top.
     s = to_percentile(_surf([1.0, 1.0, 2.0], pop=[1.0, 1.0, 8.0]))
     assert s.values[0] == pytest.approx(s.values[1])   # tie
-    assert s.values[2] == pytest.approx(1.0)            # top value -> full CDF
-    assert s.values[0] == pytest.approx(0.2)            # (1+1)/10
+    assert s.values[0] == pytest.approx(0.1)            # block [0, 2]/10 -> 0.1
+    assert s.values[2] == pytest.approx(0.6)            # block [2, 10]/10 -> 0.6
+
+
+def test_large_bottom_tie_block_reads_low_not_high():
+    """The tie rule that broke the Layer-3 sweep. 90 % of the population share
+    the MINIMUM value; under the old inclusive rank P(X <= x) they all got 0.90
+    and were classified "high" at both the p50 and p75 cuts — the least-deprived
+    population labelled most-deprived. Mid-rank puts them at 0.45, i.e. low."""
+    values = [0.0] * 9 + [1.0]
+    s = to_percentile(_surf(values, pop=[1.0] * 10))
+    assert s.values[0] == pytest.approx(0.45)
+    assert np.all(s.values[:9] < 0.5)      # the block reads LOW
+    assert s.values[9] == pytest.approx(0.95)
+
+
+def test_percentile_cut_leaves_the_right_mass_above_it():
+    """The typology's accounting identity (docs §1.1) assumes cutting at q
+    leaves (1 - q) of the population above the cut. Mid-rank delivers that for a
+    tie-free surface; the inclusive rank shifted every cell up by its own weight."""
+    v = np.arange(1.0, 101.0)
+    pct = to_percentile(_surf(v, pop=np.ones_like(v))).values
+    for q in (0.5, 0.75):
+        assert (pct >= q).mean() == pytest.approx(1.0 - q, abs=0.01)
 
 
 def test_nan_cells_excluded():

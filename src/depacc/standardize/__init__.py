@@ -11,6 +11,7 @@ The guard is the contract — there is deliberately no bypass flag.
 
 from depacc.standardize.surface import (  # noqa: F401
     RegimeSurface,
+    max_tie_pop_share,
     require_percentile,
     require_same_standardised,
     require_standardised,

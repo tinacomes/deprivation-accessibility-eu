@@ -47,6 +47,11 @@ SUMMARY_FILES = (
     "equity_indices.csv",
     "equity_regressions.csv",
     "equity_vulnerability.csv",
+    # Per-covariate support behind every gradient in equity_regressions.csv.
+    # A coefficient without its n is not reviewable, and both of Hamburg's SES
+    # failures (a covariate on 0.2 % of cells, one on 2.6 % supplying the
+    # largest everyday gradient) were invisible until this table existed.
+    "equity_ses_coverage.csv",
     "accessibility_by_service.csv",
     "accessibility_by_regime.csv",
 )

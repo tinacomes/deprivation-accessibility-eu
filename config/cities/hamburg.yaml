@@ -88,7 +88,16 @@ equity:
     # EU census 1 km (broadcast; comparable with every other city)
     - "ses_census_share_u15"
     - "ses_census_share_ge65"
+    # EMP is voluntary under Reg. 2018/1799 and DE did not report it: the run of
+    # 25-07-2026 got it non-null on 295 of 176 137 cells and constant zero there.
+    # Kept in the list so the support gate reports it every run rather than
+    # letting the absence go unnoticed; it will not reach a regression.
     - "ses_census_employment_share"
+    # Ingested at 94.3 % coverage since the V3 census release and used nowhere
+    # until now. The only other EU-harmonised variable with SES flavour, hence
+    # the live candidate to replace the employment share as the cross-city
+    # `cityvector_ses_column` — a choice this run's gradient should inform.
+    - "ses_census_foreign_born_share"
     # Zensus 2022 100 m (Tier-2 depth)
     - "ses_age_share_u18"
     - "ses_age_share_ge65"
