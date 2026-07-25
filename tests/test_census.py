@@ -235,9 +235,9 @@ def test_join_keeps_layers_on_their_own_resolutions():
     rent = pd.DataFrame({"x": [4341050.0], "y": [2696050.0], "qm": [8.0]})
     out = join_ses_to_cells(cells, {"census": census, "net_rent": rent},
                             resolutions={"census": 1000, "net_rent": 100})
-    assert list(out["ses_census"]) == [0.25, 0.25]      # broadcast
-    assert out.loc[0, "ses_net_rent"] == 8.0            # native 100 m
-    assert np.isnan(out.loc[1, "ses_net_rent"])         # not broadcast
+    assert list(out["ses_census_share_ge65"]) == [0.25, 0.25]      # broadcast
+    assert out.loc[0, "ses_net_rent_qm"] == 8.0            # native 100 m
+    assert np.isnan(out.loc[1, "ses_net_rent_qm"])         # not broadcast
 
 
 def test_join_reads_resolution_from_layer_attrs():
@@ -245,7 +245,7 @@ def test_join_reads_resolution_from_layer_attrs():
     census = pd.DataFrame({"x": [4341500.0], "y": [2696500.0], "share_ge65": [0.25]})
     census.attrs["resolution_m"] = 1000
     out = join_ses_to_cells(cells, {"census": census})  # default is 100 m
-    assert out.loc[0, "ses_census"] == 0.25
+    assert out.loc[0, "ses_census_share_ge65"] == 0.25
 
 
 def test_ses_join_resolutions_flags_broadcast_layers():
@@ -258,7 +258,7 @@ def test_ses_join_resolutions_flags_broadcast_layers():
     assert prov["census"]["columns"] == ["ses_census_share_ge65",
                                          "ses_census_share_u15"]
     assert prov["net_rent"]["broadcast_to_analysis_grid"] is False
-    assert prov["net_rent"]["columns"] == ["ses_net_rent"]
+    assert prov["net_rent"]["columns"] == ["ses_net_rent_qm"]
 
 
 def _census_cfg(tmp_path, url: str) -> dict:
@@ -281,7 +281,7 @@ def test_census_layer_end_to_end_from_a_local_file(tmp_path, monkeypatch):
     src = tmp_path / "census.csv"
     src.write_text(_census_csv(), encoding="utf-8")
     monkeypatch.setattr("depacc.ingest.census.fetch_census_grid",
-                        lambda cfg, root: src)
+                        lambda cfg, root: {"grid": src})
     layer = census_layer(_census_cfg(tmp_path, "file://x"), tmp_path, _Bounds())
     # Only the derived shares survive (counts are dropped; population comes
     # from GHS-POP), and the far-away cell is clipped out.
@@ -315,7 +315,7 @@ def test_census_layer_returns_none_when_no_cell_overlaps(tmp_path, monkeypatch):
     src = tmp_path / "census.csv"
     src.write_text(_census_csv(), encoding="utf-8")
     monkeypatch.setattr("depacc.ingest.census.fetch_census_grid",
-                        lambda cfg, root: src)
+                        lambda cfg, root: {"grid": src})
 
     class _Elsewhere:
         total_bounds = np.array([0.0, 0.0, 1000.0, 1000.0])
@@ -454,3 +454,143 @@ def test_census_layer_unpacks_under_the_cache_root_not_data_raw(tmp_path):
     assert layer is not None and not layer.empty
     assert (tmp_path / "cache" / "census" / "ESTAT_Census_2021_V1-0.gpkg").exists()
     assert not (tmp_path / "raw" / "census" / "unpacked").exists()
+
+
+# ---------------------------------------------------------------------------
+# What the first real run actually found: the v1.0 GeoPackage's default layer
+# carries only ['GRD_ID', 'OBS_VALUE_T']. Two things follow — the codes are
+# wrapped as OBS_VALUE_<CODE>, and the other variables are not in that layer.
+# ---------------------------------------------------------------------------
+
+def test_code_matches_unwraps_obs_value_without_matching_partial_words():
+    from depacc.ingest.census import code_matches
+
+    assert code_matches("OBS_VALUE_T", "T")
+    assert code_matches("obs_value_y_ge65", "Y_GE65")
+    assert code_matches("ESTAT_OBS-VALUE-Y_LT15_2021_V1-0", "Y_LT15")
+    assert code_matches("T", "T")
+    # "T" must not be found inside another code, or every share collapses onto
+    # total population.
+    assert not code_matches("OBS_VALUE_Y_LT15", "T")
+    assert not code_matches("OBS_VALUE_EMP", "T")
+    assert not code_matches("OBS_VALUE_Y_GE65", "Y_LT15")
+
+
+def test_resolve_columns_unwraps_obs_value_codes(tmp_path):
+    path = tmp_path / "census.csv"
+    path.write_text(f"GRD_ID,OBS_VALUE_T,OBS_VALUE_Y_GE65\n{FULL_ID},1000,250\n",
+                    encoding="utf-8")
+    grid = load_census_grid(path, columns=["T", "Y_GE65"])
+    # Config codes name the columns even though the file wraps them.
+    assert list(grid.columns) == ["x", "y", "T", "Y_GE65"]
+    assert grid.loc[0, "T"] == 1000.0 and grid.loc[0, "Y_GE65"] == 250.0
+
+
+def test_resolve_columns_skips_an_ambiguous_code(tmp_path, capsys):
+    path = tmp_path / "census.csv"
+    path.write_text(f"GRD_ID,OBS_VALUE_T,COUNT_T\n{FULL_ID},1000,999\n",
+                    encoding="utf-8")
+    grid = load_census_grid(path, columns=["T"])
+    out = capsys.readouterr().out
+    assert "matches" in out and "skipping it" in out
+    assert "T" not in grid.columns  # never silently pick one of two
+
+
+def _write_per_variable_gpkg(path):
+    """A GeoPackage with ONE LAYER PER VARIABLE, as the census release appears
+    to be organised: each layer holds the grid id plus its own OBS_VALUE_*."""
+    gpd = pytest.importorskip("geopandas")
+    from shapely.geometry import box
+
+    cells = [(4341000, 2696000), (4342000, 2696000)]
+    for code, values in (("T", [1000, 500]), ("Y_LT15", [150, 50]),
+                         ("Y_GE65", [250, 150]), ("Y_15-64", [600, 300]),
+                         ("EMP", [420, 180])):
+        gpd.GeoDataFrame(
+            {"GRD_ID": [f"CRS3035RES1000mN{y}E{x}" for x, y in cells],
+             f"OBS_VALUE_{code}": values},
+            geometry=[box(x, y, x + 1000, y + 1000) for x, y in cells],
+            crs="EPSG:3035",
+        ).to_file(path, driver="GPKG", layer=f"ESTAT_OBS-VALUE-{code}_2021_V1-0")
+    return path
+
+
+def test_load_census_grid_merges_per_variable_gpkg_layers(tmp_path):
+    pytest.importorskip("geopandas")
+    gpkg = _write_per_variable_gpkg(tmp_path / "ESTAT_Census_2021_V1-0.gpkg")
+    grid = load_census_grid(gpkg, columns=["T", "Y_LT15", "Y_GE65", "Y_15-64", "EMP"])
+    # Every requested variable found its own layer and merged on the centroid.
+    assert set(grid.columns) == {"x", "y", "T", "Y_LT15", "Y_GE65", "Y_15-64", "EMP"}
+    assert len(grid) == 2
+    row = grid[grid.x == 4341500.0].iloc[0]
+    assert (row["T"], row["Y_GE65"], row["EMP"]) == (1000.0, 250.0, 420.0)
+
+    shares = share_columns(grid, SHARE_SPEC)
+    top = shares[shares.x == 4341500.0].iloc[0]
+    assert top.share_ge65 == 0.25 and top.share_u15 == 0.15
+    assert top.employment_share == pytest.approx(0.7)
+
+
+def test_load_census_grid_reports_layers_and_falls_back_to_the_default(
+        tmp_path, capsys):
+    """A code that names no layer must not be mistaken for a missing file: the
+    inventory is printed and the default layer read, so the run reports what the
+    release really contains."""
+    pytest.importorskip("geopandas")
+    gpkg = _write_per_variable_gpkg(tmp_path / "ESTAT_Census_2021_V1-0.gpkg")
+    grid = load_census_grid(gpkg, columns=["NOT_A_CODE"])
+    out = capsys.readouterr().out
+    assert "layer(s) in ESTAT_Census_2021_V1-0.gpkg" in out
+    assert "names a layer" in out
+    assert list(grid.columns) == ["x", "y"]  # nothing usable, reported not raised
+
+
+def test_census_layer_reports_the_variables_it_did_load(tmp_path, monkeypatch,
+                                                        capsys):
+    """The failure the first run hit: the file loads fine but publishes none of
+    the configured variables. The message must name what it DID find."""
+    src = tmp_path / "census.csv"
+    src.write_text(f"GRD_ID,OBS_VALUE_T\n{FULL_ID},1000\n", encoding="utf-8")
+    monkeypatch.setattr("depacc.ingest.census.fetch_census_grid",
+                        lambda cfg, root: {"grid": src})
+    assert census_layer(_census_cfg(tmp_path, "file://x"), tmp_path, _Bounds()) is None
+    out = capsys.readouterr().out
+    assert "no census shares could be derived" in out
+    assert "the loaded variables were ['T']" in out
+
+
+def test_fetch_census_grid_supports_per_variable_urls(tmp_path, monkeypatch):
+    """`sources.census.urls` mirrors sources.ses.urls, for a release that ships
+    one file per variable."""
+    from depacc.ingest.census import fetch_census_grid
+
+    calls = []
+
+    def _fake_download(url, dest, **kwargs):
+        calls.append(url)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text("x")
+        return dest
+
+    monkeypatch.setattr("depacc.ingest.census.download", _fake_download)
+    cfg = {"output": {"raw_root": "raw"}, "sources": {"census": {
+        "urls": {"T": "https://x.invalid/T.csv",
+                 "Y_GE65": "https://x.invalid/Y_GE65.csv"}}}}
+    paths = fetch_census_grid(cfg, tmp_path)
+    assert sorted(paths) == ["T", "Y_GE65"]
+    assert paths["T"].name == "T.csv"
+    assert len(calls) == 2
+
+
+def test_census_layer_merges_per_variable_files(tmp_path, monkeypatch):
+    files = {}
+    for code, value in (("T", 1000), ("Y_GE65", 250)):
+        p = tmp_path / f"{code}.csv"
+        p.write_text(f"GRD_ID,OBS_VALUE_{code}\n{FULL_ID},{value}\n", encoding="utf-8")
+        files[code] = p
+    monkeypatch.setattr("depacc.ingest.census.fetch_census_grid",
+                        lambda cfg, root: files)
+    layer = census_layer(_census_cfg(tmp_path, "file://x"), tmp_path, _Bounds())
+    # Only share_ge65 is derivable from T + Y_GE65; the rest skip cleanly.
+    assert list(layer.columns) == ["x", "y", "share_ge65"]
+    assert layer.loc[0, "share_ge65"] == 0.25

@@ -60,18 +60,28 @@ sources:
     provider: "eurostat_census_2021_1km"
     landing_page: "https://ec.europa.eu/eurostat/web/gisco/geodata/population-distribution/population-grids"
     url: "https://gisco-services.ec.europa.eu/census/2021/Eurostat_Census-GRID_2021_V1-0.zip"
+    verify: TODO
     note: >-
-      URL CONFIRMED by download. The archive contains
-      ESTAT_Census_2021_V1-0.gpkg (the attribute table), a total-population
+      URL CONFIRMED by download; archive contents confirmed by run. It holds
+      ESTAT_Census_2021_V1-0.gpkg (1.27 GB extracted), a total-population
       GeoTIFF, the ESMS metadata PDF, a read.me and a nested INSPIRE country
-      delivery — so the tabular data is a GeoPackage, NOT a CSV; the loader
-      picks it by extension preference and extracts it once. Still to confirm:
-      the variable codes under `shares` below (see their own verify: TODO) and
-      whether the later release under
-      https://gisco-services.ec.europa.eu/pub/population-grid/2021/ supersedes
-      v1.0. The provenance sidecar records the URL + SHA-256 actually fetched,
-      and a failed download degrades to "no census layer" with a warning rather
-      than killing the run.
+      delivery — so the table is a GeoPackage, not a CSV.
+      OPEN ISSUE (verify: TODO): that GeoPackage's DEFAULT layer carries only
+      ['GRD_ID', 'OBS_VALUE_T'] — total population, which we already have at
+      100 m from GHS-POP. The age/employment/birthplace variables are therefore
+      either (a) further LAYERS of the same GeoPackage, which the loader now
+      enumerates, matches against the codes below and merges on the cell
+      centroid, or (b) separate per-variable downloads, in which case list them
+      under `urls` (a {code: url} mapping, exactly like sources.ses.urls) from
+      https://gisco-services.ec.europa.eu/pub/population-grid/2021/v1.0/data/.
+      Determine which with:
+        python -c "import pyogrio,sys; print(pyogrio.list_layers(sys.argv[1]))" \
+          data/cache/census/ESTAT_Census_2021_V1-0.gpkg
+      A run prints the same inventory. Codes are matched through the GISCO
+      OBS_VALUE_ wrapping, so `T` below resolves OBS_VALUE_T and the codes stay
+      as the regulation names them. A failed download or an unusable file
+      degrades to "no census layer" with a warning that names the variables it
+      DID load, never a crash.
     licence: "CC-BY 4.0 — © European Union, Eurostat/GISCO (census 2021 grid)"
     resolution_m: 1000
     id_column: "GRD_ID"
@@ -79,9 +89,15 @@ sources:
     # loader pick by extension: .gpkg > .geoparquet/.parquet > .csv, largest of
     # that kind, never the raster or the documentation members.
     member: null
-    # GeoPackage layer name, when the file carries more than one; null -> the
-    # driver's default (first) layer.
+    # GeoPackage layer name. null lets the loader enumerate the layers and, when
+    # there are several, read the ones whose names carry a code used by `shares`
+    # below (a per-variable GeoPackage), merging them on the cell centroid.
+    # Setting it pins one layer and disables that matching.
     layer: null
+    # Per-variable downloads, {code: url}, for a release that ships one file per
+    # variable instead of a wide table — mirrors sources.ses.urls. Merged with
+    # whatever `url` above provides, on the cell centroid. See the note.
+    urls: {}
     # Vulnerability shares derived from the raw counts. Numerator and
     # denominator are both LISTS so a share can sum published categories and
     # pick its own base. Variable codes per Reg. 2018/1799 — verify: TODO.

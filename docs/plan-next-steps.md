@@ -298,10 +298,29 @@ cities point it at their rent grid. The covariate actually used is recorded as
 > distributions. The extraction goes under `output.cache_root`, **not**
 > `data/raw`: the workflows cache `data/raw` wholesale per city, so an unpacked
 > continental GeoPackage there would be stored once per city and could evict the
-> far more expensive OSM extracts. Still unverified: the **variable codes**
-> (`T`, `Y_LT15`, `Y_GE65`, `EMP`, `Y_15-64`, `EU_OTH`, `OTH`) — the loader
-> prints the GeoPackage's real column list, and each share whose columns are
-> absent is skipped by name, so the next run resolves this. **Confirm before
+> far more expensive OSM extracts.
+>
+> **Still open — where the non-population variables live.** The next run got
+> through the download and the GeoPackage (1.27 GB extracted) and reported its
+> default layer as `['GRD_ID', 'OBS_VALUE_T']`: total population only, which we
+> already have at 100 m from GHS-POP. Two possibilities, both now handled
+> without another code change: the other variables are further **layers** of the
+> same GeoPackage — the loader enumerates layers, matches their names against
+> the configured codes and merges the matches on the cell centroid — or they are
+> **separate per-variable downloads**, in which case they go under
+> `sources.census.urls` as a `{code: url}` mapping (mirroring
+> `sources.ses.urls`) and are merged the same way. Which one applies is a single
+> command:
+>
+> ```
+> python -c "import pyogrio,sys; print(pyogrio.list_layers(sys.argv[1]))" \
+>   data/cache/census/ESTAT_Census_2021_V1-0.gpkg
+> ```
+>
+> Codes are also matched through the GISCO `OBS_VALUE_` wrapping (`T` resolves
+> `OBS_VALUE_T`), with a guard that refuses an ambiguous match rather than
+> collapsing several shares onto total population. **Until the age variables
+> actually load, no city has a census vulnerability layer — confirm before
 > publishing any census-based number.**
 
 **D.2 — DE Zensus for Hamburg.** Already landed in `e541b0c`/`d3c92a4`: the six
@@ -329,8 +348,36 @@ resolution token (`sources.ses.resolution_m`, with per-layer `resolutions` /
 than guessing; the resolution is re-derived from the loaded file's own
 `x_mp_<res>` / `GITTER_ID_<res>` columns, cross-checked against the config, and
 used for the join (the data wins over the config promise); and
-`join_ses_to_cells` warns when a layer matches no analysis cell — or fewer than
-half — instead of yielding a silent empty covariate.
+`join_ses_to_cells` reports coverage instead of yielding a silent empty
+covariate.
+
+**…and the member was only half of it.** With the fix in place the next run
+loaded the right members — `Zensus2022_Eigentuemerquote_100m-Gitter.csv`
+(2 525 440 cells) and `Zensus2022_Leerstandsquote_100m-Gitter.csv` (2 566 712) —
+and **both still matched no analysis cell**, while `net_rent` (25.3 %) and
+`household_size` (44.5 %) joined normally off the same grid. Two follow-ups
+landed for this:
+
+- The coverage diagnostic conflated two different failures. It now reports
+  **grid coverage** (`key.isin(layer index)`) separately from **value presence**
+  (a covered cell whose value is withheld), and prints the value columns that
+  were actually joined — so the next run says whether these layers miss the grid
+  or are simply suppressed across the whole FUA, rather than leaving it to
+  inference.
+- The joined column name no longer depends on how many value columns a release
+  publishes. It was `ses_<layer>_<col>` for a multi-column layer and
+  `ses_<layer>` for a single-column one, so dropping the
+  `werterlaeuternde_Zeichen` annotation column silently renamed
+  `ses_net_rent_durchschnMieteQM` to `ses_net_rent` — breaking every config key
+  that named it. Now **always** `ses_<layer>_<col>`. The same run showed the
+  consequence: stale and fresh spellings coexisted in the cached
+  `cells.parquet` (`ses_net_rent` beside `ses_net_rent_durchschnMieteQM`,
+  `ses_household_size_werterlaeuternde_Zeichen` from before the annotation
+  filter), and since `equity.ses_covariates` defaults to *every* `ses_*` column,
+  the regressions would have run on last week's data under names nothing
+  produces any more. Ingest now drops every `ses_*` column from the cached cells
+  before re-joining, and the annotation filter also catches umlaut/`_Zeichen`
+  spellings.
 
 **D.3 — new outputs.** Concentration index, SES gradient regressions,
 `slope_ses_*` and vulnerability-stratified deprivation are all live.

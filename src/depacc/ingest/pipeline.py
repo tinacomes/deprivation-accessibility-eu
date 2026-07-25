@@ -214,6 +214,17 @@ def run_ingest(cfg: dict, city: str, root: Path) -> None:
                   f"({resolutions[name]:g} m, {len(layers[name])} cells)")
 
     if layers:
+        # Drop every ses_* column carried in from a cached cells.parquet before
+        # re-joining. A previous run's columns are not harmless: a release that
+        # changes its published columns (or a fix that filters an annotation
+        # field) renames them, so stale and fresh names coexist — and
+        # equity.ses_covariates defaults to EVERY ses_ column, which would then
+        # regress on last week's data under a name nothing produces any more.
+        stale = [c for c in cells.columns if c.startswith("ses_")]
+        if stale:
+            print(f"dropping {len(stale)} ses_* column(s) from the cached cells "
+                  f"before re-joining: {stale}")
+            cells = cells.drop(columns=stale)
         cells = join_ses_to_cells(cells, layers, resolutions=resolutions)
         cells = _derive_ses_columns(cfg, cells)
         cells.to_parquet(cells_path)

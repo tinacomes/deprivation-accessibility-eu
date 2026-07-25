@@ -122,11 +122,11 @@ def test_join_ses_to_cells_snaps_to_100m_grid():
     out = join_ses_to_cells(cells, {"net_rent": rent})
 
     # Single-value layer -> flat 'ses_<name>' column (no per-column suffix).
-    assert "ses_net_rent" in out.columns
-    assert out.loc[0, "ses_net_rent"] == 8.0
-    assert out.loc[1, "ses_net_rent"] == 9.5
+    assert "ses_net_rent_Nettokaltmiete" in out.columns
+    assert out.loc[0, "ses_net_rent_Nettokaltmiete"] == 8.0
+    assert out.loc[1, "ses_net_rent_Nettokaltmiete"] == 9.5
     # Cell with no SES cell in the layer -> NaN, never a wrong neighbour.
-    assert np.isnan(out.loc[2, "ses_net_rent"])
+    assert np.isnan(out.loc[2, "ses_net_rent_Nettokaltmiete"])
     # Original columns are preserved.
     assert list(out["population"]) == [100.0, 50.0, 10.0]
 
@@ -146,7 +146,7 @@ def test_join_ses_to_cells_dedupes_layer_grid_collisions():
     layer = pd.DataFrame({"x": [4010.0, 4090.0], "y": [2010.0, 2090.0],
                           "v": [1.0, 2.0]})
     out = join_ses_to_cells(cells, {"layer": layer})
-    assert out.loc[0, "ses_layer"] == 1.0
+    assert out.loc[0, "ses_layer_v"] == 1.0
 
 
 def test_age_group_shares_over_explicit_population():
@@ -276,8 +276,8 @@ def test_join_warns_when_a_layer_matches_no_cell(capsys):
     cells = pd.DataFrame({"cell_id": ["a"], "x": [4050.0], "y": [2050.0]})
     coarse = pd.DataFrame({"x": [4004500.0], "y": [2004500.0], "v": [7.3]})
     out = join_ses_to_cells(cells, {"vacancy_rate": coarse})
-    assert np.isnan(out.loc[0, "ses_vacancy_rate"])
-    assert "matched NO analysis cell" in capsys.readouterr().out
+    assert np.isnan(out.loc[0, "ses_vacancy_rate_v"])
+    assert "covers NO analysis cell" in capsys.readouterr().out
 
 
 def test_resolution_token_round_trips():

@@ -135,22 +135,28 @@ def load_inspire_csv_zip(path: Path, value_columns: list[str] | None = None,
             f"(column '{xcol}') but sources.ses declares "
             f"{resolution_token(resolution_m)} — joining it would silently "
             f"produce empty ses_ columns. Fix the resolution or the member.")
-    # Every Zensus theme carries a `werterlaeuternde_Zeichen` field — an
-    # annotation symbol explaining suppressed/zero values, NOT data. Drop it so
-    # it never becomes an all-NaN ses_ column that pollutes the covariate set.
-    keep = value_columns or [
-        c for c in df.columns
-        if c not in (xcol, ycol)
-        and not c.upper().startswith("GITTER")
-        and "werterlaeuternde" not in c.lower()
-    ]
+    keep = value_columns or [c for c in df.columns
+                             if c not in (xcol, ycol) and not _is_annotation(c)]
     out = df[[xcol, ycol, *keep]].rename(columns={xcol: "x", ycol: "y"})
     # Zensus files use '–' / empty for suppressed cells -> NaN.
     for c in keep:
         out[c] = pd.to_numeric(out[c], errors="coerce")
     out.attrs["resolution_m"] = float(found or resolution_m or 100.0)
     out.attrs["member"] = name
+    print(f"  {path.name}:{name} -> value columns {keep}")
     return out
+
+
+def _is_annotation(column: str) -> bool:
+    """Non-data columns of a Zensus theme file: the grid id and the
+    ``werterlaeuternde_Zeichen`` annotation symbol explaining suppressed/zero
+    values. Matched loosely — releases spell the annotation with and without
+    the umlaut transliteration — so it never becomes an all-NaN ses_ column
+    that pollutes the covariate set."""
+    low = column.lower()
+    return (column.upper().startswith("GITTER")
+            or "werterl" in low
+            or low.endswith("_zeichen"))
 
 
 def age_group_shares(df: pd.DataFrame, bands: dict[str, list[str]],
@@ -218,6 +224,12 @@ def join_ses_to_cells(
     per layer is returned by :func:`ses_join_resolutions` for the provenance
     sidecar.
 
+    Joined columns are ALWAYS named ``ses_<layer>_<column>``. The name must not
+    depend on how many value columns a release happens to publish: when the
+    suffix was conditional on that, dropping one annotation column silently
+    renamed ``ses_net_rent_durchschnMieteQM`` to ``ses_net_rent``, breaking
+    every config that referenced it.
+
     An analysis cell with no covering layer cell gets NaN — never a nearest
     neighbour's value.
     """
@@ -229,25 +241,45 @@ def join_ses_to_cells(
         values = layer.drop(columns=["x", "y"]).set_index(lkey)
         values = values[~values.index.duplicated(keep="first")]
         joined = values.reindex(key)
-        matched = float(joined.notna().any(axis=1).mean()) if len(joined) else 0.0
-        if matched == 0.0:
-            # Every join key missed. The usual cause is a resolution mismatch
-            # (a 1 km member keyed on the 100 m grid), and the symptom used to
-            # be an all-NaN covariate that quietly dropped out of the
-            # regressions and produced an empty vulnerability stratum.
-            print(f"WARNING: SES layer '{name}' matched NO analysis cell at "
-                  f"{res:g} m resolution (member "
-                  f"{layer.attrs.get('member', '?')}) — the resulting ses_"
-                  f"{name}* columns are entirely empty; check the layer's grid "
-                  f"resolution.")
-        elif matched < 0.5:
-            print(f"NOTE: SES layer '{name}' covers {matched:.1%} of analysis "
-                  f"cells at {res:g} m (suppression or partial extent).")
+        _report_join(name, layer, res, key, values, joined)
         for col in values.columns:
-            out[f"ses_{name}_{col}" if len(values.columns) > 1 else f"ses_{name}"] = (
-                joined[col].to_numpy()
-            )
+            out[f"ses_{name}_{col}"] = joined[col].to_numpy()
     return out
+
+
+def _report_join(name: str, layer: pd.DataFrame, res: float, key: pd.Series,
+                 values: pd.DataFrame, joined: pd.DataFrame) -> None:
+    """Diagnose a join, keeping the two failure modes apart.
+
+    A grid MISS (no layer cell covers the analysis cell) usually means a
+    resolution or projection mismatch and is a bug; SUPPRESSION (the cell is
+    covered but the value is withheld) is normal for the confidentiality-heavy
+    themes and merely limits that covariate's support. Both used to look like a
+    silently all-NaN column, so they are now reported separately with the value
+    columns that were actually joined.
+    """
+    member = layer.attrs.get("member", "?")
+    if values.empty or not len(joined):
+        print(f"WARNING: SES layer '{name}' ({member}) contributed NO value "
+              f"columns — every column was filtered as grid id / annotation. "
+              f"Check the file's header.")
+        return
+    covered = float(key.isin(values.index).mean())
+    with_value = float(joined.notna().any(axis=1).mean())
+    cols = list(values.columns)
+    if covered == 0.0:
+        print(f"WARNING: SES layer '{name}' ({member}) covers NO analysis cell "
+              f"at {res:g} m — not one join key matched, so ses_{name}_* is "
+              f"entirely empty. This is a grid mismatch (resolution or CRS), "
+              f"not suppression. Columns: {cols}")
+    elif with_value == 0.0:
+        print(f"WARNING: SES layer '{name}' ({member}) covers {covered:.1%} of "
+              f"analysis cells at {res:g} m but every joined value is missing — "
+              f"the theme is fully suppressed here, or {cols} parsed to NaN.")
+    else:
+        print(f"SES layer '{name}' joined: {covered:.1%} of analysis cells "
+              f"covered, {with_value:.1%} carry a value at {res:g} m; "
+              f"columns {cols}")
 
 
 def _layer_resolution(name: str, layer: pd.DataFrame, default: float,
@@ -269,11 +301,11 @@ def ses_join_resolutions(
     out = {}
     for name, layer in layers.items():
         cols = [c for c in layer.columns if c not in ("x", "y")]
-        prefix = f"ses_{name}"
         res = float(_layer_resolution(name, layer, resolution_m, resolutions))
         out[name] = {
             "resolution_m": res,
-            "columns": [f"{prefix}_{c}" for c in cols] if len(cols) > 1 else [prefix],
+            "member": layer.attrs.get("member"),
+            "columns": [f"ses_{name}_{c}" for c in cols],
             # Coarser than the 100 m analysis grid -> the value is replicated
             # over every analysis cell inside it (no within-cell variation).
             "broadcast_to_analysis_grid": res > 100.0,
