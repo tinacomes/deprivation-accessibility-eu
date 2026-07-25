@@ -10,6 +10,7 @@ import zipfile
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from depacc.ingest.pipeline import _derive_ses_columns
 from depacc.ingest.ses import (
@@ -190,3 +191,99 @@ def test_age_group_shares_treats_suppressed_as_zero():
     # the whole share to NaN (min_count=1 keeps a partial sum).
     assert out.loc[0, "share_u15"] == 0.0
     assert out.loc[0, "share_ge65"] == 0.30
+
+
+# ---------------------------------------------------------------------------
+# A destatis "Gitterdaten" zip bundles the SAME theme at 10 km, 1 km and 100 m
+# plus a readme. Taking "the first .csv" silently loaded a coarser grid, whose
+# every 100 m join key missed -> an all-NaN covariate that dropped out of the
+# regressions and produced an empty vulnerability stratum. Pin the selection.
+# ---------------------------------------------------------------------------
+
+def _multi_resolution_zip(theme: str = "Leerstandsquote_in_Gitterzellen") -> bytes:
+    """A realistic destatis archive: three grids (coarsest FIRST, as the old
+    'first .csv' pick would have taken) plus the readme."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr(f"{theme}-Datenzusatzbeschreibung.csv",
+                    "Merkmal;Beschreibung\nLeerstandsquote;Anteil in Prozent\n")
+        for token, x, y in (("10km", 4045000, 2045000),
+                            ("1km", 4004500, 2004500),
+                            ("100m", 4050, 2050)):
+            zf.writestr(
+                f"{theme}-{token}-Gitter.csv",
+                f"GITTER_ID_{token};x_mp_{token};y_mp_{token};Leerstandsquote\n"
+                f"CRS3035RES{token}N{y}E{x};{x};{y};7,3\n",
+            )
+    return buf.getvalue()
+
+
+def test_load_inspire_csv_zip_selects_the_100m_member(tmp_path):
+    zpath = tmp_path / "vacancy.zip"
+    zpath.write_bytes(_multi_resolution_zip())
+
+    df = load_inspire_csv_zip(zpath, resolution_m=100)
+    assert df.attrs["member"].endswith("-100m-Gitter.csv")
+    assert df.attrs["resolution_m"] == 100.0
+    # The 100 m row, not the 10 km one the old "first .csv" pick would take.
+    assert (df.loc[0, "x"], df.loc[0, "y"]) == (4050, 2050)
+    assert df.loc[0, "Leerstandsquote"] == 7.3
+    # The Datenzusatzbeschreibung readme never becomes data.
+    assert list(df.columns) == ["x", "y", "Leerstandsquote"]
+
+
+def test_load_inspire_csv_zip_can_select_a_coarser_member(tmp_path):
+    zpath = tmp_path / "vacancy.zip"
+    zpath.write_bytes(_multi_resolution_zip())
+    df = load_inspire_csv_zip(zpath, resolution_m=1000)
+    assert df.attrs["member"].endswith("-1km-Gitter.csv")
+    assert df.attrs["resolution_m"] == 1000.0
+    # "1km" must not be confused with "10km".
+    assert (df.loc[0, "x"], df.loc[0, "y"]) == (4004500, 2004500)
+
+
+def test_load_inspire_csv_zip_refuses_to_guess_between_grids(tmp_path):
+    zpath = tmp_path / "vacancy.zip"
+    zpath.write_bytes(_multi_resolution_zip())
+    with pytest.raises(ValueError, match="expected exactly 1"):
+        load_inspire_csv_zip(zpath)  # no resolution, no member -> no guessing
+
+
+def test_load_inspire_csv_zip_rejects_a_resolution_mismatch(tmp_path):
+    """An explicit member pointing at the wrong grid must fail loudly, not join
+    to nothing: this is the guard on the failure mode that emptied the
+    ownership/vacancy covariates."""
+    zpath = tmp_path / "vacancy.zip"
+    zpath.write_bytes(_multi_resolution_zip())
+    with pytest.raises(ValueError, match="but sources.ses declares"):
+        load_inspire_csv_zip(zpath, member="1km", resolution_m=100)
+
+
+def test_load_inspire_csv_zip_still_reads_a_single_csv_archive(tmp_path):
+    header = "GITTER_ID_100m;x_mp_100m;y_mp_100m;Einwohner"
+    zpath = tmp_path / "pop.zip"
+    zpath.write_bytes(_make_inspire_zip(
+        "CRS3035RES100mN2000E4000;4050;2050;123", header).getvalue())
+    df = load_inspire_csv_zip(zpath)  # unambiguous -> no selector needed
+    assert df.loc[0, "Einwohner"] == 123
+    # Resolution inferred from the file's own columns, for the join.
+    assert df.attrs["resolution_m"] == 100.0
+
+
+def test_join_warns_when_a_layer_matches_no_cell(capsys):
+    # A 1 km layer keyed on the 100 m grid: every key misses. This used to pass
+    # silently and produce an empty ses_ column.
+    cells = pd.DataFrame({"cell_id": ["a"], "x": [4050.0], "y": [2050.0]})
+    coarse = pd.DataFrame({"x": [4004500.0], "y": [2004500.0], "v": [7.3]})
+    out = join_ses_to_cells(cells, {"vacancy_rate": coarse})
+    assert np.isnan(out.loc[0, "ses_vacancy_rate"])
+    assert "matched NO analysis cell" in capsys.readouterr().out
+
+
+def test_resolution_token_round_trips():
+    from depacc.ingest.ses import resolution_token
+
+    assert resolution_token(100) == "100m"
+    assert resolution_token(200) == "200m"
+    assert resolution_token(1000) == "1km"
+    assert resolution_token(10000) == "10km"

@@ -288,7 +288,28 @@ per-layer zensus2022 URLs are in `config/cities/hamburg.yaml`, the SES fetch is
 gated on `sources.ses.urls` (not the engine), and `tests/test_ses.py` exercises
 `join_ses_to_cells` on a synthetic INSPIRE CSV. This iteration adds
 `sources.ses.resolution_m: 100` so the fine grid is explicitly *not* broadcast,
-and a collision guard if a national layer is ever named `census`.
+a collision guard if a national layer is ever named `census`, and the
+member-selection fix below.
+
+**Bug found in the persisted results: two Zensus layers joined to nothing.**
+`cities/hamburg/equity_regressions.csv` on `depacc-results` carries gradients
+for only three SES covariates — `ses_ownership_rate_Eigentuemerquote` and
+`ses_vacancy_rate_Leerstandsquote` are absent, and
+`cities/hamburg/equity_vulnerability.csv` has a dead `low_ownership` row
+(`pop_share = 0.0`, every metric NaN). Cause: each destatis "Gitterdaten" zip
+bundles the same theme at **10 km, 1 km and 100 m** plus a
+`Datenzusatzbeschreibung` readme, and `load_inspire_csv_zip` took
+`next(... endswith(".csv"))` — the first member in archive order. For those two
+themes that is a coarser grid, so every 100 m join key missed and the columns
+arrived all-NaN, then dropped out of the univariate regressions and emptied the
+stratum without a single error. Fixed three ways: the member is selected by
+resolution token (`sources.ses.resolution_m`, with per-layer `resolutions` /
+`members` overrides) and a multi-grid archive with no selector now raises rather
+than guessing; the resolution is re-derived from the loaded file's own
+`x_mp_<res>` / `GITTER_ID_<res>` columns, cross-checked against the config, and
+used for the join (the data wins over the config promise); and
+`join_ses_to_cells` warns when a layer matches no analysis cell — or fewer than
+half — instead of yielding a silent empty covariate.
 
 **D.3 — new outputs.** Concentration index, SES gradient regressions,
 `slope_ses_*` and vulnerability-stratified deprivation are all live.

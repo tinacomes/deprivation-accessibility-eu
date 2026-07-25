@@ -192,15 +192,26 @@ def run_ingest(cfg: dict, city: str, root: Path) -> None:
     ses_cfg = cfg.get("sources", {}).get("ses", {}) or {}
     if ses_cfg.get("urls"):
         layer_zips = fetch_ses_layers(cfg, root)
+        # A destatis "Gitterdaten" zip bundles the SAME theme at 10 km, 1 km and
+        # 100 m, so the member is selected by resolution (or by an explicit
+        # per-layer substring under sources.ses.members) — never "first .csv".
+        # Per-layer resolution overrides handle a theme published only coarser.
+        members = ses_cfg.get("members") or {}
+        per_layer_res = ses_cfg.get("resolutions") or {}
+        default_res = float(ses_cfg.get("resolution_m", 100))
         for name, p in layer_zips.items():
             if name in layers:
                 print(f"WARNING: SES layer '{name}' collides with an already "
                       f"joined layer; rename it in sources.ses.layers")
                 continue
-            layers[name] = load_inspire_csv_zip(p)
-            resolutions[name] = float(ses_cfg.get("resolution_m", 100))
-        if layer_zips:
-            print(f"SES layers loaded: {sorted(layer_zips)}")
+            want = float(per_layer_res.get(name, default_res))
+            layers[name] = load_inspire_csv_zip(
+                p, member=members.get(name), resolution_m=want)
+            # The loader reports the resolution it read off the file; trust that
+            # over the config so the join always keys on the real grid.
+            resolutions[name] = float(layers[name].attrs.get("resolution_m", want))
+            print(f"SES layer '{name}': {layers[name].attrs.get('member', '?')} "
+                  f"({resolutions[name]:g} m, {len(layers[name])} cells)")
 
     if layers:
         cells = join_ses_to_cells(cells, layers, resolutions=resolutions)

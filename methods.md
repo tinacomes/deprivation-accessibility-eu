@@ -424,6 +424,20 @@ Both levels are joined by the same mechanism, each keyed on its own grid
 — plus a `broadcast_to_analysis_grid` flag — is written to
 `data/derived/<city>/ses_resolutions.json`.
 
+**Selecting the right grid out of a national archive.** Each destatis
+"Gitterdaten" zip bundles the *same* theme at 10 km, 1 km and 100 m (plus a
+`Datenzusatzbeschreibung` readme), e.g.
+`Leerstandsquote_in_Gitterzellen-100m-Gitter.csv`. The member is therefore
+chosen by resolution token (`sources.ses.resolution_m`, with per-layer
+`resolutions` / `members` overrides), the resolution is re-derived from the
+loaded file's own coordinate columns (`x_mp_100m`) and cross-checked against
+what the config asked for, and a layer that matches zero analysis cells is
+reported. Taking "the first CSV in the archive" is what silently loaded a
+coarser grid for the ownership and vacancy layers in the first Hamburg run:
+every 100 m join key missed, the covariates arrived all-NaN, dropped out of the
+gradient regressions, and left the `low_ownership` stratum with a zero
+population share.
+
 **Levels are never mixed in one cross-city comparison.** Age is comparable
 everywhere but *only at one level*: the DE Zensus cut is under-**18** at 100 m
 while the census cut is under-**15** at 1 km, so those are different variables

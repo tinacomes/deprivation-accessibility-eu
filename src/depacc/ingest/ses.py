@@ -9,16 +9,80 @@ returns values on EPSG:3035 cell centroids for joining onto the GHS grid.
 Layer download URLs live in the city config under `sources.ses.urls`
 (zensus2022.de publishes versioned zip names; record the exact URL used —
 the provenance sidecar captures it for reproducibility).
+
+**One Zensus zip holds SEVERAL grids.** Each destatis "Gitterdaten" archive
+bundles the same theme at 10 km, 1 km and 100 m (plus a
+`Datenzusatzbeschreibung` readme), e.g.
+``Leerstandsquote_in_Gitterzellen-100m-Gitter.csv`` beside the 1 km and 10 km
+files. The member is therefore selected by RESOLUTION, never by "the first
+.csv in the archive" — and the resolution is then re-derived from the chosen
+file's own column names (`x_mp_100m`) and cross-checked against what the
+config asked for, so a wrong pick fails loudly instead of producing an
+all-NaN covariate. That silent failure is exactly what happened to the
+ownership/vacancy layers in the first Hamburg run: a coarser member was
+loaded, every 100 m join key missed, and the columns arrived empty.
 """
 
 from __future__ import annotations
 
+import re
 import zipfile
 from pathlib import Path
 
 import pandas as pd
 
 from depacc.provenance import download
+
+# Grid-resolution token as it appears in Zensus member names and coordinate
+# column suffixes: 100 -> "100m", 1000 -> "1km", 10000 -> "10km".
+_RES_SUFFIX_RE = re.compile(r"(?<![0-9])(?P<n>[0-9]+)(?P<unit>km|m)\b", re.IGNORECASE)
+
+
+def resolution_token(resolution_m: float) -> str:
+    """Member/column token for a grid resolution in metres."""
+    res = int(round(float(resolution_m)))
+    return f"{res // 1000}km" if res >= 1000 and res % 1000 == 0 else f"{res}m"
+
+
+def _token_resolution_m(token: str) -> float | None:
+    m = _RES_SUFFIX_RE.search(token)
+    if not m:
+        return None
+    return float(m.group("n")) * (1000.0 if m.group("unit").lower() == "km" else 1.0)
+
+
+def select_grid_member(names: list[str], *, member: str | None = None,
+                       resolution_m: float | None = None,
+                       archive: str = "") -> str:
+    """Pick the CSV member of a Zensus-style archive.
+
+    ``member`` (a case-insensitive substring) wins; otherwise the resolution
+    token — ``resolution_m=100`` matches ``…-100m-Gitter.csv`` and not the
+    1 km / 10 km siblings. With neither, a single-CSV archive is unambiguous
+    and anything else raises rather than guessing: picking the first member of
+    a multi-resolution archive is how a whole layer silently joins to nothing.
+    """
+    csvs = [n for n in names if n.lower().endswith(".csv")]
+    if not csvs:
+        raise ValueError(f"No .csv member in {archive or 'archive'}; members: {names}")
+    if member:
+        hits = [n for n in csvs if member.lower() in n.lower()]
+        criterion = f"member substring {member!r}"
+    elif resolution_m is not None:
+        token = resolution_token(resolution_m)
+        hits = [n for n in csvs
+                if re.search(rf"(?<![0-9]){re.escape(token)}\b", n, re.IGNORECASE)]
+        criterion = f"resolution {token}"
+    else:
+        hits, criterion = csvs, "the only .csv"
+    if len(hits) != 1:
+        raise ValueError(
+            f"{criterion} selects {len(hits)} of {len(csvs)} CSVs in "
+            f"{archive or 'the archive'} — expected exactly 1. A Zensus zip "
+            f"bundles 10 km / 1 km / 100 m grids, so set sources.ses.resolution_m "
+            f"(or sources.ses.members.<layer>) to disambiguate. Candidates: {csvs}"
+        )
+    return hits[0]
 
 
 def fetch_ses_layers(cfg: dict, root: Path) -> dict[str, Path]:
@@ -36,16 +100,41 @@ def fetch_ses_layers(cfg: dict, root: Path) -> dict[str, Path]:
     return out
 
 
-def load_inspire_csv_zip(path: Path, value_columns: list[str] | None = None) -> pd.DataFrame:
-    """Load a Zensus-2022-style INSPIRE 100 m grid CSV (semicolon-separated,
-    German decimal commas) from a zip. Returns a frame with x, y (EPSG:3035
-    cell centroids) plus the value columns."""
+def load_inspire_csv_zip(path: Path, value_columns: list[str] | None = None,
+                         *, member: str | None = None,
+                         resolution_m: float | None = None) -> pd.DataFrame:
+    """Load a Zensus-2022-style INSPIRE grid CSV (semicolon-separated, German
+    decimal commas) from a zip. Returns a frame with x, y (EPSG:3035 cell
+    centroids) plus the value columns, and ``attrs["resolution_m"]`` set to the
+    grid resolution read off the file itself — which is what
+    :func:`join_ses_to_cells` keys on, so the join follows the data rather than
+    a config promise.
+
+    The member is chosen by :func:`select_grid_member` (explicit ``member``
+    substring, else ``resolution_m``); a multi-resolution archive with neither
+    raises. When ``resolution_m`` is given it is also cross-checked against the
+    resolution the loaded file's own coordinate columns declare, so selecting
+    the wrong grid can never pass silently.
+    """
     with zipfile.ZipFile(path) as zf:
-        name = next(n for n in zf.namelist() if n.lower().endswith(".csv"))
+        name = select_grid_member(zf.namelist(), member=member,
+                                  resolution_m=resolution_m,
+                                  archive=str(path))
         with zf.open(name) as fh:
             df = pd.read_csv(fh, sep=";", decimal=",", low_memory=False)
     xcol = next(c for c in df.columns if c.lower().startswith("x_mp"))
     ycol = next(c for c in df.columns if c.lower().startswith("y_mp"))
+    # The coordinate column carries the grid it belongs to (`x_mp_100m`), as
+    # does the id column (`GITTER_ID_100m`) — trust the FILE over the config.
+    found = _token_resolution_m(xcol) or next(
+        (_token_resolution_m(c) for c in df.columns
+         if c.upper().startswith("GITTER") and _token_resolution_m(c)), None)
+    if resolution_m is not None and found is not None and found != float(resolution_m):
+        raise ValueError(
+            f"{path.name}:{name} is a {resolution_token(found)} grid "
+            f"(column '{xcol}') but sources.ses declares "
+            f"{resolution_token(resolution_m)} — joining it would silently "
+            f"produce empty ses_ columns. Fix the resolution or the member.")
     # Every Zensus theme carries a `werterlaeuternde_Zeichen` field — an
     # annotation symbol explaining suppressed/zero values, NOT data. Drop it so
     # it never becomes an all-NaN ses_ column that pollutes the covariate set.
@@ -59,6 +148,8 @@ def load_inspire_csv_zip(path: Path, value_columns: list[str] | None = None) -> 
     # Zensus files use '–' / empty for suppressed cells -> NaN.
     for c in keep:
         out[c] = pd.to_numeric(out[c], errors="coerce")
+    out.attrs["resolution_m"] = float(found or resolution_m or 100.0)
+    out.attrs["member"] = name
     return out
 
 
@@ -138,6 +229,20 @@ def join_ses_to_cells(
         values = layer.drop(columns=["x", "y"]).set_index(lkey)
         values = values[~values.index.duplicated(keep="first")]
         joined = values.reindex(key)
+        matched = float(joined.notna().any(axis=1).mean()) if len(joined) else 0.0
+        if matched == 0.0:
+            # Every join key missed. The usual cause is a resolution mismatch
+            # (a 1 km member keyed on the 100 m grid), and the symptom used to
+            # be an all-NaN covariate that quietly dropped out of the
+            # regressions and produced an empty vulnerability stratum.
+            print(f"WARNING: SES layer '{name}' matched NO analysis cell at "
+                  f"{res:g} m resolution (member "
+                  f"{layer.attrs.get('member', '?')}) — the resulting ses_"
+                  f"{name}* columns are entirely empty; check the layer's grid "
+                  f"resolution.")
+        elif matched < 0.5:
+            print(f"NOTE: SES layer '{name}' covers {matched:.1%} of analysis "
+                  f"cells at {res:g} m (suppression or partial extent).")
         for col in values.columns:
             out[f"ses_{name}_{col}" if len(values.columns) > 1 else f"ses_{name}"] = (
                 joined[col].to_numpy()
