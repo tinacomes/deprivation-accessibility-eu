@@ -1046,3 +1046,63 @@ Three consequences to handle before F.5:
    income/rent heuristic and loses the concentration index entirely. Bounded and
    now expected — it should be stated in methods §6.1 alongside the DE/FR gap
    rather than discovered per city.
+
+### 5.8 E.1 implemented
+
+`depacc engine-check --city <id> --engine r5` (module
+`src/depacc/quality/engine_check.py`, workflow
+`.github/workflows/engine-check.yml`, methods.md §7.1).
+
+What it does: re-routes one city under an alternative engine and reports
+per-regime and per-service travel-time medians/p90 with the population-weighted
+Spearman between engines, the city-row indicators (both Ginis, ρ, the four class
+shares) recomputed identically on each, and the typology flip share. Outputs
+`validation/<city>_engine_check.csv` plus a hexbin scatter; both are now
+persisted to `depacc-results` alongside the sensitivity tables.
+
+Three design choices worth stating, because each of them is a way the check
+could have quietly measured the wrong thing:
+
+- **Facilities are inherited, not re-extracted.** Hamburg's friction config takes
+  facilities from Overpass while an r5 config takes them from the .pbf. Letting
+  that vary would confound engine disagreement with facility-set disagreement,
+  which is E.2's separate question. The shadow run copies `cells.parquet` and
+  every `facilities_*.parquet` verbatim; only the OD matrices and what follows
+  are recomputed.
+- **It calls `run_access` / `run_deprivation`, not a re-implementation.** The
+  Layer-3 sweep shipped for one run with its own composite and therefore its own
+  baseline (§5.2). A validation module that re-derived surfaces would be the same
+  trap. The self-test pins it: running the check with the city's *own* engine must
+  give every delta exactly zero, ρ = 1 and a 0 % flip share.
+- **The shadow is nested at `data/derived/<city>/engine_<engine>/`.** A sibling
+  directory would be picked up by `tools/persist_results.py`, which walks
+  `data/derived/*` and treats each entry as a city, and published as a phantom
+  city. Nested, it is invisible to that walk and rides in the same per-city
+  derived cache as the baseline it is compared against. Divergence and equity are
+  never run for it, so it cannot reach `cityplane.csv`.
+
+Rank agreement is the headline the table is built around, not the level delta:
+every output in this study is rank-based, so an engine that shifts all times by a
+constant costs nothing while one that *reorders* cells invalidates the typology.
+The tests assert exactly that contrast — a monotone +5 min shift gives ρ = 1 with
+a 5-minute median delta and a 0 % flip share; a reversal gives ρ = −1 with no
+median movement and a flip share above 50 %.
+
+**To run it:** Actions → "engine cross-check (E.1)" → Run workflow, `city:
+hamburg`, `engine: r5`. Budget 1–3 h on the first uncached run (it downloads a
+state-level .pbf and routes ~176 k origins × 9 services through R5). The shadow
+surfaces are cached, so a re-dispatch that only re-runs the comparison is
+minutes; `reuse: false` forces a full re-route. Nothing is pushed to
+`depacc-results` from the workflow itself — the outputs come back as the
+`depacc-engine-check-hamburg` artifact.
+
+The questions it should answer, in order of what they block:
+
+1. Is `t_regime_emergency` rank-stable between engines? If not, `gini_emergency`
+   and the divergence gap — axes of the central result — are resting on a 1 km
+   raster artefact.
+2. How far does the everyday walk surface move? §2.2 of this plan predicted
+   intra-core quantisation at ~2 pixels per 30-min walk; this measures it.
+3. Does walk+car everyday stop being degenerate under r5? If it does, the
+   Layer-3 `everyday_mode` axis becomes evaluable and Workstream C's expected
+   dominant knob can finally be tested.

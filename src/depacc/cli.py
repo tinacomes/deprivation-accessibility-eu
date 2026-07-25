@@ -3,6 +3,7 @@
     depacc run --city hamburg                 # full pipeline for one city
     depacc run --city hamburg --stage access  # a single stage
     depacc validate --city hamburg            # config sanity check
+    depacc engine-check --city hamburg        # E.1: friction vs r5 cross-check
 
 Stages run in order: ingest -> access -> deprivation -> divergence -> equity
 -> viz. Heavy dependencies (geopandas, r5py, ...) are imported inside each
@@ -127,6 +128,26 @@ def main(argv: list[str] | None = None) -> int:
     sens.add_argument("--project-root", type=Path,
                       default=Path(__file__).resolve().parents[2])
 
+    eng = sub.add_parser(
+        "engine-check", help="Workstream E.1: re-route one city under an "
+                             "alternative routing engine, holding cells, "
+                             "facilities and every model parameter fixed, and "
+                             "report how far the travel times, the city-row "
+                             "indicators and the typology move")
+    eng.add_argument("--city", required=True)
+    eng.add_argument("--engine", default="r5",
+                     help="alternative engine to compare against the city's "
+                          "configured one (default: r5)")
+    eng.add_argument("--modes", nargs="+", default=None,
+                     help="override routing.modes for the alternative run "
+                          "(e.g. --modes walk car transit)")
+    eng.add_argument("--threshold", type=float, default=0.5,
+                     help="typology percentile cut for the flip share (default 0.5)")
+    eng.add_argument("--no-reuse", action="store_true",
+                     help="re-route even if the alternative surfaces are cached")
+    eng.add_argument("--project-root", type=Path,
+                     default=Path(__file__).resolve().parents[2])
+
     pre = sub.add_parser(
         "prefetch", help="download the raw sources that are national or "
                          "continental (census grid, national SES grids, URAU "
@@ -234,6 +255,14 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     cfg = load_config(args.city)
+
+    if args.command == "engine-check":
+        from depacc.quality.engine_check import run_engine_check
+
+        run_engine_check(cfg, args.city, args.project_root, engine=args.engine,
+                         modes=args.modes, threshold=args.threshold,
+                         reuse=not args.no_reuse)
+        return 0
 
     if args.command == "validate":
         print(f"Config for '{args.city}' loaded OK "

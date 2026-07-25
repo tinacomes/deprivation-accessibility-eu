@@ -525,6 +525,40 @@ sample can be restricted to cities above `quality.completeness_threshold`.
 For Tier 2 we test whether adding transit changes city *rankings* and
 clustering, not just levels.
 
+### 7.1 Routing-engine cross-check (E.1)
+
+Tier-1 routes over the Weiss et al. 1 km friction surfaces. That is what makes a
+48-city sample affordable, and it is an approximation of a street network by a
+raster. `depacc engine-check --city <id> --engine r5` re-runs one city under an
+alternative engine and reports the disagreement
+(`validation/<city>_engine_check.csv`, a hexbin scatter, both persisted).
+
+The comparison isolates the **routing engine**. The shadow run inherits the
+baseline's `cells.parquet` and its `facilities_*.parquet` verbatim — never
+re-extracting them — because a friction city takes facilities from Overpass while
+an r5 city takes them from the .pbf, and letting that vary would confound engine
+disagreement with facility-set disagreement (§7's separate question). Only the OD
+matrices and everything downstream are recomputed, through the *same*
+`run_access` / `run_deprivation` the pipeline uses. The shadow lives at
+`data/derived/<city>/engine_<engine>/`, nested so it can never be mistaken for a
+city, and divergence/equity are not run, so it never reaches `cityplane.csv`.
+
+Three families of number. **Travel time**, per regime and per service: the
+population-weighted median and p90 under each engine, plus the population-weighted
+Spearman between them. The Spearman is the one that matters here — every headline
+output is rank-based, so an engine that shifts all times by a constant costs
+nothing while one that *reorders* cells invalidates the typology. **Indicators**:
+both Ginis, ρ and the four class shares, recomputed identically on each engine's
+surfaces. **Typology**: the population share whose co-location class changes.
+
+Two findings from run 30160444058 make this the validation that gates the rest.
+The friction *car* surface gives 99.0 % of Hamburg's cells a zero-minute pair for
+everyday services — a 1 km pixel holding a facility is a zero-minute trip for
+every cell inside it — which made the Layer-3 walk+car variant degenerate and
+unevaluable. And the **emergency regime is car-only**: its median 3.9 min to an ED
+and its Gini of 0.62, an axis of the central city-plane result, rest entirely on
+that same quantised surface with nothing bounding the error.
+
 ## 7a. Robustness harness (structured, not probabilistic)
 
 `sensitivity/` recomputes only the **standardised / rank-based** targets

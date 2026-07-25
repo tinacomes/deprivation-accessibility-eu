@@ -662,7 +662,7 @@ def test_workflow_cache_paths_match_the_declared_split():
 
     from depacc.ingest.prefetch import CITY_RAW_DIRS, SHARED_RAW_DIRS
 
-    for wf in ("run-city.yml", "tier1-batch.yml"):
+    for wf in ("run-city.yml", "tier1-batch.yml", "engine-check.yml"):
         text = Path(".github/workflows") / wf
         content = text.read_text()
         for var, dirs in (("SHARED_RAW_PATHS", SHARED_RAW_DIRS),

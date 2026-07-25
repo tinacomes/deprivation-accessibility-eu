@@ -1,0 +1,148 @@
+name: engine cross-check (E.1)
+
+# Workstream E.1 — routing-engine cross-check for ONE city.
+#
+# Re-routes a city under an alternative engine (default r5, over the real OSM
+# street network) holding cells, FACILITIES and every model parameter fixed, then
+# reports how far the travel times, the city-row indicators and the typology
+# move. Answers the question the Tier-1 fast path has always begged: how much
+# does the 1 km Weiss friction surface cost us?
+#
+# Trigger: GitHub -> Actions -> "engine cross-check (E.1)" -> Run workflow.
+# Results land in data/derived/validation/ and are uploaded as
+# depacc-engine-check-<city>. Nothing is pushed to depacc-results: the shadow run
+# is a validation artefact, not a city.
+#
+# Budget: the first uncached run downloads a state-level .pbf and routes ~176k
+# origins x 9 services through R5 — allow 1-3 h (per the run-city workflow's own
+# note). The alternative surfaces are cached under
+# data/derived/<city>/engine_<engine>/, so a re-dispatch that only wants the
+# comparison re-run is minutes; pass reuse=false to force re-routing.
+
+on:
+  workflow_dispatch:
+    inputs:
+      city:
+        description: "City id (config/cities/<id>.yaml)"
+        required: true
+        default: "hamburg"
+      engine:
+        description: "Alternative engine to compare the city's configured one against"
+        required: false
+        default: "r5"
+      modes:
+        description: "Space-separated mode override for the alternative run (blank = the city's own, e.g. 'walk car transit')"
+        required: false
+        default: ""
+      reuse:
+        description: "Reuse cached alternative surfaces if present (false re-routes from scratch)"
+        required: false
+        default: "true"
+
+env:
+  MPLBACKEND: Agg
+  PYTHONUNBUFFERED: "1"
+  # Raw-data cache split; must match .github/workflows/run-city.yml,
+  # tier1-batch.yml and depacc.ingest.prefetch.
+  SHARED_RAW_PATHS: |
+    data/raw/boundaries
+    data/raw/census
+    data/raw/ghs
+    data/raw/ses
+  CITY_RAW_PATHS: |
+    data/raw/friction
+    data/raw/gtfs
+    data/raw/osm
+    data/raw/overpass
+
+jobs:
+  engine-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      # R5 needs a JDK; the friction baseline does not, but this job runs both.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "21"
+
+      - name: Install osmium-tool (clips the state-level OSM extract down to the
+              FUA window so parsing stays within runner memory)
+        run: sudo apt-get update -q && sudo apt-get install -y -q osmium-tool
+
+      - name: Install depacc (full stack)
+        run: pip install -e ".[full,dev]"
+
+      - name: Restore/seed the SHARED raw-data cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.SHARED_RAW_PATHS }}
+          key: depacc-raw-shared-v1-${{ hashFiles('config/defaults.yaml', 'config/cities/*.yaml') }}
+          restore-keys: depacc-raw-shared-v1-
+
+      - name: Restore this city's raw-data cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CITY_RAW_PATHS }}
+          key: depacc-raw-city-${{ inputs.city }}-${{ hashFiles('config/cities/*.yaml') }}
+          restore-keys: |
+            depacc-raw-city-${{ inputs.city }}-
+            depacc-raw-${{ inputs.city }}-
+
+      # The same per-city derived cache the pipeline uses. It carries the
+      # BASELINE surfaces this check compares against, and the shadow run's own
+      # outputs live inside it (data/derived/<city>/engine_<engine>/) so a
+      # re-dispatch resumes instead of re-routing.
+      - name: Restore per-city derived cache
+        uses: actions/cache@v4
+        with:
+          path: data/derived/${{ inputs.city }}
+          key: depacc-derived-${{ inputs.city }}-${{ github.run_id }}
+          restore-keys: |
+            depacc-derived-${{ inputs.city }}-
+
+      # The check compares against the city's existing baseline surfaces. If the
+      # derived cache was evicted, rebuild them first — the comparison is
+      # meaningless without a baseline to compare to.
+      - name: Ensure the baseline surfaces exist
+        run: |
+          if [ -f "data/derived/${{ inputs.city }}/surfaces.parquet" ]; then
+            echo "baseline surfaces present; reusing them"
+          else
+            echo "no cached baseline — running ingest/access/deprivation first"
+            depacc run --city "${{ inputs.city }}" --stage deprivation
+          fi
+
+      - name: Cross-check against ${{ inputs.engine }}
+        run: |
+          ARGS=(--city "${{ inputs.city }}" --engine "${{ inputs.engine }}")
+          if [ -n "${{ inputs.modes }}" ]; then
+            ARGS+=(--modes ${{ inputs.modes }})
+          fi
+          if [ "${{ inputs.reuse }}" != "true" ]; then
+            ARGS+=(--no-reuse)
+          fi
+          depacc engine-check "${ARGS[@]}"
+
+      - name: Show the comparison
+        if: always()
+        run: |
+          f="data/derived/validation/${{ inputs.city }}_engine_check.csv"
+          [ -f "$f" ] && cat "$f" || echo "no comparison written"
+
+      - name: Upload validation outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: depacc-engine-check-${{ inputs.city }}
+          path: |
+            data/derived/validation
+          if-no-files-found: warn
+          retention-days: 90
