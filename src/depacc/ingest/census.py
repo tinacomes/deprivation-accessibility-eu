@@ -33,20 +33,33 @@ Two things to keep honest about this layer:
   makes "foreign-born share *where published*" work), and the loaded column
   list is printed so a first run tells you precisely what to correct.
 
-The v1.0 release archive (verified by download) contains::
+The release in use is **V3** (``Eurostat_Census-GRID_2021_V3.zip``), which ships
+GeoPackage, CSV, Parquet and GeoTIFF of one WIDE table — every variable as a
+column, per its read.me::
 
-    CENSUS_INS21ES_A_IT_2021_0000_TOTAL _POPULATION.zip   nested INSPIRE delivery
-    ESMS_Census_Grid 2021.pdf                             metadata
-    ESTAT_Census_2021_V1-0.gpkg                           <- the attribute table
-    ESTAT_OBS-VALUE-T_2021_V1-0.tiff                      total-population raster
-    read.me
+    GRD_ID  cell code (INSPIRE)       T       total population
+    CNTR_ID reporting country(ies)    M / F   male / female
+    Y_LT15  age < 15                  Y_1564  age 15-64        Y_GE65  age >= 65
+    EMP     employed persons
+    NAT     born in reporting country EU_OTH  born other EU    OTH     born elsewhere
+    SAME    residence unchanged 1y    CHG_IN  moved within     CHG_OUT moved in from abroad
+    LAND_SURFACE  land area of the cell, km2 in [0,1]
+    POPULATED     1 populated / 0 not
 
-so the tabular data is a **GeoPackage**, not a CSV. :func:`_data_member` picks
-it by extension preference (``.gpkg`` > ``.geoparquet``/``.parquet`` > ``.csv``,
-never the raster or the docs), extracts it once beside the archive, and
-:func:`_load_census_geo` reads it bbox-filtered through the layer's spatial
-index. The CSV path is kept because the landing page also advertises CSV and
-GeoParquet distributions, and a later release may reorganise.
+We read the **CSV** member (``sources.census.member``): it carries the same wide
+table as the GeoPackage, streams straight out of the zip in chunks with no
+1.3 GB extraction, and needs no geometry stack. The GeoPackage/Parquet path is
+kept for releases organised differently — the earlier V1-0 archive had no CSV at
+all and its GeoPackage's default layer held only ``OBS_VALUE_T``, which is why
+:func:`_data_member`, :func:`list_geo_layers` and :func:`code_matches` exist.
+
+Two release conventions that must not be taken literally: values are integers
+with ``-8888`` (confidential) and ``-9999`` (unavailable) as reserved codes,
+stripped by :func:`_coerce_values` — a share of -8888/1000 would not read as an
+error, it would read as an extreme vulnerability score; and rows keyed
+``CC_unallocated`` hold per-country population that could not be placed in any
+cell (FR, IT, FI, BG, EL, SE, DK, NO, BE, LV, LU, SI), which have no geometry
+and are dropped with a count.
 """
 
 from __future__ import annotations
@@ -99,12 +112,16 @@ def parse_grid_id(ids: pd.Series) -> pd.DataFrame:
     )
 
 
-# Readable data members of a GISCO census archive, most preferred first. The
-# v1.0 release ships a GeoPackage (plus a total-population GeoTIFF, the ESMS
-# metadata PDF, a read.me and a nested INSPIRE country delivery — none of them
-# the attribute table), while the landing page also advertises CSV and
-# GeoParquet; all three tabular forms are handled.
+# Readable data members of a GISCO census archive, most preferred first — used
+# only when sources.census.member does not name one (V3 does). The GeoTIFF is
+# never a candidate: its int64 datatype cannot carry GRD_ID, CNTR_ID or
+# LAND_SURFACE at all, so it is not a substitute for the table.
 DATA_EXTENSIONS = (".gpkg", ".geoparquet", ".parquet", ".csv")
+
+# Reserved missing-data codes of the census release (its read.me): -8888 =
+# withheld for confidentiality, -9999 = unavailable for other reasons. The
+# default here is only a default — `sources.census.missing_values` is authority.
+MISSING_VALUES = (-8888.0, -9999.0)
 
 
 def _data_member(zf: zipfile.ZipFile, member: str | None) -> str:
@@ -244,6 +261,11 @@ def _select_value_columns(frame: pd.DataFrame, columns: list[str] | None,
 
 
 def _clip(frame: pd.DataFrame, bbox, pad_m: float) -> pd.DataFrame:
+    # Rows whose id did not parse are dropped here. That is deliberate and it is
+    # what handles the release's "CC_unallocated" rows — per-country totals for
+    # population that could not be placed in any cell (FR, IT, FI, BG, EL, SE,
+    # DK, NO, BE, LV, LU, SI), which carry no geometry and must never enter a
+    # spatial join.
     frame = frame[frame.x.notna() & frame.y.notna()]
     if bbox is None:
         return frame
@@ -252,14 +274,30 @@ def _clip(frame: pd.DataFrame, bbox, pad_m: float) -> pd.DataFrame:
                  & frame.y.between(miny - pad_m, maxy + pad_m)]
 
 
+def _coerce_values(frame: pd.DataFrame, missing_values) -> pd.DataFrame:
+    """Numeric value columns with the release's missing-data sentinels removed.
+
+    Every variable is published as an INTEGER with reserved negative codes:
+    ``-8888`` = withheld for confidentiality, ``-9999`` = unavailable for other
+    reasons. Left in place they are catastrophic rather than merely wrong — a
+    share of ``-8888 / 1000`` is not an outlier a reader would notice, and the
+    cell would land at the extreme end of a vulnerability stratum. Any other
+    non-numeric flag (Eurostat's ':') also becomes NaN.
+    """
+    out = frame.apply(pd.to_numeric, errors="coerce")
+    sentinels = [float(v) for v in (missing_values or [])]
+    return out.mask(out.isin(sentinels)) if sentinels else out
+
+
 def _load_census_csv(opener, label: str, *, bbox, columns, id_column,
-                     chunksize: int, pad_m: float) -> pd.DataFrame:
+                     chunksize: int, pad_m: float, missing_values) -> pd.DataFrame:
     """Stream a census CSV in chunks, clipping each chunk before concatenating —
     the published table is continental (millions of rows)."""
     with opener() as fh:
         sep = _sniff_sep(fh.readline())
     frames: list[pd.DataFrame] = []
     resolved: dict[str, str] = {}
+    unplaced = 0
     with opener() as fh:
         for i, chunk in enumerate(pd.read_csv(fh, sep=sep, chunksize=chunksize,
                                               dtype=str, low_memory=False)):
@@ -269,15 +307,19 @@ def _load_census_csv(opener, label: str, *, bbox, columns, id_column,
                     raise ValueError(
                         f"census id column '{id_column}' not in {label}; "
                         f"columns: {list(chunk.columns)}")
+            coords = _cell_coordinates(chunk, id_column, label)
+            unplaced += int(coords.x.isna().sum())
             block = pd.concat(
-                [_cell_coordinates(chunk, id_column, label),
-                 chunk[list(resolved.values())].apply(pd.to_numeric,
-                                                      errors="coerce")],
+                [coords, _coerce_values(chunk[list(resolved.values())],
+                                        missing_values)],
                 axis=1,
             )
             block = _clip(block, bbox, pad_m)
             if not block.empty:
                 frames.append(block)
+    if unplaced:
+        print(f"census: {unplaced} row(s) of {label} carry no parseable cell id "
+              f"(the release's 'CC_unallocated' country totals) — dropped")
     if not frames:
         return pd.DataFrame(columns=["x", "y", *resolved])
     out = pd.concat(frames, ignore_index=True)
@@ -327,7 +369,7 @@ def _read_geo_layer(path: Path, layer: str | None, padded, label: str):
 
 
 def _load_census_geo(path: Path, *, bbox, columns, id_column, layer: str | None,
-                     pad_m: float) -> pd.DataFrame:
+                     pad_m: float, missing_values) -> pd.DataFrame:
     """Load a GeoPackage / (Geo)Parquet census table as cell centroids.
 
     Two published shapes are handled. A **wide** table carries every variable as
@@ -371,7 +413,7 @@ def _load_census_geo(path: Path, *, bbox, columns, id_column, layer: str | None,
         resolved = _select_value_columns(frame, want, id_column, label)
         if not resolved:
             continue
-        values = frame[list(resolved.values())].apply(pd.to_numeric, errors="coerce")
+        values = _coerce_values(frame[list(resolved.values())], missing_values)
         block = pd.concat(
             [_cell_coordinates(frame, id_column, label, geometry), values], axis=1)
         frames.append(_clip(block, bbox, pad_m).rename(
@@ -394,6 +436,7 @@ def load_census_grid(
     member: str | None = None,
     layer: str | None = None,
     unpack_dir: Path | None = None,
+    missing_values: list[float] | None = MISSING_VALUES,
     chunksize: int = 500_000,
     pad_m: float = 2000.0,
 ) -> pd.DataFrame:
@@ -420,7 +463,8 @@ def load_census_grid(
                 return _load_census_csv(
                     lambda: zipfile.ZipFile(path).open(name), f"{path.name}:{name}",
                     bbox=bbox, columns=columns, id_column=id_column,
-                    chunksize=chunksize, pad_m=pad_m)
+                    chunksize=chunksize, pad_m=pad_m,
+                    missing_values=missing_values)
             data_path = _extract_member(
                 zf, name, unpack_dir or path.parent / "unpacked")
     else:
@@ -428,9 +472,11 @@ def load_census_grid(
     if data_path.suffix.lower() == ".csv":
         return _load_census_csv(
             lambda: open(data_path, "rb"), data_path.name, bbox=bbox,
-            columns=columns, id_column=id_column, chunksize=chunksize, pad_m=pad_m)
+            columns=columns, id_column=id_column, chunksize=chunksize,
+            pad_m=pad_m, missing_values=missing_values)
     return _load_census_geo(data_path, bbox=bbox, columns=columns,
-                            id_column=id_column, layer=layer, pad_m=pad_m)
+                            id_column=id_column, layer=layer, pad_m=pad_m,
+                            missing_values=missing_values)
 
 
 def share_columns(df: pd.DataFrame, spec: dict) -> pd.DataFrame:
@@ -444,6 +490,14 @@ def share_columns(df: pd.DataFrame, spec: dict) -> pd.DataFrame:
     whose numerator or denominator columns are absent is SKIPPED with a note:
     that is how "where published" is honoured for the voluntary variables.
     A non-positive or missing denominator yields NaN, never a division blow-up.
+
+    Suppression *within* a present column is handled per ROW, and the rule
+    matters. A numerator that sums several categories keeps its partial sum when
+    SOME are withheld (foreign-born stays usable when only one origin group is
+    confidential), but a numerator whose categories are ALL withheld yields NaN,
+    never 0. Zero-filling would not merely lose the cell: it would place it at
+    the *bottom* of the vulnerability distribution — inside the "low elderly
+    share" comparison group — which is worse than excluding it.
     """
     out = df.copy()
     for name, entry in (spec or {}).items():
@@ -454,10 +508,11 @@ def share_columns(df: pd.DataFrame, spec: dict) -> pd.DataFrame:
             print(f"NOTE: census share '{name}' skipped; columns absent: "
                   f"{absent or 'numerator/denominator not configured'}")
             continue
-        # A suppressed category counts as zero so one missing band does not
-        # void the whole share; the denominator must be genuinely present.
-        numerator = out[num].apply(pd.to_numeric, errors="coerce").fillna(0.0).sum(axis=1)
-        denominator = out[den].apply(pd.to_numeric, errors="coerce").sum(axis=1)
+        # min_count=1 -> NaN only when EVERY component is missing (see above).
+        numerator = out[num].apply(pd.to_numeric, errors="coerce").sum(
+            axis=1, min_count=1)
+        denominator = out[den].apply(pd.to_numeric, errors="coerce").sum(
+            axis=1, min_count=1)
         out[name] = numerator / denominator.where(denominator > 0)
     return out
 
@@ -531,6 +586,7 @@ def census_layer(cfg: dict, root: Path, fua) -> pd.DataFrame | None:
             path, bbox=bbox, columns=keep or None,
             id_column=str(census.get("id_column", "GRD_ID")),
             member=census.get("member"), layer=census.get("layer"),
+            missing_values=census.get("missing_values", MISSING_VALUES),
             # Unpack under the cache root, never the workflow-cached data/raw.
             unpack_dir=unpack,
         )

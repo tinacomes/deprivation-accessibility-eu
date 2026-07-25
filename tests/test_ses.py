@@ -182,15 +182,28 @@ def test_age_group_shares_over_band_rowsum_default():
     assert out.loc[0, ["share_u15", "share_mid", "share_ge65"]].sum() == 1.0
 
 
-def test_age_group_shares_treats_suppressed_as_zero():
+def test_age_group_shares_yields_nan_when_a_band_is_fully_suppressed():
     df = pd.DataFrame({"pop": [100.0], "young": [np.nan], "old": [30.0]})
     out = age_group_shares(
         df, bands={"share_u15": ["young"], "share_ge65": ["old"]},
         population_col="pop")
-    # A single suppressed band count contributes nothing rather than nuking
-    # the whole share to NaN (min_count=1 keeps a partial sum).
-    assert out.loc[0, "share_u15"] == 0.0
+    # A band whose ONLY count is suppressed must be NaN, not 0.0. Zero-filling
+    # does not merely lose the cell — it puts it at the bottom of the
+    # distribution, i.e. inside the "low under-15 share" comparison group of the
+    # vulnerability stratification. Hamburg's configured bands are one column
+    # each, so this was every suppressed Zensus cell.
+    assert np.isnan(out.loc[0, "share_u15"])
+    # An unsuppressed band alongside it is unaffected.
     assert out.loc[0, "share_ge65"] == 0.30
+
+
+def test_age_group_shares_keeps_a_partial_sum_across_bands():
+    # Several counts make up one band and only some are suppressed: the partial
+    # sum survives (that is what min_count=1 buys over dropna).
+    df = pd.DataFrame({"pop": [100.0], "u3": [np.nan], "a3_14": [12.0]})
+    out = age_group_shares(df, bands={"share_u15": ["u3", "a3_14"]},
+                           population_col="pop")
+    assert out.loc[0, "share_u15"] == 0.12
 
 
 # ---------------------------------------------------------------------------

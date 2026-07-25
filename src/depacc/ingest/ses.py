@@ -204,15 +204,22 @@ def age_group_shares(df: pd.DataFrame, bands: dict[str, list[str]],
     partial bands such as under-15 + 65-plus, which skip the middle of the age
     range). Without it the denominator is the row-sum of every column named
     across all bands, which is only meaningful when those bands are EXHAUSTIVE
-    (partition the whole population). Missing counts are treated as zero; a
-    zero/NaN denominator yields NaN.
+    (partition the whole population). A zero/NaN denominator yields NaN.
+
+    Suppression is handled per ROW: a band that sums several published counts
+    keeps its partial sum when some are withheld, but a band whose counts are
+    ALL withheld yields NaN, never 0. This is not a nicety — Hamburg's configured
+    bands are a single column each, so zero-filling put every suppressed cell at
+    a share of 0.0, i.e. inside the LOW-vulnerability tail of the stratification
+    rather than outside it.
     """
     out = df.copy()
 
     def _counts(cols: list[str]) -> pd.Series:
-        # Suppressed ('–'/empty) cells parse to NaN; treat as a zero count so
-        # one missing band does not void the whole share.
-        return out[cols].apply(pd.to_numeric, errors="coerce").fillna(0.0).sum(axis=1)
+        # Suppressed ('–'/empty) cells parse to NaN. min_count=1 keeps a partial
+        # sum across bands but returns NaN when every named count is missing.
+        return out[cols].apply(pd.to_numeric, errors="coerce").sum(
+            axis=1, min_count=1)
 
     if population_col is not None:
         denom = pd.to_numeric(out[population_col], errors="coerce")

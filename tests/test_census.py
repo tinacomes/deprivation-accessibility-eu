@@ -50,7 +50,7 @@ def test_parse_grid_id_raises_when_nothing_parses():
 
 
 def _census_csv(sep: str = ",") -> str:
-    header = sep.join(["GRD_ID", "T", "Y_LT15", "Y_15-64", "Y_GE65", "EMP"])
+    header = sep.join(["GRD_ID", "T", "Y_LT15", "Y_1564", "Y_GE65", "EMP"])
     rows = [
         sep.join([FULL_ID, "1000", "150", "600", "250", "420"]),
         # A neighbouring 1 km cell 1 km east.
@@ -173,14 +173,14 @@ def test_load_census_grid_matches_columns_case_insensitively(tmp_path):
 SHARE_SPEC = {
     "share_u15": {"numerator": ["Y_LT15"], "denominator": ["T"]},
     "share_ge65": {"numerator": ["Y_GE65"], "denominator": ["T"]},
-    "employment_share": {"numerator": ["EMP"], "denominator": ["Y_15-64"]},
+    "employment_share": {"numerator": ["EMP"], "denominator": ["Y_1564"]},
     "foreign_born_share": {"numerator": ["EU_OTH", "OTH"], "denominator": ["T"]},
 }
 
 
 def test_share_columns_uses_per_share_denominator_and_skips_unpublished():
     df = pd.DataFrame({"T": [1000.0, 0.0], "Y_LT15": [150.0, 0.0],
-                       "Y_15-64": [600.0, 0.0], "Y_GE65": [250.0, 0.0],
+                       "Y_1564": [600.0, 0.0], "Y_GE65": [250.0, 0.0],
                        "EMP": [420.0, 0.0]})
     out = share_columns(df, SHARE_SPEC)
     assert out.loc[0, "share_u15"] == 0.15
@@ -378,7 +378,7 @@ def _write_census_gpkg(path, *, with_grd_id: bool = True):
             "GRD_ID": [r[0] for r in rows],
             "T": [r[3] for r in rows],
             "Y_LT15": [r[4] for r in rows],
-            "Y_15-64": [r[5] for r in rows],
+            "Y_1564": [r[5] for r in rows],
             "Y_GE65": [r[6] for r in rows],
             "EMP": [r[7] for r in rows],
         },
@@ -424,7 +424,7 @@ def test_load_census_grid_reads_the_gpkg_out_of_the_published_zip(tmp_path):
     gpkg.unlink()  # only the archive remains, as after a fresh download
 
     grid = load_census_grid(archive, bbox=(4341000.0, 2696000.0, 4343000.0, 2697000.0),
-                            columns=["T", "Y_GE65", "Y_15-64", "EMP"])
+                            columns=["T", "Y_GE65", "Y_1564", "EMP"])
     assert sorted(grid.x) == [4341500.0, 4342500.0]
     # The gpkg was unpacked once beside the archive, for the batch's re-reads.
     assert (tmp_path / "unpacked" / "ESTAT_Census_2021_V1-0.gpkg").exists()
@@ -504,7 +504,7 @@ def _write_per_variable_gpkg(path):
 
     cells = [(4341000, 2696000), (4342000, 2696000)]
     for code, values in (("T", [1000, 500]), ("Y_LT15", [150, 50]),
-                         ("Y_GE65", [250, 150]), ("Y_15-64", [600, 300]),
+                         ("Y_GE65", [250, 150]), ("Y_1564", [600, 300]),
                          ("EMP", [420, 180])):
         gpd.GeoDataFrame(
             {"GRD_ID": [f"CRS3035RES1000mN{y}E{x}" for x, y in cells],
@@ -518,9 +518,9 @@ def _write_per_variable_gpkg(path):
 def test_load_census_grid_merges_per_variable_gpkg_layers(tmp_path):
     pytest.importorskip("geopandas")
     gpkg = _write_per_variable_gpkg(tmp_path / "ESTAT_Census_2021_V1-0.gpkg")
-    grid = load_census_grid(gpkg, columns=["T", "Y_LT15", "Y_GE65", "Y_15-64", "EMP"])
+    grid = load_census_grid(gpkg, columns=["T", "Y_LT15", "Y_GE65", "Y_1564", "EMP"])
     # Every requested variable found its own layer and merged on the centroid.
-    assert set(grid.columns) == {"x", "y", "T", "Y_LT15", "Y_GE65", "Y_15-64", "EMP"}
+    assert set(grid.columns) == {"x", "y", "T", "Y_LT15", "Y_GE65", "Y_1564", "EMP"}
     assert len(grid) == 2
     row = grid[grid.x == 4341500.0].iloc[0]
     assert (row["T"], row["Y_GE65"], row["EMP"]) == (1000.0, 250.0, 420.0)
@@ -671,3 +671,113 @@ def test_workflow_cache_paths_match_the_declared_split():
             assert block, f"{var} missing from {wf}"
             listed = set(re.findall(r"data/raw/(\w+)", block.group(1)))
             assert listed == set(dirs), f"{wf}:{var} lists {sorted(listed)}"
+
+
+# ---------------------------------------------------------------------------
+# V3 release conventions, from its read.me: reserved missing-data codes, the
+# CC_unallocated rows, and the wide-table schema with Y_1564 (not Y_15-64).
+# ---------------------------------------------------------------------------
+
+V3_HEADER = ("GRD_ID,CNTR_ID,T,M,F,Y_LT15,Y_1564,Y_GE65,EMP,NAT,EU_OTH,OTH,"
+             "SAME,CHG_IN,CHG_OUT,LAND_SURFACE,POPULATED")
+
+
+def _v3_csv() -> str:
+    rows = [
+        # A normal cell.
+        f"{FULL_ID},DE,1000,490,510,150,600,250,420,800,120,80,900,80,20,1.0,1",
+        # Confidential (-8888) elderly count and unavailable (-9999) employment.
+        "CRS3035RES1000mN2696000E4342000,DE,500,250,250,50,300,-8888,-9999,"
+        "400,60,40,450,40,10,0.8,1",
+        # Per-country unallocated population: no cell id, no geometry.
+        "DE_unallocated,DE,1234,600,634,200,800,234,500,1000,140,94,1100,100,34,"
+        "-9999,1",
+    ]
+    return "\n".join([V3_HEADER, *rows]) + "\n"
+
+
+def test_v3_missing_value_sentinels_become_nan_not_extreme_scores(tmp_path):
+    """-8888/-9999 left in place would not read as an error: share_ge65 would be
+    -17.8, dragging the cell into a vulnerability tail."""
+    path = tmp_path / "ESTAT_Census_2021_V3.csv"
+    path.write_text(_v3_csv(), encoding="utf-8")
+    grid = load_census_grid(path, columns=["T", "Y_LT15", "Y_1564", "Y_GE65",
+                                          "EMP", "EU_OTH", "OTH"])
+    row = grid[grid.x == 4342500.0].iloc[0]
+    assert np.isnan(row["Y_GE65"]) and np.isnan(row["EMP"])
+    assert row["T"] == 500.0  # unsuppressed values on the same row survive
+
+    shares = share_columns(grid, SHARE_SPEC)
+    suppressed = shares[shares.x == 4342500.0].iloc[0]
+    assert np.isnan(suppressed.share_ge65), "a withheld count must not become 0"
+    assert np.isnan(suppressed.employment_share)
+    # The share that IS published on that row still computes.
+    assert suppressed.share_u15 == 0.1
+    # And the clean cell is unaffected.
+    clean = shares[shares.x == 4341500.0].iloc[0]
+    assert (clean.share_u15, clean.share_ge65) == (0.15, 0.25)
+    assert clean.employment_share == pytest.approx(0.7)
+    assert clean.foreign_born_share == pytest.approx(0.2)  # (120 + 80) / 1000
+
+
+def test_v3_cc_unallocated_rows_are_dropped_and_counted(tmp_path, capsys):
+    path = tmp_path / "ESTAT_Census_2021_V3.csv"
+    path.write_text(_v3_csv(), encoding="utf-8")
+    grid = load_census_grid(path, columns=["T"])
+    # Two placeable cells; "DE_unallocated" has no geometry and must never enter
+    # a spatial join.
+    assert sorted(grid.x) == [4341500.0, 4342500.0]
+    assert "1 row(s)" in capsys.readouterr().out
+
+
+def test_v3_disabling_the_sentinels_is_possible_but_visible(tmp_path):
+    """`missing_values: []` keeps the raw codes — only for inspecting a file."""
+    path = tmp_path / "ESTAT_Census_2021_V3.csv"
+    path.write_text(_v3_csv(), encoding="utf-8")
+    grid = load_census_grid(path, columns=["Y_GE65"], missing_values=[])
+    assert grid[grid.x == 4342500.0].iloc[0]["Y_GE65"] == -8888.0
+
+
+def test_v3_wide_table_end_to_end_from_the_published_zip(tmp_path, monkeypatch):
+    """The V3 archive shape: one wide table in four formats. The configured
+    member must select the CSV, not the 1.3 GB GeoPackage."""
+    archive = tmp_path / "raw" / "census" / "Eurostat_Census-GRID_2021_V3.zip"
+    archive.parent.mkdir(parents=True)
+    with zipfile.ZipFile(archive, "w") as zf:
+        zf.writestr("ESTAT_Census_2021_V3.csv", _v3_csv())
+        zf.writestr("ESTAT_Census_2021_V3.gpkg", "x" * 50_000)   # bigger decoy
+        zf.writestr("ESTAT_Census_2021_V3.parquet", "x" * 20_000)
+        zf.writestr("ESTAT_OBS-VALUE-T_2021_V3.tiff", "x" * 40_000)
+        zf.writestr("read.me", "docs")
+    archive.with_name(archive.name + ".provenance.json").write_text("{}")
+
+    cfg = _census_cfg(tmp_path, "https://x.invalid/Eurostat_Census-GRID_2021_V3.zip")
+    cfg["sources"]["census"]["member"] = "ESTAT_Census_2021_V3.csv"
+    cfg["sources"]["census"]["missing_values"] = [-8888, -9999]
+    layer = census_layer(cfg, tmp_path, _Bounds())
+
+    assert list(layer.columns) == ["x", "y", "share_u15", "share_ge65",
+                                  "employment_share", "foreign_born_share"]
+    clean = layer[layer.x == 4341500.0].iloc[0]
+    assert (clean.share_u15, clean.share_ge65) == (0.15, 0.25)
+    # No GeoPackage was extracted: the CSV streamed straight out of the zip.
+    assert not (tmp_path / "cache" / "census").exists()
+
+
+def test_shipped_census_config_matches_the_v3_readme():
+    """Guard the codes against the release read.me — Y_1564, not Y_15-64."""
+    from depacc.config import load_config
+
+    census = load_config()["sources"]["census"]
+    assert census["url"].endswith("Eurostat_Census-GRID_2021_V3.zip")
+    assert census["member"] == "ESTAT_Census_2021_V3.csv"
+    assert census["missing_values"] == [-8888, -9999]
+    assert census["id_column"] == "GRD_ID"
+    assert census["resolution_m"] == 1000
+    codes = {c for entry in census["shares"].values()
+             for c in entry["numerator"] + entry["denominator"]}
+    published = {"GRD_ID", "CNTR_ID", "T", "M", "F", "Y_LT15", "Y_1564", "Y_GE65",
+                 "EMP", "NAT", "EU_OTH", "OTH", "SAME", "CHG_IN", "CHG_OUT",
+                 "LAND_SURFACE", "POPULATED"}
+    assert codes <= published, f"not in the V3 read.me: {sorted(codes - published)}"
+    assert census["shares"]["employment_share"]["denominator"] == ["Y_1564"]

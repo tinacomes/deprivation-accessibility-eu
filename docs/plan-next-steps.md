@@ -300,28 +300,42 @@ cities point it at their rent grid. The covariate actually used is recorded as
 > continental GeoPackage there would be stored once per city and could evict the
 > far more expensive OSM extracts.
 >
-> **Still open — where the non-population variables live.** The next run got
-> through the download and the GeoPackage (1.27 GB extracted) and reported its
-> default layer as `['GRD_ID', 'OBS_VALUE_T']`: total population only, which we
-> already have at 100 m from GHS-POP. Two possibilities, both now handled
-> without another code change: the other variables are further **layers** of the
-> same GeoPackage — the loader enumerates layers, matches their names against
-> the configured codes and merges the matches on the cell centroid — or they are
-> **separate per-variable downloads**, in which case they go under
-> `sources.census.urls` as a `{code: url}` mapping (mirroring
-> `sources.ses.urls`) and are merged the same way. Which one applies is a single
-> command:
+> **Resolved: we were reading a superseded release.** V1-0 has no CSV at all and
+> its GeoPackage's default layer holds only `['GRD_ID', 'OBS_VALUE_T']` — total
+> population, which GHS-POP already gives us at 100 m. The current release is
+> **V3** (`Eurostat_Census-GRID_2021_V3.zip`; V2-0 of 16-06-2024 is what the JRC
+> 100 m disaggregation was built from), and it ships **one wide table** in
+> GeoPackage, CSV, Parquet and GeoTIFF with every variable of Reg. 2018/1799.
+> Config now points there, and three details from its read.me are wired in:
 >
-> ```
-> python -c "import pyogrio,sys; print(pyogrio.list_layers(sys.argv[1]))" \
->   data/cache/census/ESTAT_Census_2021_V1-0.gpkg
-> ```
+> - **`Y_1564`, not `Y_15-64`** — the employment-share denominator was wrong.
+> - **The CSV member is read, not the GeoPackage** (`sources.census.member:
+>   ESTAT_Census_2021_V3.csv`): same wide table, streams out of the zip in
+>   chunks, no 1.3 GB extraction, no geometry stack. The extension preference
+>   would otherwise take the GeoPackage. The GeoTIFF is int64 and so cannot carry
+>   `GRD_ID`, `CNTR_ID` or `LAND_SURFACE` at all — never a substitute.
+> - **Reserved missing-data codes `-8888` (confidential) and `-9999`
+>   (unavailable)** are stripped to NaN (`sources.census.missing_values`). This
+>   one is not cosmetic: left in place, `share_ge65` for a withheld cell reads
+>   −17.8, which is not an outlier a reader would catch — it is an extreme
+>   vulnerability score that would pull the cell into a stratum tail.
+> - Rows keyed `CC_unallocated` (FR, IT, FI, BG, EL, SE, DK, NO, BE, LV, LU, SI)
+>   hold population that could not be placed in any cell. They have no geometry
+>   and are dropped with a reported count.
 >
-> Codes are also matched through the GISCO `OBS_VALUE_` wrapping (`T` resolves
-> `OBS_VALUE_T`), with a guard that refuses an ambiguous match rather than
-> collapsing several shares onto total population. **Until the age variables
-> actually load, no city has a census vulnerability layer — confirm before
-> publishing any census-based number.**
+> The layer-enumeration and `OBS_VALUE_` unwrapping machinery built for V1-0 is
+> kept: it costs nothing and covers a future release reorganising again.
+
+> **Row-level suppression must not become a zero.** Found while wiring the
+> sentinels, and it affected the *published* D.3 numbers. Both share helpers
+> filled a missing count with 0 before dividing, so a cell whose elderly count is
+> withheld got `share_ge65 = 0.0` — not merely lost but placed at the **bottom**
+> of the distribution, inside the "low elderly share" comparison group of the
+> stratification. Both now use `min_count=1`: a share summing several categories
+> keeps its partial sum when some are withheld (foreign-born survives one
+> confidential origin group), but a share whose categories are ALL withheld is
+> NaN. Hamburg's Zensus bands are a single column each, so this was every
+> suppressed cell in `equity_vulnerability.csv`.
 
 **D.2 — DE Zensus for Hamburg.** Already landed in `e541b0c`/`d3c92a4`: the six
 per-layer zensus2022 URLs are in `config/cities/hamburg.yaml`, the SES fetch is
