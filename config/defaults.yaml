@@ -254,6 +254,24 @@ equity:
   # in every city or the cross-city gradient pools incommensurable betas. The
   # winner per city is recorded in cityvector.csv as `slope_ses_column`.
   cityvector_ses_column: "ses_census_employment_share"
+  # STRICT: a city whose harmonised column is unusable gets NO slope_ses_*,
+  # rather than a substitute. Recording the substitute was supposed to make a
+  # mixed sample visible, but Hamburg showed visible is not usable — its census
+  # employment share is non-null on 295 cells and constant zero (EMP is
+  # voluntary under Reg. 2018/1799 and DE did not report it), so the city fell
+  # back to its German rent grid, and a ten-city pilot would put ten different
+  # variables into one column that clustering treats as one. Set false only for
+  # a deliberately Tier-2-only comparison.
+  cityvector_ses_strict: true
+  # Minimum share of analysis cells on which an ses_* column must carry a value
+  # before it may be regressed, rank the concentration index, or define a
+  # stratum. A covariate on a small, non-randomly-published subsample gives a
+  # p-value about that subsample, not the city, and nothing downstream can tell
+  # the two apart. Hamburg: employment share 0.2% (dropped), vacancy rate 2.6%
+  # (dropped — it had been supplying the largest everyday gradient in the
+  # table), ownership 35% and net rent 25% (kept; read their _ratio_covered
+  # columns). Per-covariate support is always written to equity_ses_coverage.csv.
+  min_covariate_valid_share: 0.2
   # Vulnerability-stratified deprivation. The default strata are the
   # census-harmonised age shares, so every city gets the same cut; `level`
   # keeps the layers apart and must never be pooled across levels in a

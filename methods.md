@@ -270,9 +270,16 @@ differenced, co-plotted on a shared axis, or clustered together. The
 `scale_state` and only population-weighted transforms produce comparable
 values —
 
-- `to_percentile`: the population-weighted empirical CDF (values in [0,1],
-  invariant to any strictly increasing rescaling — this tames the unbounded
-  emergency tail). Used for the typology and all co-location statistics.
+- `to_percentile`: the population-weighted **mid-rank** empirical CDF (values
+  in [0,1], invariant to any strictly increasing rescaling — this tames the
+  unbounded emergency tail). Used for the typology and all co-location
+  statistics. Mid-rank, not the inclusive rank P(X ≤ x): a tie group is a set of
+  cells the surface cannot tell apart, so it is placed at the midpoint of its
+  own weight span. The difference is invisible until a tie group is large and
+  then it inverts the cut — a surface whose least-deprived 90 % share one value
+  gets percentile 0.90 under the inclusive rank and is classified "high" at both
+  the p50 and p75 thresholds. Mid-rank is also what §4.1's accounting identity
+  assumes: cutting at q leaves exactly (1−q) of the population above the cut.
 - `to_zscore`: population-weighted z-score, used only for feature vectors.
 
 Hard guards (`require_standardised`, `require_same_standardised`,
@@ -459,7 +466,21 @@ does. Two config keys keep this explicit: `equity.ses_rank_column` (per city;
 Tier-2 cities point it at their rent grid) ranks the concentration index, while
 `equity.cityvector_ses_column` (the harmonised census employment share by
 default) is the single variable behind the cross-city `slope_ses_*` feature —
-the covariate actually used is recorded per city as `slope_ses_column`.
+the covariate actually used is recorded per city as `slope_ses_column`. That
+feature is **strict** (`equity.cityvector_ses_strict`, default true): a city
+whose harmonised column is unusable gets no `slope_ses_*` rather than a
+substitute, because a column silently pooling a different variable per city is
+worse than a missing one. Hamburg forced the issue — activity status is
+*voluntary* under Reg. 2018/1799 and DE did not report it, so EMP arrives
+non-null on 295 of 176 137 cells and constant zero.
+
+Every `ses_*` column also passes a support gate before it may be regressed,
+rank the concentration index or define a stratum
+(`equity.min_covariate_valid_share`, default 0.2, on the share of analysis cells
+carrying a value; a column constant over its support is rejected too). A
+covariate published on a small, non-random subsample yields a p-value about that
+subsample, not the city, and a coefficient alone hides which it is. Per-covariate
+support is always written to `equity_ses_coverage.csv`.
 
 ### 6.2 Vulnerability-stratified deprivation
 
@@ -467,7 +488,15 @@ Beyond the gradients: for each stratum — the population-weighted tail of a
 vulnerability variable (`equity.vulnerability_strata`: highest 65+ share,
 highest child share, lowest rent, lowest ownership) — we report the
 population-weighted mean deprivation the sub-population *experiences* and the
-compounding (HH) typology share within it, against the whole-FUA baseline, with
+compounding (HH) typology share within it, against **two** references — the
+whole-FUA baseline (`*_ratio`) and the cells on which that stratum's own column
+is published (`*_ratio_covered`), with `coverage_pop_share` naming how far apart
+the two bases are. Read the covered ratio whenever coverage is well under 1: a
+stratum is a quantile tail of the covered cells, and national grids publish where
+the denominator is large enough, which is not a random subset of a metropolitan
+area. Hamburg's tenure grid covers 35 % of cells, concentrated in the dense core,
+so `low_ownership` against the whole-FUA reference reads 0.27 — mostly the
+statement that cells with published tenure data are urban. With
 ratio/gap columns so each row is a self-contained cross-city feature. Written
 to `equity_vulnerability.csv` (one row per stratum, so a separate file from the
 per-regime `equity_indices.csv`). Each row carries its `level`; a stratum whose
@@ -544,14 +573,43 @@ the Layer-1 curvature envelope.
 knob is swept one at a time from the config baseline: `softmin.kappa`
 ∈{0.1, 0.25, 0.5, 1, 2}, `catchment.gamma` ∈{0, 0.25, 0.5, 1}, walk catchment
 bandwidth ∈{10, 15, 20} min, `k_nearest` ∈{10, 30} (subsetting the saved
-k = 30 OD), nearest-only vs soft-min (κ→∞), the unreachable-cell treatment
-(cap value / exclude), and the everyday **mode set** (walk vs walk+car, the
+k = 30 OD), nearest-only vs soft-min (κ→∞), `unreachable.finite_fill_min`
+∈{60, 90, 180} min, and the everyday **mode set** (walk vs walk+car, the
 element-wise minimum travel time — the car OD is kept by the access stage once
-a declared variant needs it). Every variant recomputes the everyday
-effective-time surface → percentiles → typology and reports how far the **HH
-share, coupling ρ and within-regime Ginis** move, plus which cells flip class
-(`sensitivity/<city>_access_sensitivity.csv`, a flip-cell map, and — for
-Hamburg — an acceptance table naming which knobs beat the threshold axis). The
+a declared variant needs it).
+
+The `unreachable` axis sweeps the **finite fill**, not the unroutable-cell
+policy. Since the reachability split (§2) `policy` governs only genuinely
+unroutable cells, of which a well-connected FUA has none — Hamburg has zero, so
+sweeping it produced two identical rows. The knob that actually sets the
+deprivation of the 12–13 % of the population with no walkable GP is the
+large-but-finite time assigned to *reachable-but-service-deprived* cells.
+
+Every variant recomputes the everyday per-service deprivations, composites them
+exactly as the deprivation stage does (the weighted mean of `g(t_s)` — **not**
+`g` of the mean travel time; `g` is nonlinear, and compositing times first put
+the sweep's own baseline at a point the model never occupied), then percentiles →
+typology, and reports how far the **HH share, coupling ρ and within-regime
+Ginis** move, plus which cells flip class
+(`sensitivity/<city>_access_sensitivity.csv`, a flip-cell map, and an acceptance
+table naming which knobs beat the threshold axis). A test pins the `baseline`
+variant to the pipeline's saved surfaces.
+
+**Degenerate variants are flagged and excluded from the acceptance ranges.** A
+variant whose everyday surface collapses into a single exact-tie block holding
+more than half the population cannot support a median split at all: its class
+shares record where the block fell, not a sensitivity. Two variants reach that
+state on Hamburg. At κ = 0.1 the soft-min substitutability bonus is ln(k)/κ ≈ 34
+minutes at k = 30, so effective time floors at zero across the whole core; and
+walk+car over the 1 km friction *car* surface gives ~95 % of cells a
+zero-minute pair. Between them they had produced the headline "κ moves the HH
+share most" — both reporting the identical range because both returned the same
+degenerate split. The per-variant table carries `max_tie_everyday`,
+`zero_floor_pop_share` and `degenerate` so this is visible rather than inferred.
+Only the HH share carries an "exceeds the threshold axis" verdict: ρ is computed
+after the percentile transform, which the typology threshold does not touch, so
+the threshold axis's ρ range is 0 by construction and any knob would "beat" it.
+The
 **expensive** Layer-3 variants that need per-variant *re-routing* — friction vs
 r5 engine (Workstream E, Hamburg) and transit inclusion for Tier-2 — are
 deferred until the pilot sample exists.

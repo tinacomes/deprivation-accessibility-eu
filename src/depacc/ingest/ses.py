@@ -364,6 +364,19 @@ def _report_join(name: str, layer: pd.DataFrame, res: float, key: pd.Series,
         print(f"SES layer '{name}' joined: {covered:.1%} of analysis cells "
               f"covered, {with_value:.1%} carry a value at {res:g} m; "
               f"columns {cols}")
+        # A layer that reaches the grid but loses most of its values there is the
+        # in-between case the two branches above miss, and it is the one that
+        # slipped through: Hamburg's vacancy rate covers 44.3 % of analysis cells
+        # and carries a value on 2.6 %, yet still produced the largest everyday
+        # gradient in equity_regressions.csv. Either 94 % of the covered cells are
+        # genuinely suppressed — worth stating rather than inferring — or a second
+        # parse problem is eating values the way the decimal comma did.
+        if covered > 0.05 and with_value < 0.25 * covered:
+            print(f"WARNING: SES layer '{name}' ({member}) keeps a value on only "
+                  f"{with_value / covered:.1%} of the cells it covers. Check "
+                  f"whether the release really suppresses that much before using "
+                  f"{cols} as a covariate; equity.min_covariate_valid_share gates "
+                  f"it downstream either way.")
 
 
 def _layer_resolution(name: str, layer: pd.DataFrame, default: float,

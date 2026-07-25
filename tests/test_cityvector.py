@@ -127,14 +127,35 @@ def test_slope_ses_prefers_the_harmonised_census_column(tmp_path):
     assert row.slope_density_everyday == 0.05
 
 
-def test_slope_ses_falls_back_when_the_census_layer_is_absent(tmp_path):
+def test_slope_ses_is_missing_not_substituted_when_the_census_layer_is_absent(tmp_path):
+    """STRICT by default. Employment status is voluntary under Reg. 2018/1799 and
+    Hamburg's EMP came through non-null on 295 cells and constant zero, so the
+    city silently fell back to its German rent grid — and a ten-city pilot would
+    have put ten different variables into one cross-city column that clustering
+    and the scaling regressions treat as one. A missing feature is a fact the
+    sample can handle; a pooled one is not."""
     from depacc.cityvector.features import build_city_vectors
 
     regs = _regressions([("ses", "ses_net_rent_durchschnMieteQM", -0.42)])
     _write_city(tmp_path, "hh", {"city": "hh", "population": 3.1e6}, regs)
-    vectors = build_city_vectors({"output": {"root": "data/derived"}}, tmp_path)
-    # Employment is voluntary under Reg. 2018/1799: no census column -> the
-    # income/rent heuristic, recorded so the mixing is visible.
+    cfg = {"output": {"root": "data/derived"},
+           "equity": {"ses_rank_column": "ses_net_rent_durchschnMieteQM"}}
+    vectors = build_city_vectors(cfg, tmp_path)
+    assert "slope_ses_everyday" not in vectors.columns
+    assert "slope_ses_column" not in vectors.columns
+
+
+def test_slope_ses_fallback_chain_is_opt_in(tmp_path):
+    """cityvector_ses_strict: false restores the old behaviour for a
+    deliberately Tier-2-only comparison, with the substitute recorded."""
+    from depacc.cityvector.features import build_city_vectors
+
+    regs = _regressions([("ses", "ses_net_rent_durchschnMieteQM", -0.42)])
+    _write_city(tmp_path, "hh", {"city": "hh", "population": 3.1e6}, regs)
+    cfg = {"output": {"root": "data/derived"},
+           "equity": {"cityvector_ses_strict": False,
+                      "ses_rank_column": "ses_net_rent_durchschnMieteQM"}}
+    vectors = build_city_vectors(cfg, tmp_path)
     assert vectors.iloc[0].slope_ses_column == "ses_net_rent_durchschnMieteQM"
     assert vectors.iloc[0].slope_ses_everyday == -0.42
 

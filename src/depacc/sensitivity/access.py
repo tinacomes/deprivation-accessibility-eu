@@ -51,7 +51,15 @@ from depacc.divergence.typology import class_shares, classify
 from depacc.equity.indices import weighted_gini
 from depacc.ingest.pipeline import derived_dir
 from depacc.sensitivity.harness import flip_cells
-from depacc.standardize import RegimeSurface, to_percentile
+from depacc.standardize import RegimeSurface, max_tie_pop_share, to_percentile
+
+# A variant whose everyday surface has a single exact-tie block larger than this
+# population share cannot resolve the typology cut: the percentile surface is
+# constant across the split, so its class shares are an artifact of where the
+# block happens to fall, not a sensitivity result. Such variants are reported in
+# the per-variant table with `degenerate = True` and EXCLUDED from the acceptance
+# ranges. Hamburg's κ = 0.1 and walk+car variants are both in this state.
+_DEGENERATE_TIE_SHARE = 0.5
 
 # κ → ∞ sentinel for the nearest-only variant: at this smoothing the soft-min
 # is the hard minimum to well under a micro-minute for any realistic spread of
@@ -66,7 +74,15 @@ _DEFAULT_GRID = {
     "bandwidth_min": [10, 15, 20],
     "k_nearest": [10, 30],
     "nearest_only": True,
-    "unreachable": ["cap_at_max_time", "exclude"],
+    # The `unreachable` axis sweeps `finite_fill_min` (minutes), NOT the
+    # unroutable-cell POLICY. Since the reachability split, `policy` governs only
+    # genuinely-unroutable cells — of which Hamburg has zero, so the old
+    # ["cap_at_max_time", "exclude"] grid produced two identical rows and a range
+    # of 0.0. The knob that actually sets the deprivation of the 12-13 % of the
+    # population with no walkable GP is the finite fill assigned to
+    # reachable-but-service-deprived cells. A string entry is still read as a
+    # policy override, so an unroutable-heavy city can test both.
+    "unreachable": [60, 90, 180],
     "everyday_modes": [["walk"], ["walk", "car"]],
 }
 
@@ -101,6 +117,8 @@ def baseline_params(cfg: dict) -> dict:
         "k": int(cfg["routing"].get("k_nearest", 30)),
         "policy": cfg["unreachable"]["policy"],
         "cap_min": float(cfg["routing"]["max_time_min"]),
+        "finite_fill": float(cfg["unreachable"].get("finite_fill_min")
+                             or cfg["routing"]["max_time_min"]),
         "modes": ev_modes,
         "nearest_only": False,
     }
@@ -152,13 +170,15 @@ def expand_access_variants(cfg: dict, grid: dict | None,
             "nearest_only", "nearest_only", {**base, "nearest_only": True}))
 
     for pol in _get("unreachable"):
-        # A plain policy name, or a numeric alternative cap value (minutes).
+        # A number is a finite-fill value in minutes (the knob that sets the
+        # deprivation of reachable-but-service-deprived cells); a string is a
+        # policy name for the genuinely-unroutable ones.
         if isinstance(pol, (int, float)) and not isinstance(pol, bool):
-            if float(pol) == base["cap_min"]:
+            if float(pol) == base["finite_fill"]:
                 continue
             variants.append(AccessVariant(
-                f"unreachable_cap_{pol}", "unreachable",
-                {**base, "policy": "cap_at_max_time", "cap_min": float(pol)}))
+                f"unreachable_fill_{pol}", "unreachable",
+                {**base, "finite_fill": float(pol)}))
         else:
             if str(pol) == base["policy"]:
                 continue
@@ -234,18 +254,37 @@ def routable_mask(out: Path, cells: pd.DataFrame) -> pd.Series:
     return pd.Series(cells.index.isin(routable_ids), index=cells.index)
 
 
-def everyday_t_regime(cfg: dict, out: Path, cells: pd.DataFrame, params: dict,
-                      *, routable: pd.Series | None = None,
-                      finite_fill: float | None = None) -> np.ndarray | None:
-    """Recompute the composite everyday regime travel time ``t_regime_everyday``
-    from cached inputs under one variant's access parameters. Reproduces the
-    deprivation stage's reachability semantics: reachable-but-service-deprived
-    cells get ``finite_fill`` (stay on the map), genuinely unroutable cells are
-    NaN-masked with the shared no-path mask. Returns an array aligned to
-    ``cells.index``, or None if no everyday service has an OD for the modes."""
-    # The deprivation FUNCTION is irrelevant to t_regime (= t_eff, a travel
-    # time); pass the baseline everyday g only because everyday_surface computes
-    # a deprivation column internally. We discard it.
+def everyday_regime(cfg: dict, out: Path, cells: pd.DataFrame, params: dict,
+                    *, routable: pd.Series | None = None,
+                    finite_fill: float | None = None
+                    ) -> tuple[np.ndarray, np.ndarray, float] | None:
+    """Recompute the everyday regime from cached inputs under one variant's
+    access parameters, EXACTLY as ``depacc.deprivation.pipeline`` builds it.
+
+    Returns ``(deprivation_everyday, t_regime_everyday, zero_floor_pop_share)``
+    aligned to ``cells.index``, or None if no everyday service has an OD for the
+    variant's modes.
+
+    The composite is the weighted row mean of the per-service DEPRIVATIONS,
+    ``Σ w_s g(t_s) / Σ w_s`` — not ``g`` applied to the mean travel time. g is
+    nonlinear (a logistic), so the two differ by a Jensen gap, and this function
+    previously took the second route: its "baseline" variant returned
+    gini_everyday 0.705 against the pipeline's 0.657 and ρ 0.462 against 0.426,
+    i.e. the whole Layer-3 sweep was measured against a fixed point that was not
+    the model's. ``t_regime_everyday`` (the mean of the per-service times) is
+    still returned because it is the deprivation-function-free level quantity,
+    but it is NOT what the targets are computed from.
+
+    Reachability semantics match the deprivation stage: reachable-but-service-
+    deprived cells get ``finite_fill`` (they stay on the map), genuinely
+    unroutable cells are NaN-masked with the shared no-path mask.
+
+    ``zero_floor_pop_share`` is the population share whose effective time hit the
+    physical zero floor in at least one service — the diagnostic behind a
+    degenerate variant (the softmin substitutability bonus is ``ln(n)/κ``
+    minutes, which at κ = 0.1 and k = 30 is ~34 minutes and floors the whole
+    urban core at exactly 0).
+    """
     g_ev = DeprivationFunction.from_spec(
         deprivation_spec(cfg, "everyday"), context="everyday deprivation")
     kappa = _NEAREST_ONLY_KAPPA if params["nearest_only"] else params["kappa"]
@@ -254,10 +293,14 @@ def everyday_t_regime(cfg: dict, out: Path, cells: pd.DataFrame, params: dict,
     if routable is None:
         routable = routable_mask(out, cells)
     if finite_fill is None:
+        finite_fill = params.get("finite_fill")
+    if finite_fill is None:
         finite_fill = float(cfg["unreachable"].get("finite_fill_min")
                             or cfg["routing"]["max_time_min"])
 
-    per_service, used = [], []
+    pop = cells["population"].to_numpy(float)
+    per_dep, per_t, used = [], [], []
+    floored = np.zeros(len(cells), dtype=bool)
     for service in cfg.get("everyday_services", {}):
         od = _combined_od_subset(out, service, params["modes"], params["k"])
         fac_path = out / f"facilities_{service}.parquet"
@@ -271,17 +314,26 @@ def everyday_t_regime(cfg: dict, out: Path, cells: pd.DataFrame, params: dict,
             policy=params["policy"], max_time_min=params["cap_min"],
             routable=routable, finite_fill_min=finite_fill,
         )
-        per_service.append(surf["t_eff"].to_numpy(float))
+        t_eff = surf["t_eff"].to_numpy(float)
+        per_dep.append(surf["deprivation"].to_numpy(float))
+        per_t.append(t_eff)
+        floored |= (t_eff == 0.0)
         used.append(service)
-    if not per_service:
+    if not per_dep:
         return None
     w = np.array([float(weights.get(s, 1.0)) for s in used])
-    vals = np.column_stack(per_service)
-    t = _weighted_row_mean(vals, w)
+    dep = _weighted_row_mean(np.column_stack(per_dep), w)
+    t = _weighted_row_mean(np.column_stack(per_t), w)
     # Mask the genuinely-unroutable (no-path) cells, exactly as the deprivation
-    # stage masks t_regime_everyday — one shared mask for both regimes.
+    # stage masks the regime columns — one shared mask for both regimes.
     no_path = ~routable.reindex(cells.index).fillna(False).to_numpy(bool)
-    return np.where(no_path, np.nan, t)
+    valid = np.isfinite(pop) & (pop > 0)
+    total = float(pop[valid].sum())
+    zero_share = (float(pop[valid & floored & ~no_path].sum()) / total
+                  if total > 0 else float("nan"))
+    return (np.where(no_path, np.nan, dep),
+            np.where(no_path, np.nan, t),
+            zero_share)
 
 
 def _weighted_row_mean(vals: np.ndarray, w: np.ndarray) -> np.ndarray:
@@ -298,19 +350,25 @@ def _weighted_row_mean(vals: np.ndarray, w: np.ndarray) -> np.ndarray:
 # --------------------------------------------------------------------------- #
 # Targets                                                                      #
 # --------------------------------------------------------------------------- #
-def access_variant_targets(t_everyday: np.ndarray, t_emergency: np.ndarray,
-                           population: np.ndarray, everyday_spec: dict,
-                           emergency_spec: dict, city_id: str,
+def access_variant_targets(dep_everyday: np.ndarray, dep_emergency: np.ndarray,
+                           population: np.ndarray, city_id: str,
                            threshold: float) -> dict:
     """Standardised / rank targets for one Layer-3 variant. Everything returned
     is scale-free or population-weighted; raw magnitudes never leave here.
     Adds the coupling ρ (weighted Spearman of the two percentile surfaces) to
     the harness's stable-target set, and returns the per-cell labels for flips.
+
+    Both arguments are already-composited regime DEPRIVATION surfaces (the
+    weighted mean of the per-service ``g(t_s)``), so that this reproduces the
+    pipeline rather than re-deriving a deprivation from a composited time.
+    ``max_tie_everyday`` reports the largest exact-tie block: above 0.5 the
+    percentile surface can no longer support the median split and the class
+    shares are meaningless (flagged by the caller, not silently ranked).
     """
-    g_ev = DeprivationFunction.from_spec(everyday_spec, context="everyday")
-    g_em = DeprivationFunction.from_spec(emergency_spec, context="emergency")
-    ev = RegimeSurface(g_ev(t_everyday), population, "everyday", city_id, "raw")
-    em = RegimeSurface(g_em(t_emergency), population, "emergency", city_id, "raw")
+    ev = RegimeSurface(np.asarray(dep_everyday, float), population,
+                       "everyday", city_id, "raw")
+    em = RegimeSurface(np.asarray(dep_emergency, float), population,
+                       "emergency", city_id, "raw")
     gini_ev = weighted_gini(ev.values, population)
     gini_em = weighted_gini(em.values, population)
     ev_p = to_percentile(ev)
@@ -322,6 +380,7 @@ def access_variant_targets(t_everyday: np.ndarray, t_emergency: np.ndarray,
         "gini_emergency": gini_em,
         "divergence_gap": gini_em - gini_ev,
         "spearman_rho": weighted_spearman(ev_p, em_p),
+        "max_tie_everyday": max_tie_pop_share(ev.values, population),
         **{f"share_{c}": shares.get(c, np.nan) for c in ("LL", "LH", "HL", "HH")},
         "labels": labels,
     }
@@ -343,48 +402,62 @@ def city_access_sensitivity(cfg: dict, city: str, root: Path, grid: dict,
         return None
     cells = pd.read_parquet(cells_path).set_index("cell_id")
     surfaces = pd.read_parquet(surf_path)
-    if "t_regime_emergency" not in surfaces:
-        print(f"  {city}: surfaces.parquet lacks t_regime_emergency; skipped")
+    if "deprivation_emergency" not in surfaces:
+        print(f"  {city}: surfaces.parquet lacks deprivation_emergency; skipped")
         return None
     pop = cells["population"].to_numpy(float)
-    t_em = surfaces["t_regime_emergency"].to_numpy(float)  # invariant across variants
-    ev_spec = deprivation_spec(cfg, "everyday")
-    em_spec = deprivation_spec(cfg, "emergency")
+    # The emergency regime is nearest-facility of a fixed mode and no everyday
+    # access knob touches it, so its COMPOSITE DEPRIVATION is read straight from
+    # the pipeline's own output. Re-deriving it as g(mean of the two nearest
+    # times) is a different estimator from the pipeline's mean of g(t_s) and was
+    # why gini_emergency came out a constant 0.603 against the run's 0.621.
+    dep_em = surfaces["deprivation_emergency"].to_numpy(float)
 
-    # Shared no-path mask + finite-fill, computed once and reused by every
-    # variant so the recomputed everyday surface matches the deprivation stage.
+    # Shared no-path mask, computed once and reused by every variant so the
+    # recomputed everyday surface matches the deprivation stage.
     routable = routable_mask(out, cells)
-    finite_fill = float(cfg["unreachable"].get("finite_fill_min")
-                        or cfg["routing"]["max_time_min"])
 
     services = list(cfg.get("everyday_services", {}))
     avail = available_od_modes(out, services)
     variants = expand_access_variants(cfg, grid, available_modes=avail)
 
     rows, base_labels, var_label_sets = [], None, []
+    var_degenerate: list[bool] = []
+    base_dep_ev = None
     for v in variants:
-        t_ev = everyday_t_regime(cfg, out, cells, v.params,
-                                 routable=routable, finite_fill=finite_fill)
-        if t_ev is None:
+        ev = everyday_regime(cfg, out, cells, v.params, routable=routable,
+                             finite_fill=v.params["finite_fill"])
+        if ev is None:
             print(f"  {city}: variant '{v.name}' has no everyday OD; skipped")
             continue
-        tgt = access_variant_targets(t_ev, t_em, pop, ev_spec, em_spec, city,
-                                     threshold)
+        dep_ev, _t_ev, zero_share = ev
+        tgt = access_variant_targets(dep_ev, dep_em, pop, city, threshold)
         labels = tgt.pop("labels")
+        degenerate = bool(tgt["max_tie_everyday"] > _DEGENERATE_TIE_SHARE)
+        if degenerate:
+            print(f"  {city}: variant '{v.name}' is DEGENERATE — a single tie "
+                  f"block holds {tgt['max_tie_everyday']:.1%} of the population "
+                  f"({zero_share:.1%} floored at t_eff = 0); its class shares "
+                  f"are excluded from the acceptance ranges")
         if v.name == "baseline":
-            base_labels = labels
+            base_labels, base_dep_ev = labels, dep_ev
         else:
             var_label_sets.append(labels)
+            var_degenerate.append(degenerate)
         p = v.params
         rows.append({
             "city": city, "axis": v.knob, "variant": v.name,
             "kappa": (np.inf if p["nearest_only"] else p["kappa"]),
             "gamma": p["gamma"], "bandwidth": p["bandwidth"], "k_nearest": p["k"],
             "policy": p["policy"], "cap_min": p["cap_min"],
+            "finite_fill_min": p["finite_fill"],
             "modes": "+".join(p["modes"]), "threshold": threshold,
             **{k: tgt[k] for k in ("gini_everyday", "gini_emergency",
                                    "divergence_gap", "spearman_rho",
-                                   "share_LL", "share_LH", "share_HL", "share_HH")},
+                                   "share_LL", "share_LH", "share_HL", "share_HH",
+                                   "max_tie_everyday")},
+            "zero_floor_pop_share": zero_share,
+            "degenerate": degenerate,
         })
 
     if base_labels is None:
@@ -404,12 +477,8 @@ def city_access_sensitivity(cfg: dict, city: str, root: Path, grid: dict,
     # Threshold-axis block on the BASELINE surfaces (the comparison axis): how
     # far the "how high is high" choice alone moves the HH share. ρ is coupling
     # and threshold-independent, so its threshold-axis range is 0 by definition.
-    t_ev_base = everyday_t_regime(cfg, out, cells, baseline_params(cfg),
-                                  routable=routable, finite_fill=finite_fill)
-    g_ev = DeprivationFunction.from_spec(ev_spec, context="everyday")
-    g_em = DeprivationFunction.from_spec(em_spec, context="emergency")
-    ev_p = to_percentile(RegimeSurface(g_ev(t_ev_base), pop, "everyday", city, "raw"))
-    em_p = to_percentile(RegimeSurface(g_em(t_em), pop, "emergency", city, "raw"))
+    ev_p = to_percentile(RegimeSurface(base_dep_ev, pop, "everyday", city, "raw"))
+    em_p = to_percentile(RegimeSurface(dep_em, pop, "emergency", city, "raw"))
     rho_base = weighted_spearman(ev_p, em_p)
     for thr in _THRESHOLDS:
         labels = classify(ev_p.values, em_p.values, thr)
@@ -417,11 +486,13 @@ def city_access_sensitivity(cfg: dict, city: str, root: Path, grid: dict,
         rows.append({
             "city": city, "axis": "threshold", "variant": f"threshold_{thr}",
             "kappa": np.nan, "gamma": np.nan, "bandwidth": np.nan,
-            "k_nearest": np.nan, "policy": "", "cap_min": np.nan, "modes": "",
+            "k_nearest": np.nan, "policy": "", "cap_min": np.nan,
+            "finite_fill_min": np.nan, "modes": "",
             "threshold": thr, "gini_everyday": np.nan, "gini_emergency": np.nan,
             "divergence_gap": np.nan, "spearman_rho": rho_base,
             **{f"share_{c}": shares.get(c, np.nan) for c in ("LL", "LH", "HL", "HH")},
-            "flip_pop_share": np.nan,
+            "max_tie_everyday": np.nan, "zero_floor_pop_share": np.nan,
+            "degenerate": False, "flip_pop_share": np.nan,
         })
 
     table = pd.DataFrame(rows)
@@ -429,9 +500,12 @@ def city_access_sensitivity(cfg: dict, city: str, root: Path, grid: dict,
     sens_dir.mkdir(parents=True, exist_ok=True)
     table.to_csv(sens_dir / f"{city}_access_sensitivity.csv", index=False)
 
-    # Union flip-cell map: cells that flip class under ANY variant vs baseline.
-    if var_label_sets:
-        fc = flip_cells(base_labels, var_label_sets, pop)
+    # Union flip-cell map: cells that flip class under ANY NON-DEGENERATE variant
+    # vs baseline. A degenerate variant relabels half the city by construction,
+    # so including it would paint the map red and say nothing.
+    sound = [lab for lab, deg in zip(var_label_sets, var_degenerate) if not deg]
+    if sound:
+        fc = flip_cells(base_labels, sound, pop)
         _flip_cell_map(surfaces, fc["flip_mask"], cfg, city,
                        sens_dir / f"{city}_access_flip_cells.png",
                        sensitive_share=fc["sensitive_pop_share"])
@@ -442,36 +516,57 @@ def city_access_sensitivity(cfg: dict, city: str, root: Path, grid: dict,
 # Acceptance table                                                            #
 # --------------------------------------------------------------------------- #
 def acceptance_table(table: pd.DataFrame) -> pd.DataFrame:
-    """Which Layer-3 knobs move the HH share / ρ by MORE than the threshold
-    axis does. Each knob's range spans its variants together with the baseline
-    (so the range is measured from the fixed point); the threshold axis's HH
-    range is its own; its ρ range is 0 by construction."""
+    """Which Layer-3 knobs move the HH share by MORE than the threshold axis
+    does. Each knob's range spans its variants together with the baseline (so
+    the range is measured from the fixed point), and the threshold axis's HH
+    range is its own.
+
+    Degenerate variants are dropped from every range and counted in
+    ``n_degenerate``: a variant whose everyday surface collapses into one
+    >50 % tie block has class shares that describe where the block fell, not a
+    sensitivity, and letting it in made κ the apparent top mover on Hamburg (its
+    κ = 0.1 variant and its walk+car variant reported the identical range because
+    both returned the same degenerate split).
+
+    Only HH carries an ``exceeds`` verdict. The old ``rho_exceeds_threshold``
+    column was vacuous: ρ is computed on percentile surfaces, which the typology
+    threshold does not touch, so the threshold axis's ρ range is 0 by
+    construction and ANY knob with a nonzero range "exceeded" it. ``rho_range``
+    is still reported as a magnitude to read on its own.
+    """
     thr = table[table.axis == "threshold"]
     hh_thr = _range(thr["share_HH"])
-    rho_thr = 0.0  # ρ is threshold-independent
 
-    baseline = table[table.variant == "baseline"]
+    if "degenerate" in table.columns:
+        ok = table[~table["degenerate"].fillna(False).astype(bool)]
+    else:
+        ok = table
+    baseline = ok[ok.variant == "baseline"]
     knob_rows = []
     for knob in ("kappa", "gamma", "bandwidth", "k_nearest", "nearest_only",
                  "unreachable", "everyday_mode"):
-        block = pd.concat([table[table.axis == knob], baseline])
-        if block[block.axis == knob].empty:
+        n_all = int((table.axis == knob).sum())
+        if not n_all:
             continue
-        hh_rng = _range(block["share_HH"])
-        rho_rng = _range(block["spearman_rho"])
+        block = pd.concat([ok[ok.axis == knob], baseline])
+        n_ok = int((block.axis == knob).sum())
+        hh_rng = _range(block["share_HH"]) if n_ok else float("nan")
         knob_rows.append({
             "knob": knob,
             "hh_share_range": hh_rng,
-            "rho_range": rho_rng,
-            "hh_exceeds_threshold": bool(hh_rng > hh_thr),
-            "rho_exceeds_threshold": bool(rho_rng > rho_thr),
+            "rho_range": _range(block["spearman_rho"]) if n_ok else float("nan"),
+            "hh_exceeds_threshold": bool(hh_rng > hh_thr) if n_ok else False,
+            "n_variants": n_all,
+            "n_degenerate": n_all - n_ok,
         })
     knob_rows.append({
-        "knob": "threshold_axis", "hh_share_range": hh_thr, "rho_range": rho_thr,
-        "hh_exceeds_threshold": False, "rho_exceeds_threshold": False,
+        "knob": "threshold_axis", "hh_share_range": hh_thr, "rho_range": 0.0,
+        "hh_exceeds_threshold": False, "n_variants": int(len(thr)),
+        "n_degenerate": 0,
     })
     acc = pd.DataFrame(knob_rows)
-    return acc.sort_values("hh_share_range", ascending=False).reset_index(drop=True)
+    return acc.sort_values("hh_share_range", ascending=False,
+                           na_position="last").reset_index(drop=True)
 
 
 def _range(s: pd.Series) -> float:
@@ -560,11 +655,14 @@ def run_access_sensitivity(cfg: dict, grid: dict, root: Path,
         if table is None:
             continue
         var = table[~table.axis.isin(["threshold"])]
+        n_deg = int(var["degenerate"].fillna(False).astype(bool).sum())
+        var = var[~var["degenerate"].fillna(False).astype(bool)]
         hh_rng = _range(var["share_HH"])
         rho_rng = _range(var["spearman_rho"])
         print(f"  {c}: across Layer-3 variants — HH-share range {hh_rng:.4f}, "
               f"ρ range {rho_rng:.4f} "
-              f"(vs threshold-axis HH range {_range(table[table.axis=='threshold']['share_HH']):.4f})")
+              f"(vs threshold-axis HH range {_range(table[table.axis=='threshold']['share_HH']):.4f})"
+              + (f"; {n_deg} degenerate variant(s) excluded" if n_deg else ""))
         # Acceptance table (written for every city; the Hamburg one is the
         # acceptance artefact called for in the task).
         acc = acceptance_table(table)

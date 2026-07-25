@@ -762,3 +762,66 @@ sweep?* — is not yet settled. Revised order:
 Recommendation: **A′ then E.1**, with F.1 alongside. E before F, contrary to the
 original sequencing, because E.1 answers a question the pilot would otherwise
 inherit ten times over.
+
+### 5.4 A′ — the six fixes, implemented
+
+All six landed; the full suite passes and a demo end-to-end run plus Layer-3
+sweep is clean. Per defect:
+
+1. **Layer-3 composite.** `sensitivity/access.py` now builds the everyday
+   per-service deprivations and composites them with the same weighted row mean
+   the pipeline uses (`everyday_t_regime` → `everyday_regime`, returning
+   deprivation, the deprivation-free composite time, and a zero-floor
+   diagnostic). Emergency is read straight from `surfaces.parquet`'s
+   `deprivation_emergency` rather than re-derived as `g` of the mean nearest
+   time. `test_baseline_recompute_matches_pipeline` now pins **both** the
+   deprivation composite and `t_regime_everyday` to the saved columns at 1e-9 —
+   the acceptance criterion of §5.3.
+2. **Tie handling.** `to_percentile` is mid-rank: a tie group sits at the
+   midpoint of its own weight span, not the top. New tests cover a 90 % bottom
+   tie block (0.45, reads low — it read 0.90 and "high" before) and the property
+   §1.1's identity actually needs, that cutting at q leaves (1−q) above the cut.
+   Degeneracy is now detected on its own terms: `max_tie_pop_share` in
+   `standardize/`, and any variant whose largest tie block exceeds 50 % of the
+   population is printed, marked `degenerate` in the per-variant table alongside
+   `max_tie_everyday` / `zero_floor_pop_share`, excluded from the acceptance
+   ranges, and excluded from the union flip-cell map. On the demo fixture the
+   mechanism reproduces exactly as diagnosed — *κ = 0.1: a single tie block holds
+   95.2 % of the population, 99.9 % floored at t_eff = 0* — and with it removed
+   the top mover becomes `gamma`, as §5.2 predicted for Hamburg.
+3. **`unreachable` axis.** Now sweeps `finite_fill_min` ∈ {60, 90, 180} instead
+   of a policy that governs zero cells; `finite_fill` is a first-class variant
+   parameter and `finite_fill_min` a column in the table. String grid entries
+   still expand to policy variants for an unroutable-heavy city. The vacuous
+   `rho_exceeds_threshold` column is gone (`n_variants` / `n_degenerate` replace
+   it); `rho_range` is still reported as a magnitude.
+4. **SES support gate.** `equity.min_covariate_valid_share` (default 0.2) gates
+   every `ses_*` column — including constants — *before* anything selects one, so
+   it governs the gradient covariates, the concentration-index rank column and
+   the strata alike. `equity_ses_coverage.csv` (n_cells, cell_share, pop_share,
+   n_distinct) is written every run and persisted to `depacc-results`.
+   `equity.cityvector_ses_strict` (default true) stops the cross-city
+   `slope_ses_*` from silently substituting a per-city column: a city without the
+   harmonised covariate now gets no feature and a NOTE. `ses_census_foreign_born_share`
+   is added to Hamburg's covariate list — at 94.3 % coverage it is the live
+   candidate to replace the employment share as `cityvector_ses_column`, and the
+   next run's gradient should inform that choice. **That choice is the one open
+   decision left from A′** — the default still points at the dead column, which
+   under strict mode means Tier-1 cities get no `slope_ses_*` until it moves.
+5. **Vulnerability reference.** Each stratum now carries both references:
+   `*_ratio` against the whole FUA and `*_ratio_covered` against the cells where
+   its own column is published, plus `coverage_pop_share`, `n_cells` and the
+   `ref_*` levels. New test: a covariate published only on the low-deprivation
+   half reads 0.2 against the FUA and ~1.0 against its own support.
+6. **Vacancy.** Covered by the gate (2.6 % ≪ 20 %, so it no longer supplies the
+   largest everyday gradient). The SES join also gained the in-between warning
+   the two existing branches missed — a layer that reaches the grid but keeps a
+   value on under a quarter of the cells it covers now says so explicitly,
+   instead of leaving "genuine suppression or a second parse bug?" to inference.
+
+`methods.md` §5 (percentile transform), §6.1 (support gate, strict cross-city
+covariate), §6.2 (two references) and §7 (Layer-3) are updated to match.
+
+**Next:** re-run Hamburg (~6 min from cache) and read the corrected
+`hamburg_access_acceptance.csv` and `equity_ses_coverage.csv` before choosing
+between E.1 and the F pilot.
