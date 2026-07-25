@@ -1,3 +1,3 @@
-regime,weighted_mean,gini,concentration_index,concentration_ses_col
-everyday,0.17297377487351234,0.6567947534836417,-0.22985826509639712,ses_net_rent_durchschnMieteQM
-emergency,15.756928268009702,0.6214344752476996,-0.30294903118457167,ses_net_rent_durchschnMieteQM
+regime,weighted_mean,gini,units,concentration_index,concentration_ses_col
+everyday,0.17297377487351234,0.6567947534836421,DLF: fraction of the saturation ceiling Lmax,-0.22985826509639706,ses_net_rent_durchschnMieteQM
+emergency,0.028855033187518284,0.6214344752476992,DCF: multiples of g(45 min) [anchored],-0.3029490311845717,ses_net_rent_durchschnMieteQM
