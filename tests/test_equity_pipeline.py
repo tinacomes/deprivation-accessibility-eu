@@ -151,3 +151,89 @@ def test_shipped_defaults_stratify_every_city_on_the_census_age_layer():
     hh = load_config("hamburg")["equity"]["vulnerability_strata"]
     assert {s["level"] for s in hh} == {"age_census", "age_national",
                                         "income_tier2"}
+
+
+# ---------------------------------------------------------------------------
+# A degenerate covariate must never take the stage down. statsmodels raises
+# MissingDataError("exog contains inf or nans"), which derives from Exception —
+# NOT ValueError — so it escaped the caller's guard and aborted the run.
+# ---------------------------------------------------------------------------
+
+def test_missing_data_error_is_not_a_value_error():
+    """The premise of the bug, pinned: if statsmodels ever makes this a
+    ValueError the guard below is redundant, but until then it is required."""
+    from statsmodels.tools.sm_exceptions import MissingDataError
+
+    from depacc.equity.pipeline import _regression_errors
+
+    assert not issubclass(MissingDataError, ValueError)
+    assert MissingDataError in _regression_errors()
+
+
+def test_zero_variance_covariate_raises_a_handled_error():
+    """A constant covariate standardises to 0/0 = NaN for every row. Refuse it
+    by name, with an error type the caller already handles."""
+    from depacc.equity.regressions import gradient_regression
+
+    rng = np.random.default_rng(11)
+    n = 100
+    df = pd.DataFrame({
+        "population": rng.uniform(1, 100, n),
+        "deprivation_everyday": rng.uniform(0, 1, n),
+        "ses_flat": np.full(n, 0.25),        # constant on its whole support
+    })
+    with pytest.raises(ValueError, match="zero variance"):
+        gradient_regression(df, "deprivation_everyday", ["ses_flat"])
+
+
+def test_equity_survives_a_constant_covariate_and_keeps_the_others(tmp_path, capsys):
+    """The regression that cannot be estimated is skipped with a NOTE; every
+    other covariate, the density gradient and the indices still land."""
+    rng = np.random.default_rng(12)
+    n = 300
+    age65 = np.linspace(0.05, 0.45, n)
+    surfaces = pd.DataFrame({
+        "population": rng.uniform(1, 100, n),
+        "deprivation_everyday": 0.2 + 0.5 * age65 + rng.normal(0, 0.02, n),
+        "deprivation_emergency": rng.uniform(0, 1, n),
+        "ses_census_share_ge65": age65,
+        # Degenerate in two different ways: constant, and constant-on-support.
+        "ses_census_employment_share": np.full(n, 0.63),
+        "ses_flat_with_gaps": np.where(np.arange(n) % 2 == 0, 0.5, np.nan),
+    })
+    out = _write_surfaces(tmp_path, "degen", surfaces)
+    cfg = {**_base_cfg(), "equity": {"ses_covariates": [
+        "ses_census_share_ge65", "ses_census_employment_share",
+        "ses_flat_with_gaps"]}}
+
+    run_equity(cfg, "degen", tmp_path)   # must NOT raise
+
+    log = capsys.readouterr().out
+    assert "ses_census_employment_share" in log and "zero variance" in log
+    regs = pd.read_csv(out / "equity_regressions.csv")
+    terms = set(regs[regs.model == "ses"].term)
+    assert "ses_census_share_ge65" in terms          # the good one survived
+    assert "ses_census_employment_share" not in terms
+    assert "ses_flat_with_gaps" not in terms
+    # The density gradient and both regimes are still there.
+    assert set(regs[regs.model == "density"].regime) == {"everyday", "emergency"}
+    assert (out / "equity_indices.csv").exists()
+
+
+def test_gradient_regression_rejects_a_non_finite_design_matrix():
+    """Belt and braces: statsmodels must never see a non-finite exog, whatever
+    route produced it."""
+    from depacc.equity.regressions import gradient_regression
+
+    rng = np.random.default_rng(13)
+    n = 60
+    df = pd.DataFrame({
+        "population": rng.uniform(1, 100, n),
+        "deprivation_everyday": rng.uniform(0, 1, n),
+        # inf is stripped up front (replace -> NaN -> dropna), so a regression
+        # on the remaining rows is either clean or refused.
+        "ses_x": np.where(np.arange(n) < 3, np.inf, rng.uniform(0, 1, n)),
+    })
+    fit = gradient_regression(df, "deprivation_everyday", ["ses_x"])
+    assert fit.n.iloc[0] == n - 3
+    assert np.isfinite(fit.coef).all()

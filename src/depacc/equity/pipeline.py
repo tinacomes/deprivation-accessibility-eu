@@ -28,6 +28,24 @@ def _resolve_rank_column(equity_cfg: dict, ses_cols: list[str]) -> str | None:
     )
 
 
+def _regression_errors() -> tuple[type[BaseException], ...]:
+    """Exception types a single gradient regression may legitimately fail with.
+
+    ``statsmodels.tools.sm_exceptions.MissingDataError`` derives straight from
+    ``Exception``, NOT from ``ValueError``, so listing only (ValueError,
+    ImportError) let it escape and abort the whole equity stage — one degenerate
+    covariate took the run down with it. A regression that cannot be estimated
+    must always degrade to a NOTE: the other covariates and the other regime are
+    still valid outputs.
+    """
+    errors: tuple[type[BaseException], ...] = (ValueError, ImportError)
+    try:
+        from statsmodels.tools.sm_exceptions import MissingDataError
+    except ImportError:
+        return errors
+    return errors + (MissingDataError,)
+
+
 def _regime_units(cfg: dict, regime: str) -> str:
     """Units of the regime's deprivation surface, recorded next to every
     reported level. The everyday DLF is a fraction of its saturation ceiling
@@ -76,13 +94,14 @@ def run_equity(cfg: dict, city: str, root: Path) -> None:
     indices.to_csv(out / "equity_indices.csv", index=False)
     print(indices.to_string(index=False))
 
+    reg_errors = _regression_errors()
     reg_frames = []
     for regime in ("everyday", "emergency"):
         outcome = f"deprivation_{regime}"
         try:
             d = density_gradient(surfaces, outcome).assign(regime=regime, model="density")
             reg_frames.append(d)
-        except (ValueError, ImportError) as err:
+        except reg_errors as err:
             print(f"NOTE: density gradient skipped for {regime}: {err}")
         # One univariate regression PER covariate with pairwise deletion: a
         # single-column listwise regression over every ses_ column collapses to
@@ -94,8 +113,9 @@ def run_equity(cfg: dict, city: str, root: Path) -> None:
                 g = gradient_regression(surfaces, outcome, [col]).assign(
                     regime=regime, model="ses")
                 reg_frames.append(g)
-            except (ValueError, ImportError) as err:
-                print(f"NOTE: SES regression skipped for {regime}/{col}: {err}")
+            except reg_errors as err:
+                print(f"NOTE: SES regression skipped for {regime}/{col}: "
+                      f"{type(err).__name__}: {err}")
     if reg_frames:
         regs = pd.concat(reg_frames, ignore_index=True)
         regs.to_csv(out / "equity_regressions.csv", index=False)

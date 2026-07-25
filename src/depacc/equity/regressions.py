@@ -40,8 +40,26 @@ def gradient_regression(surfaces: pd.DataFrame, outcome: str,
     mu = np.average(y, weights=w)
     sd = np.sqrt(np.average((y - mu) ** 2, weights=w))
     y_std = (y - mu) / sd if sd > 0 else np.zeros_like(y)
+    # A covariate with no variance on its complete-case support standardises to
+    # 0/0 = NaN for every row, and statsmodels then rejects the design matrix
+    # with MissingDataError("exog contains inf or nans") — which is NOT a
+    # ValueError, so it used to escape the caller's guard and kill the stage.
+    # A constant regressor carries no gradient anyway: refuse it here, by name,
+    # with an error the caller already handles.
+    flat = [c for c in ses_cols if not np.isfinite(df[c].std(ddof=0))
+            or df[c].std(ddof=0) == 0]
+    if flat:
+        raise ValueError(
+            f"Covariate(s) {flat} have zero variance over the "
+            f"{len(df)} complete cells (constant value "
+            f"{[float(df[c].iloc[0]) for c in flat]}) — no gradient to estimate")
     X = df[ses_cols].apply(lambda c: (c - c.mean()) / c.std(ddof=0))
     X = sm.add_constant(X)
+    if not np.isfinite(X.to_numpy(dtype=float)).all():
+        # Belt and braces: never hand statsmodels a non-finite design matrix.
+        raise ValueError(
+            f"Non-finite values in the standardised design matrix for "
+            f"{ses_cols} after dropping incomplete cells")
     model = sm.WLS(y_std, X, weights=w)
     fit = model.fit(cov_type="HC1")
     return pd.DataFrame({
