@@ -40,6 +40,68 @@ tiers:
     modes: ["walk", "car", "transit"]
     countries: ["DE", "NL", "FR", "UK", "SE", "NO", "DK", "FI"]
 
+sources:
+  census:
+    # ------------------------------------------------------------------------
+    # EU-HARMONISED DEMOGRAPHICS FOR EVERY CITY (tiers.tier1.demographics):
+    # Eurostat Census 2021 1 km grid, published by GISCO in EPSG:3035 with an
+    # INSPIRE GRD_ID per cell. Carries the 13 variables of EU Regulation
+    # 2018/1799: total population, sex, broad age (< 15 / 15-64 / >= 65),
+    # current activity status (employed persons — VOLUNTARY, so absent for some
+    # countries), country of birth, and place of usual residence one year
+    # before the census.
+    #
+    # Joined onto the 100 m analysis grid by 1 km cell id, i.e. BROADCAST: each
+    # 100 m cell inherits its kilometre's value, so these are neighbourhood
+    # attributes with no within-kilometre variation (see methods.md §6 and
+    # data/derived/<city>/ses_resolutions.json). Prefixed ses_census_*, which
+    # is what carries them into the equity stage.
+    # ------------------------------------------------------------------------
+    provider: "eurostat_census_2021_1km"
+    landing_page: "https://ec.europa.eu/eurostat/web/gisco/geodata/population-distribution/population-grids"
+    url: "https://gisco-services.ec.europa.eu/census/2021/Eurostat_Census-GRID_2021_V1-0.zip"
+    verify: TODO
+    note: >-
+      The URL above is the GISCO census-2021 grid release (v1.0). It could NOT
+      be byte-verified at implementation time (this environment's egress policy
+      blocks gisco-services.ec.europa.eu), so it is flagged verify: TODO —
+      confirm it against the landing page, and check whether the later release
+      under https://gisco-services.ec.europa.eu/pub/population-grid/2021/
+      supersedes it, before treating any published number as final. The
+      provenance sidecar records the URL + SHA-256 actually fetched, and a
+      failed download degrades to "no census layer" with a warning rather than
+      killing the run. Nothing here is hardcoded in src/: id_column, member and
+      the variable codes below are all config, and shares whose source columns
+      are missing from the file are skipped with a note listing them (the first
+      run therefore prints the file's real column list — correct these codes
+      from that, do not guess).
+    licence: "CC-BY 4.0 — © European Union, Eurostat/GISCO (census 2021 grid)"
+    resolution_m: 1000
+    id_column: "GRD_ID"
+    # CSV member inside the archive (substring match); null -> largest .csv.
+    member: null
+    # Vulnerability shares derived from the raw counts. Numerator and
+    # denominator are both LISTS so a share can sum published categories and
+    # pick its own base. Variable codes per Reg. 2018/1799 — verify: TODO.
+    shares:
+      share_u15:
+        numerator: ["Y_LT15"]
+        denominator: ["T"]
+      share_ge65:
+        numerator: ["Y_GE65"]
+        denominator: ["T"]
+      employment_share:
+        # Employed persons over the WORKING-AGE population, not the total: an
+        # employment share over everyone is confounded by age structure, which
+        # is the other vulnerability layer here.
+        numerator: ["EMP"]
+        denominator: ["Y_15-64"]
+      foreign_born_share:
+        # "Where published": born in another EU country + born elsewhere. Both
+        # codes absent -> the share is skipped, not zero-filled.
+        numerator: ["EU_OTH", "OTH"]
+        denominator: ["T"]
+
 routing:
   # r5:       reference engine, all modes (walk/car/transit), needs .pbf +
   #           JDK 21 (+GTFS for transit). Tier-2 default.
@@ -148,6 +210,40 @@ unreachable:
   # Must be well past the DLF inflection so deprivation saturates high; NOT a
   # literature parameter. null -> use routing.max_time_min.
   finite_fill_min: null
+
+equity:
+  # SES ranking variable for the concentration index. Ascending rank, so
+  # CI < 0 = deprivation concentrated among the low-SES population. The
+  # harmonised default is the census employment share — the only SES-flavoured
+  # variable published EU-wide on the census grid (age is vulnerability, not
+  # SES). It is a PROXY: activity status, not income, and voluntary under
+  # Reg. 2018/1799, so it is absent in some countries — the equity stage then
+  # falls back to the income/rent name heuristic and, failing that, omits the
+  # concentration index rather than ranking on something arbitrary. Tier-2
+  # cities override this with their national income/rent grid column.
+  ses_rank_column: "ses_census_employment_share"
+  # SES covariate carrying the cross-city `slope_ses_*` feature. Kept SEPARATE
+  # from ses_rank_column on purpose: that key is per-city (Tier-2 cities point
+  # it at their national rent grid), whereas this one must be the SAME variable
+  # in every city or the cross-city gradient pools incommensurable betas. The
+  # winner per city is recorded in cityvector.csv as `slope_ses_column`.
+  cityvector_ses_column: "ses_census_employment_share"
+  # Vulnerability-stratified deprivation. The default strata are the
+  # census-harmonised age shares, so every city gets the same cut; `level`
+  # keeps the layers apart and must never be pooled across levels in a
+  # cross-city comparison ("age_census" = broadcast 1 km EU census;
+  # "age_national" = a Tier-2 fine grid; "income_tier2" = Tier-2 only).
+  vulnerability_strata:
+    - name: "elderly_census"
+      column: "ses_census_share_ge65"
+      direction: "high"
+      quantile: 0.75
+      level: "age_census"
+    - name: "children_census"
+      column: "ses_census_share_u15"
+      direction: "high"
+      quantile: 0.75
+      level: "age_census"
 
 typology:
   # Bivariate everyday x emergency classification thresholds on the

@@ -245,6 +245,87 @@ Two levels, matching the two-tier design:
    income only in Tier-2 countries — never mix the two levels in one
    cross-city comparison.
 
+#### Workstream D — status (implemented)
+
+All three items above are in the code. What was built, and the three places
+where the implementation deliberately departs from the plan text:
+
+**D.1 — EU-harmonised census, all cities.** `ingest/census.py` fetches the
+GISCO census-2021 1 km grid, parses INSPIRE `GRD_ID` in both published
+spellings (`CRS3035RES1000mN…E…` and `1kmN2696E4341`) to cell centres, reads
+the continental CSV in chunks clipped to the FUA bbox (plain or zipped, `,`/`;`
+sniffed, `:` → NaN), and derives `share_u15`, `share_ge65`,
+`employment_share` (over the **working-age** base, not the total) and
+`foreign_born_share`, prefixed `ses_census_*`. Everything file-shaped — URL,
+CSV member, id column, variable codes, share definitions — is config
+(`sources.census` in `config/defaults.yaml`); shares whose source columns are
+absent are skipped with a note, which is how "where published" works for the
+voluntary variables, and the loaded column list is printed so a first run
+names the corrections needed. A missing/moved URL degrades that city's
+covariates with a warning instead of killing an all-city batch.
+`join_ses_to_cells` is generalised to per-layer resolutions (explicit
+`resolutions=`, else the frame's `attrs["resolution_m"]`, else 100 m), so the
+1 km→100 m **broadcast** and the native 100 m Zensus join happen in one pass;
+`ses_resolutions.json` records per layer which columns are broadcast. The fetch
+gate is now all-tier (gated on `sources.census.url`, not on tier or engine).
+`equity.ses_rank_column` was already in place; the same picker problem in
+`cityvector/features.py` is fixed via a *separate* key,
+`equity.cityvector_ses_column` — the cross-city `slope_ses_*` feature must be
+ONE variable in every city, whereas `ses_rank_column` is per-city and Tier-2
+cities point it at their rent grid. The covariate actually used is recorded as
+`slope_ses_column`.
+
+> **Deviation 1 (URL not byte-verified).** The implementation environment's
+> egress policy blocks `gisco-services.ec.europa.eu` and `ec.europa.eu`, so the
+> configured URL could not be fetched to confirm its filename, CSV member or
+> column codes. Rather than fabricate them, the config carries the
+> search-resolved release URL plus `verify: TODO` and a note recording exactly
+> what was and was not verified; the loader is written to survive being wrong
+> about all of it. **Confirm before publishing any census-based number.**
+
+**D.2 — DE Zensus for Hamburg.** Already landed in `e541b0c`/`d3c92a4`: the six
+per-layer zensus2022 URLs are in `config/cities/hamburg.yaml`, the SES fetch is
+gated on `sources.ses.urls` (not the engine), and `tests/test_ses.py` exercises
+`join_ses_to_cells` on a synthetic INSPIRE CSV. This iteration adds
+`sources.ses.resolution_m: 100` so the fine grid is explicitly *not* broadcast,
+and a collision guard if a national layer is ever named `census`.
+
+**D.3 — new outputs.** Concentration index, SES gradient regressions,
+`slope_ses_*` and vulnerability-stratified deprivation are all live.
+
+> **Deviation 2 (separate file).** The stratified table is written to
+> `equity_vulnerability.csv`, not into `equity_indices.csv` as the plan text
+> says: its grain is one row per *stratum*, not per regime, and merging two
+> grains into one CSV would make both harder to read. Both files are persisted.
+
+> **Deviation 3 (three levels, not two).** The plan's rule "age everywhere,
+> income only in Tier-2" understates the hazard: Hamburg's Zensus age cut is
+> under-**18** at 100 m while the census cut is under-**15** at 1 km, so a
+> naive "age" level would silently pool two different variables across cities.
+> Strata now carry `age_census` / `age_national` / `income_tier2`, the
+> census-harmonised strata are the shipped default for every city, and Hamburg
+> carries both levels side by side.
+
+**Off-scale emergency mean (~15.76) — fixed as a reporting-units problem, not a
+bug.** The unbounded escalating DCF is behaving exactly as specified: with
+λ = 1.8, shift = 1, scale = 1, g(45) = (46^1.8 − 1)/1.8 ≈ 545, so a mean of
+15.76 is the population-weighted average of Box-Cox-transformed minutes in
+arbitrary relative units — not a value that ever belonged in [0, 1]. Nothing
+downstream was wrong (every rank-based output is scale-invariant), but the
+*reported* level was uninterpretable and sat in the same tables as the
+everyday 0–1 DLF, which D.3's vulnerability table made prominent.
+`deprivation.emergency.reference_time_min: 45.0` now divides g by g(t_ref) at
+the same clinical time-to-care anchor the curvature was calibrated to, so the
+surface reads in **multiples of the deprivation of arriving at the 45-minute
+threshold** (1.0 = at it, > 1 = worse; escalation preserved, not bounded).
+Because it is division by a positive constant, percentiles, typology, ρ,
+Jaccard, both Ginis, p90/p50 and the concentration index are unchanged
+*exactly* (regression-tested); only levels move — 15.76 → 0.0289, and the
+vulnerability table's 15–22 → ~0.029–0.040. The Layer-2 form-swap alternative
+carries the same anchor, so the two forms coincide at 1.0 and its free `scale`
+cancels. `equity_indices.csv` gained a `units` column so no reported level is
+scale-anonymous again. See methods.md §3c.
+
 ### Workstream E — validation
 
 1. **Engine cross-check (highest value):** run Hamburg Tier-2 with

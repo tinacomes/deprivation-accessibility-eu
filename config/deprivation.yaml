@@ -141,6 +141,21 @@ deprivation:
       lam: 1.8     # Box-Cox exponent (>1 => convex); calibrated to time-to-care
       shift: 1.0   # time offset (minutes)
       scale: 1.0   # relative units; anchor to a VSL only if absolute magnitudes needed
+    # REPORTING ANCHOR. The DCF escalates without bound and `scale` is a free
+    # relative constant, so the raw surface is on an arbitrary scale: with
+    # lam=1.8, shift=1, scale=1 we get g(45) = (46^1.8 - 1)/1.8 = 545.3, and
+    # Hamburg's population-weighted mean emergency deprivation reported as
+    # 15.76 — a number with no interpretation, sitting in the same tables as
+    # the everyday 0-1 DLF. Dividing by g(t_ref) at the SAME clinical
+    # time-to-care threshold the curvature was calibrated to puts the surface
+    # in units of "multiples of the deprivation at 45 min": 1.0 = arriving at
+    # the threshold, > 1 = worse (the escalation is preserved, not bounded).
+    # This is division by a positive CONSTANT, so percentiles, the typology,
+    # Ginis, the concentration index, rho, Jaccard and every ranking are
+    # unchanged EXACTLY (tests/test_deprivation_functions.py); only reported
+    # levels move (Hamburg's 15.76 becomes 15.76/545.3 = 0.0289). Set to null
+    # to report the raw relative units instead.
+    reference_time_min: 45.0
     source: >-
       Form: Cantillo et al. 2018; Delgado-Lindeman 2019 (ambulance/time-to-care
       DCF). Convex Box-Cox TRANSFERRED, curvature CALIBRATED to the clinical
@@ -183,6 +198,12 @@ deprivation:
       kind: "DCF"
       form: "exponential"
       params: { beta: 0.02437, scale: 273.7805 }
+      # Same reporting anchor as the baseline DCF, so the form swap is compared
+      # on one scale. With g(45) = 1 on both, the two forms coincide at the
+      # anchor by construction and `scale` above cancels entirely — what the
+      # Layer-2 swap then shows is purely the FORM between and beyond the
+      # anchors, which is the point of the exercise.
+      reference_time_min: 45.0
       source: >-
         Form: exponential DCF (Holguín-Veras et al. 2013 line of work), swapped
         for the Box-Cox to test functional FORM at fixed anchors. See methods.md

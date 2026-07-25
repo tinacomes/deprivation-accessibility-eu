@@ -95,13 +95,46 @@ def age_group_shares(df: pd.DataFrame, bands: dict[str, list[str]],
     return out
 
 
-def join_ses_to_cells(cells: pd.DataFrame, layers: dict[str, pd.DataFrame]) -> pd.DataFrame:
-    """Join SES layers onto GHS cells by snapping both to the same 100 m
-    EPSG:3035 grid cell (INSPIRE convention: coordinates are cell centres)."""
+def _grid_key(x: pd.Series, y: pd.Series, resolution_m: float) -> pd.Series:
+    """Index of the ``resolution_m`` EPSG:3035 grid cell containing each point
+    (INSPIRE convention: layer coordinates are cell CENTRES, so flooring the
+    centre by the resolution recovers the cell)."""
+    ix = (x // resolution_m).astype("int64").astype(str)
+    iy = (y // resolution_m).astype("int64").astype(str)
+    return ix + "_" + iy
+
+
+def join_ses_to_cells(
+    cells: pd.DataFrame,
+    layers: dict[str, pd.DataFrame],
+    *,
+    resolution_m: float = 100.0,
+    resolutions: dict[str, float] | None = None,
+) -> pd.DataFrame:
+    """Join SES / demographic layers onto the GHS analysis cells by snapping
+    both sides to the same EPSG:3035 grid cell.
+
+    Layers do not all share the analysis grid's resolution: the national fine
+    grids are 100 m (DE Zensus) or 200 m (FR Filosofi), while the EU-harmonised
+    census 2021 grid is 1 km. Each layer is therefore keyed on ITS OWN grid —
+    ``resolutions[name]``, else the layer frame's ``attrs["resolution_m"]``,
+    else ``resolution_m`` — and a coarser layer is **broadcast**: every 100 m
+    analysis cell inside one coarse cell receives the same value. That is a
+    real limitation, not a rounding detail: a 1 km census share carries no
+    within-kilometre variation, so it is a neighbourhood attribute of the cell
+    (exactly like the Tier-2 ownership/vacancy covariates), and cross-city
+    comparisons must not read it as 100 m detail. The resolution actually used
+    per layer is returned by :func:`ses_join_resolutions` for the provenance
+    sidecar.
+
+    An analysis cell with no covering layer cell gets NaN — never a nearest
+    neighbour's value.
+    """
     out = cells.copy()
-    key = (out["x"] // 100).astype(int).astype(str) + "_" + (out["y"] // 100).astype(int).astype(str)
     for name, layer in layers.items():
-        lkey = (layer["x"] // 100).astype(int).astype(str) + "_" + (layer["y"] // 100).astype(int).astype(str)
+        res = float(_layer_resolution(name, layer, resolution_m, resolutions))
+        key = _grid_key(out["x"], out["y"], res)
+        lkey = _grid_key(layer["x"], layer["y"], res)
         values = layer.drop(columns=["x", "y"]).set_index(lkey)
         values = values[~values.index.duplicated(keep="first")]
         joined = values.reindex(key)
@@ -109,4 +142,35 @@ def join_ses_to_cells(cells: pd.DataFrame, layers: dict[str, pd.DataFrame]) -> p
             out[f"ses_{name}_{col}" if len(values.columns) > 1 else f"ses_{name}"] = (
                 joined[col].to_numpy()
             )
+    return out
+
+
+def _layer_resolution(name: str, layer: pd.DataFrame, default: float,
+                      resolutions: dict[str, float] | None) -> float:
+    if resolutions and name in resolutions:
+        return resolutions[name]
+    return float(layer.attrs.get("resolution_m", default))
+
+
+def ses_join_resolutions(
+    layers: dict[str, pd.DataFrame],
+    *,
+    resolution_m: float = 100.0,
+    resolutions: dict[str, float] | None = None,
+) -> dict[str, dict]:
+    """Per-layer join provenance: the grid resolution each layer was keyed on
+    and the ``ses_*`` columns it produced. Written beside ``cells.parquet`` so
+    a downstream reader can tell a 100 m covariate from a broadcast 1 km one."""
+    out = {}
+    for name, layer in layers.items():
+        cols = [c for c in layer.columns if c not in ("x", "y")]
+        prefix = f"ses_{name}"
+        res = float(_layer_resolution(name, layer, resolution_m, resolutions))
+        out[name] = {
+            "resolution_m": res,
+            "columns": [f"{prefix}_{c}" for c in cols] if len(cols) > 1 else [prefix],
+            # Coarser than the 100 m analysis grid -> the value is replicated
+            # over every analysis cell inside it (no within-cell variation).
+            "broadcast_to_analysis_grid": res > 100.0,
+        }
     return out

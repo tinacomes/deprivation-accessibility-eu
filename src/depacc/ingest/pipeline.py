@@ -1,9 +1,11 @@
 """Ingest stage orchestrator: boundary -> population cells -> OSM facilities
--> GTFS (Tier 2) -> SES (Tier 2). Cached and provenance-logged; each step
-writes parquet under data/derived/<city>/ and is skipped when up to date."""
+-> GTFS (Tier 2) -> demographics/SES (EU census 1 km for every tier, national
+fine grids where configured). Cached and provenance-logged; each step writes
+parquet under data/derived/<city>/ and is skipped when up to date."""
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -79,10 +81,16 @@ def run_ingest(cfg: dict, city: str, root: Path) -> None:
         return
 
     from depacc.ingest.boundaries import fetch_fua_boundary
+    from depacc.ingest.census import census_layer
     from depacc.ingest.ghs import fetch_population_cells
     from depacc.ingest.gtfs import fetch_gtfs
     from depacc.ingest.osm import extract_facilities, fetch_pbfs, merge_pbfs
-    from depacc.ingest.ses import fetch_ses_layers, join_ses_to_cells, load_inspire_csv_zip
+    from depacc.ingest.ses import (
+        fetch_ses_layers,
+        join_ses_to_cells,
+        load_inspire_csv_zip,
+        ses_join_resolutions,
+    )
 
     fua = fetch_fua_boundary(cfg, root)
     fua.to_parquet(out / "fua_boundary.parquet")
@@ -153,14 +161,58 @@ def run_ingest(cfg: dict, city: str, root: Path) -> None:
         (out / "gtfs_paths.txt").write_text("\n".join(map(str, feeds)))
         print(f"GTFS feeds: {[p.name for p in feeds]}")
 
-    # SES enrichment (Tier 2), only if download URLs are configured — avoids
-    # a wall of skip-warnings when they are not yet set.
-    ses_urls = (cfg.get("sources", {}).get("ses", {}) or {}).get("urls")
-    if int(cfg["city"].get("tier", 1)) >= 2 and ses_urls:
+    # ---- Demographic / SES enrichment -------------------------------------
+    # Two levels, joined in one pass so a city can carry both:
+    #   * EU-harmonised Eurostat Census 2021 1 km grid — EVERY tier (it is the
+    #     declared tier-1 demographics source), gated only on
+    #     sources.census.url being configured. This is what makes age /
+    #     employment vulnerability available for all cities.
+    #   * national fine SES grids (DE Zensus 100 m, ...) — gated on
+    #     sources.ses.urls being present, NOT on the routing engine: the
+    #     friction fast path needs SES exactly as much as an r5 run does.
+    layers: dict[str, pd.DataFrame] = {}
+    resolutions: dict[str, float] = {}
+
+    # The census archive is continental, so the FUA-clipped layer is cached per
+    # city: a stage re-dispatch (fresh runner, cache hit on cells.parquet)
+    # should not re-parse millions of rows.
+    census_cache = out / "census_cells.parquet"
+    if census_cache.exists():
+        census = pd.read_parquet(census_cache)
+        print(f"census 1 km grid cached: {len(census)} cells over the FUA")
+    else:
+        census = census_layer(cfg, root, fua)
+        if census is not None:
+            census.to_parquet(census_cache)
+    if census is not None:
+        layers["census"] = census
+        resolutions["census"] = float(
+            (cfg.get("sources", {}).get("census", {}) or {}).get("resolution_m", 1000))
+
+    ses_cfg = cfg.get("sources", {}).get("ses", {}) or {}
+    if ses_cfg.get("urls"):
         layer_zips = fetch_ses_layers(cfg, root)
+        for name, p in layer_zips.items():
+            if name in layers:
+                print(f"WARNING: SES layer '{name}' collides with an already "
+                      f"joined layer; rename it in sources.ses.layers")
+                continue
+            layers[name] = load_inspire_csv_zip(p)
+            resolutions[name] = float(ses_cfg.get("resolution_m", 100))
         if layer_zips:
-            layers = {name: load_inspire_csv_zip(p) for name, p in layer_zips.items()}
-            cells = join_ses_to_cells(cells, layers)
-            cells = _derive_ses_columns(cfg, cells)
-            cells.to_parquet(cells_path)
-            print(f"SES layers joined: {sorted(layer_zips)}")
+            print(f"SES layers loaded: {sorted(layer_zips)}")
+
+    if layers:
+        cells = join_ses_to_cells(cells, layers, resolutions=resolutions)
+        cells = _derive_ses_columns(cfg, cells)
+        cells.to_parquet(cells_path)
+        # Grid resolution per joined layer: which ses_* columns are native
+        # 100 m and which are broadcast from a coarser grid (methods.md §6).
+        (out / "ses_resolutions.json").write_text(
+            json.dumps(ses_join_resolutions(layers, resolutions=resolutions),
+                       indent=2),
+            encoding="utf-8",
+        )
+        print(f"SES/demographic layers joined: {sorted(layers)}; "
+              f"ses_* columns: "
+              f"{sorted(c for c in cells.columns if c.startswith('ses_'))}")
