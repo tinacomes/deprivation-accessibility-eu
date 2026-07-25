@@ -145,3 +145,89 @@ def test_null_params_still_guarded():
     with pytest.raises(MissingParameterError) as err:
         DeprivationFunction.from_spec(spec)
     assert "TODO(cite)" in str(err.value)
+
+
+# ---------------------------------------------------------------------------
+# Reporting anchor (reference_time_min): the fix for the off-scale emergency
+# level. Dividing the unbounded DCF by g(t_ref) makes the reported mean
+# interpretable while leaving every rank- and ratio-based output untouched.
+# ---------------------------------------------------------------------------
+
+ANCHORED = dict(kind="DCF", form="box_cox",
+                params={"lam": 1.8, "scale": 1.0, "shift": 1.0},
+                reference_time_min=45.0)
+
+
+def test_reference_time_normalises_to_one_at_the_anchor():
+    g = DeprivationFunction(**ANCHORED)
+    assert float(g(45.0)) == pytest.approx(1.0)
+    # It does NOT bound the function: escalation past the anchor reads > 1.
+    assert float(g(60.0)) > 1.0
+    assert float(g(0.0)) == pytest.approx(0.0)
+
+
+def test_reference_time_is_a_constant_rescaling_of_the_raw_function():
+    raw = DeprivationFunction(**{k: v for k, v in ANCHORED.items()
+                                 if k != "reference_time_min"})
+    g = DeprivationFunction(**ANCHORED)
+    t = np.array([0.0, 3.9, 14.4, 45.0, 60.0, 120.0])
+    ratio = np.asarray(g(t))[1:] / np.asarray(raw(t))[1:]
+    assert np.allclose(ratio, ratio[0])                 # one constant factor
+    assert ratio[0] == pytest.approx(1.0 / float(raw(45.0)))
+
+
+def test_anchor_leaves_every_rank_and_inequality_output_unchanged():
+    """The anchor may change reported LEVELS only. Gini, the concentration
+    index, the p90/p50 ratio and the population-weighted percentiles must be
+    identical, because they are invariant to a positive constant factor."""
+    from depacc.divergence.cityplane import _p90_p50
+    from depacc.equity.indices import concentration_index, weighted_gini
+    from depacc.standardize import RegimeSurface, to_percentile
+
+    rng = np.random.default_rng(7)
+    t = rng.uniform(1.0, 40.0, 500)
+    pop = rng.uniform(1.0, 200.0, 500)
+    ses = rng.uniform(0.3, 0.8, 500)
+    raw = DeprivationFunction(**{k: v for k, v in ANCHORED.items()
+                                 if k != "reference_time_min"})
+    g = DeprivationFunction(**ANCHORED)
+    d_raw, d_anch = np.asarray(raw(t)), np.asarray(g(t))
+
+    assert weighted_gini(d_anch, pop) == pytest.approx(weighted_gini(d_raw, pop))
+    assert concentration_index(d_anch, ses, pop) == pytest.approx(
+        concentration_index(d_raw, ses, pop))
+    assert _p90_p50(d_anch, pop) == pytest.approx(_p90_p50(d_raw, pop))
+    pct = [to_percentile(RegimeSurface(d, pop, "emergency", "c")).values
+           for d in (d_raw, d_anch)]
+    assert np.allclose(*pct)
+    # ... while the reported LEVEL becomes readable (multiples of g(45 min)).
+    assert np.average(d_raw, weights=pop) > 10.0
+    assert np.average(d_anch, weights=pop) < 1.0
+
+
+def test_shipped_emergency_config_is_anchored_and_readable():
+    cfg = load_config()
+    em = DeprivationFunction.from_spec(deprivation_spec(cfg, "emergency"))
+    assert em.reference_time_min == 45.0
+    assert float(em(45.0)) == pytest.approx(1.0)
+    # Hamburg's observed median (3.9 min) and p90 (14.4 min) car times to an ED
+    # now report as small fractions of the clinical-threshold cost instead of
+    # the off-scale 9.5 / 75.6 of the raw relative units.
+    assert 0.0 < float(em(3.9)) < 0.05
+    assert 0.0 < float(em(14.4)) < 0.2
+    assert "multiples of g(45 min)" in em.units
+    # The Layer-2 form swap shares the anchor, so both forms read 1.0 there and
+    # the alternative's free `scale` cancels entirely.
+    alt = DeprivationFunction.from_spec(
+        deprivation_spec(cfg, "emergency", alternative="emergency_exponential"))
+    assert float(alt(45.0)) == pytest.approx(1.0)
+    # The everyday DLF needs no anchor: it is bounded by its own ceiling.
+    everyday = DeprivationFunction.from_spec(deprivation_spec(cfg, "everyday"))
+    assert everyday.reference_time_min is None
+    assert "saturation ceiling" in everyday.units
+
+
+@pytest.mark.parametrize("bad", [0.0, -5.0])
+def test_non_positive_reference_time_rejected(bad):
+    with pytest.raises(ConfigError, match="reference_time_min"):
+        DeprivationFunction(**{**ANCHORED, "reference_time_min": bad})

@@ -28,6 +28,23 @@ def _resolve_rank_column(equity_cfg: dict, ses_cols: list[str]) -> str | None:
     )
 
 
+def _regime_units(cfg: dict, regime: str) -> str:
+    """Units of the regime's deprivation surface, recorded next to every
+    reported level. The everyday DLF is a fraction of its saturation ceiling
+    while the emergency DCF is unbounded (in multiples of its reporting anchor
+    when ``deprivation.emergency.reference_time_min`` is set, in arbitrary
+    relative units otherwise) — so a ``weighted_mean`` of 0.21 and one of 0.03
+    are NOT on the same scale, and the column says so. Empty when the config
+    carries no deprivation spec (unit tests on synthetic surfaces)."""
+    from depacc.config import ConfigError, deprivation_spec
+    from depacc.deprivation.functions import DeprivationFunction
+
+    try:
+        return DeprivationFunction.from_spec(deprivation_spec(cfg, regime)).units
+    except (ConfigError, KeyError, TypeError):
+        return ""
+
+
 def run_equity(cfg: dict, city: str, root: Path) -> None:
     out = derived_dir(cfg, city, root)
     surfaces = pd.read_parquet(out / "surfaces.parquet")
@@ -47,6 +64,7 @@ def run_equity(cfg: dict, city: str, root: Path) -> None:
             "regime": regime,
             "weighted_mean": weighted_mean(dep, pop),
             "gini": weighted_gini(dep, pop),
+            "units": _regime_units(cfg, regime),
         }
         if ses_rank_col:
             row["concentration_index"] = concentration_index(

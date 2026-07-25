@@ -37,6 +37,18 @@ logistic has a small positive baseline g(0)=Lmax/(1+exp(k*t0)); with
 g(t) = Lmax*(L(t)-L(0))/(Lmax-L(0)) so g(0)=0 and g(inf)=Lmax exactly,
 removing that baseline artifact. (It washes out under the standardisation
 layer anyway, but the anchored surface is cleaner.)
+
+REPORTING SCALE. The saturating DLF lands in [0, Lmax] by construction, but the
+escalating DCF is unbounded and its `scale` is a free relative constant, so with
+scale=1 the emergency surface is on an arbitrary scale (Box-Cox lam=1.8,
+shift=1 gives g(45) ≈ 545, so a city's mean emergency deprivation reads ~15.8 —
+a number with no interpretation, and one that silently invites comparison with
+the everyday 0-1 surface). ``reference_time_min`` fixes that by dividing g by
+g(t_ref) for a configured domain anchor (the ~45-min clinical time-to-care
+threshold for the DCF), so 1.0 means "the deprivation of arriving at the
+threshold" and >1 means "worse than it". It is division by a positive constant:
+percentiles, the typology, Ginis, the concentration index, ρ and every ranking
+are EXACTLY unchanged — only reported levels become interpretable.
 """
 
 from __future__ import annotations
@@ -82,6 +94,19 @@ class DeprivationFunction:
     ``kind`` distinguishes the dimensionless Deprivation Level Function
     ("DLF", everyday framing) from the monetary Deprivation Cost Function
     ("DCF", emergency framing); it labels units of the output surface only.
+
+    ``reference_time_min`` divides g by g(t_ref), putting the surface in units
+    of "multiples of the deprivation at t_ref minutes". This is the reporting
+    anchor for the UNBOUNDED escalating DCF: with scale = 1 the raw Box-Cox
+    values run into the hundreds (g(45) ≈ 545), which makes the reported
+    absolute levels — the city row's ``mean_emergency`` and the vulnerability
+    table's ``mean_dep_emergency`` — unreadable and invites the cross-regime
+    magnitude comparison the standardisation layer exists to forbid. Because it
+    is division by a positive CONSTANT, every rank- or ratio-based output is
+    unchanged exactly: percentiles, the typology, Spearman ρ, Jaccard, the
+    Ginis, the concentration index and the p90/p50 ratio are all invariant
+    (regression-tested). It changes reported LEVELS only, and it does not bound
+    the function: escalation past t_ref shows up as values > 1.
     """
 
     form: str
@@ -89,6 +114,7 @@ class DeprivationFunction:
     kind: str = "DLF"
     source: str = ""
     zero_anchor: bool = True  # logistic only: rescale so g(0)=0
+    reference_time_min: float | None = None  # report in units of g(t_ref)
 
     def __post_init__(self) -> None:
         if self.form not in FORMS:
@@ -124,19 +150,51 @@ class DeprivationFunction:
                 raise ConfigError(
                     "box_cox DCF (escalating emergency cost) requires lam > 1 "
                     "for convexity in time")
+        if self.reference_time_min is not None:
+            t_ref = float(self.reference_time_min)
+            if t_ref <= 0:
+                raise ConfigError(
+                    "reference_time_min must be > 0 (it is the anchor time "
+                    "whose deprivation is reported as 1.0)")
+            g_ref = float(self._raw(np.asarray(t_ref)))
+            if not np.isfinite(g_ref) or g_ref <= 0:
+                raise ConfigError(
+                    f"reference_time_min={t_ref} gives a non-positive "
+                    f"g(t_ref); pick an anchor inside the function's range")
 
     @classmethod
     def from_spec(cls, spec: Mapping[str, object], context: str = "deprivation function") -> "DeprivationFunction":
         """Build from a config spec ({kind, form, params, source}); rejects
         null-placeholder parameters with the citation in the error message."""
         params = require_params(spec, context=context)
+        ref = spec.get("reference_time_min")
         return cls(
             form=str(spec.get("form")),
             params=params,
             kind=str(spec.get("kind", "DLF")),
             source=str(spec.get("source", "")),
             zero_anchor=bool(spec.get("zero_anchor", True)),
+            reference_time_min=None if ref is None else float(ref),
         )
+
+    def _raw(self, arr: np.ndarray) -> np.ndarray:
+        p = self.params
+        if self.form == "logistic":
+            return _logistic(arr, p["Lmax"], p["t0"], p["k"], self.zero_anchor)
+        if self.form == "exponential":
+            return _exponential(arr, p["beta"], p["scale"])
+        return _box_cox(arr, p["lam"], p["scale"], p["shift"])
+
+    @property
+    def units(self) -> str:
+        """Human-readable units of the output surface, carried into the equity
+        outputs so a reported level is never unitless-by-accident."""
+        if self.reference_time_min is not None:
+            return (f"{self.kind}: multiples of g({self.reference_time_min:g} min) "
+                    f"[anchored]")
+        if self.form == "logistic":
+            return f"{self.kind}: fraction of the saturation ceiling Lmax"
+        return f"{self.kind}: relative units (unbounded, scale={self.params['scale']:g})"
 
     def __call__(self, t) -> np.ndarray:
         """Evaluate g(t); NaN in -> NaN out (unreachable propagates until the
@@ -144,9 +202,7 @@ class DeprivationFunction:
         arr = np.asarray(t, dtype=float)
         if np.any((arr < 0) & ~np.isnan(arr)):
             raise ValueError("travel time must be non-negative")
-        p = self.params
-        if self.form == "logistic":
-            return _logistic(arr, p["Lmax"], p["t0"], p["k"], self.zero_anchor)
-        if self.form == "exponential":
-            return _exponential(arr, p["beta"], p["scale"])
-        return _box_cox(arr, p["lam"], p["scale"], p["shift"])
+        out = self._raw(arr)
+        if self.reference_time_min is None:
+            return out
+        return out / self._raw(np.asarray(float(self.reference_time_min)))

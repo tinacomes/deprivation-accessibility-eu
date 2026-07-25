@@ -86,3 +86,65 @@ def test_size_gradient_runs():
     assert set(grad.outcome) <= {"divergence_gap", "spearman_rho",
                                  "compounding_pop_share_50"}
     assert (grad.inference == "cross-sectional space-for-time").all()
+
+
+# ---------------------------------------------------------------------------
+# Which SES covariate carries the cross-city slope_ses_* feature (D.1): it must
+# be ONE variable across cities, not each city's own best column.
+# ---------------------------------------------------------------------------
+
+def _regressions(terms_by_model):
+    rows = [{"model": m, "regime": r, "term": t, "coef": c, "p": 0.01}
+            for m, t, c in terms_by_model for r in ("everyday", "emergency")]
+    return pd.DataFrame(rows + [{"model": "ses", "regime": "everyday",
+                                 "term": "const", "coef": 9.9, "p": 0.0}])
+
+
+def _write_city(root, city, plane_row, regressions):
+    derived = root / "data" / "derived"
+    (derived / city).mkdir(parents=True, exist_ok=True)
+    pd.DataFrame([plane_row]).to_csv(derived / "cityplane.csv", index=False)
+    regressions.to_csv(derived / city / "equity_regressions.csv", index=False)
+    return derived
+
+
+def test_slope_ses_prefers_the_harmonised_census_column(tmp_path):
+    from depacc.cityvector.features import build_city_vectors
+
+    # A Tier-2 city carrying BOTH its national rent gradient and the census one.
+    regs = _regressions([("ses", "ses_census_employment_share", 0.11),
+                         ("ses", "ses_net_rent_durchschnMieteQM", -0.42),
+                         ("density", "log_density", 0.05)])
+    _write_city(tmp_path, "hh", {"city": "hh", "population": 3.1e6}, regs)
+    cfg = {"output": {"root": "data/derived"},
+           "equity": {"ses_rank_column": "ses_net_rent_durchschnMieteQM"}}
+    vectors = build_city_vectors(cfg, tmp_path)
+    row = vectors.iloc[0]
+    # The per-city rank column (rent) ranks the concentration index, but the
+    # cross-city feature must use the column every city has.
+    assert row.slope_ses_column == "ses_census_employment_share"
+    assert row.slope_ses_everyday == 0.11
+    assert row.slope_density_everyday == 0.05
+
+
+def test_slope_ses_falls_back_when_the_census_layer_is_absent(tmp_path):
+    from depacc.cityvector.features import build_city_vectors
+
+    regs = _regressions([("ses", "ses_net_rent_durchschnMieteQM", -0.42)])
+    _write_city(tmp_path, "hh", {"city": "hh", "population": 3.1e6}, regs)
+    vectors = build_city_vectors({"output": {"root": "data/derived"}}, tmp_path)
+    # Employment is voluntary under Reg. 2018/1799: no census column -> the
+    # income/rent heuristic, recorded so the mixing is visible.
+    assert vectors.iloc[0].slope_ses_column == "ses_net_rent_durchschnMieteQM"
+    assert vectors.iloc[0].slope_ses_everyday == -0.42
+
+
+def test_slope_ses_absent_when_no_ses_covariate_qualifies(tmp_path):
+    from depacc.cityvector.features import build_city_vectors
+
+    regs = _regressions([("ses", "ses_age_share_ge65", 0.3)])
+    _write_city(tmp_path, "x", {"city": "x", "population": 1e5}, regs)
+    vectors = build_city_vectors({"output": {"root": "data/derived"}}, tmp_path)
+    # Age is vulnerability, not SES — it must not silently become slope_ses_*.
+    assert "slope_ses_everyday" not in vectors.columns
+    assert "slope_ses_column" not in vectors.columns

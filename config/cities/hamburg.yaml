@@ -42,6 +42,17 @@ sources:
     # sidecar records the URL + SHA-256 actually fetched.
     provider: "zensus2022_de_100m"
     base_url: "https://www.zensus2022.de/DE/Ergebnisse-des-Zensus/gitterzellen.html"
+    # Native grid resolution of these layers: the analysis grid's own 100 m, so
+    # no broadcast (unlike the 1 km EU census layer). This ALSO selects which
+    # CSV is read out of each zip: every destatis "Gitterdaten" archive bundles
+    # the same theme at 10 km, 1 km and 100 m plus a Datenzusatzbeschreibung
+    # readme (e.g. Leerstandsquote_in_Gitterzellen-100m-Gitter.csv), so the
+    # loader matches the "100m" token instead of taking whichever CSV happens
+    # to come first — the bug that left ownership/vacancy empty in the first
+    # run. Per-layer overrides, for a theme published only coarser:
+    #   resolutions: { some_layer: 1000 }     # keys the join at 1 km
+    #   members:     { some_layer: "1km" }    # explicit member substring
+    resolution_m: 100
     layers:
       - "population"        # Einwohnerzahl
       - "age_structure"     # Alter in 5 Altersklassen (-> under-15 / 65+ shares)
@@ -74,27 +85,50 @@ sources:
 equity:
   ses_rank_column: "ses_net_rent_durchschnMieteQM"
   ses_covariates:
+    # EU census 1 km (broadcast; comparable with every other city)
+    - "ses_census_share_u15"
+    - "ses_census_share_ge65"
+    - "ses_census_employment_share"
+    # Zensus 2022 100 m (Tier-2 depth)
     - "ses_age_share_u18"
     - "ses_age_share_ge65"
     - "ses_net_rent_durchschnMieteQM"
     - "ses_ownership_rate_Eigentuemerquote"
     - "ses_vacancy_rate_Leerstandsquote"
   # Vulnerability-stratified deprivation: each stratum is the population-weighted
-  # tail of a vulnerability variable. `level: age` strata are census-harmonised
-  # and cross-city comparable; `level: income_tier2` exists only where a fine
-  # SES grid does — never pool the two across cities. HH share uses the p50
-  # typology by default (vulnerability_hh_threshold).
+  # tail of a vulnerability variable. This list REPLACES the default in
+  # config/defaults.yaml (a list override is not deep-merged), so the two
+  # census-harmonised strata are repeated here: Hamburg must stay comparable to
+  # the Tier-1 cities on `level: age_census` while also using its own finer
+  # Zensus layer. Never pool levels in a cross-city comparison —
+  # "age_census" is the broadcast 1 km EU census layer (available everywhere),
+  # "age_national" the 100 m Zensus layer and "income_tier2" the rent/tenure
+  # layer (both Tier-2 only). HH share uses the p50 typology by default
+  # (vulnerability_hh_threshold).
   vulnerability_strata:
+    - name: "elderly_census"
+      column: "ses_census_share_ge65"
+      direction: "high"
+      quantile: 0.75
+      level: "age_census"
+    - name: "children_census"
+      column: "ses_census_share_u15"
+      direction: "high"
+      quantile: 0.75
+      level: "age_census"
+    # Zensus 2022 100 m: the same construct one resolution finer, and the
+    # youngest published cut is under-18 rather than under-15 — hence a
+    # separate level, never mixed with age_census across cities.
     - name: "elderly"
       column: "ses_age_share_ge65"
       direction: "high"
       quantile: 0.75
-      level: "age"
+      level: "age_national"
     - name: "children"
       column: "ses_age_share_u18"
       direction: "high"
       quantile: 0.75
-      level: "age"
+      level: "age_national"
     - name: "low_rent"
       column: "ses_net_rent_durchschnMieteQM"
       direction: "low"

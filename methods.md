@@ -156,6 +156,31 @@ needed — relative results (Ginis, typology, rankings) are scale-invariant.
 Alternative specifications for sensitivity analysis live in
 `config/deprivation.yaml → deprivation.alternatives`.
 
+### 3c. Reporting anchor for the unbounded DCF
+
+Scale-invariance protects the *relative* results, but not the **reported
+levels**: with λ = 1.8, shift = 1, scale = 1 the raw Box-Cox gives
+g(45) = (46^1.8 − 1)/1.8 ≈ 545, so Hamburg's population-weighted mean emergency
+deprivation printed as **15.76** — a number with no interpretation, sitting in
+the same tables as the everyday 0–1 DLF and inviting exactly the cross-regime
+magnitude comparison §3a forbids. The vulnerability table (§6.2) surfaces those
+levels prominently, so they have to mean something.
+
+`deprivation.emergency.reference_time_min` (= 45 min, the *same* clinical
+time-to-care anchor the curvature was calibrated to) divides g by g(t_ref).
+The emergency surface is then in **multiples of the deprivation of arriving at
+the clinical threshold**: 1.0 = at the threshold, > 1 = worse. It does *not*
+bound the function — the escalation is preserved — and because it is division
+by a positive constant, the population-weighted percentiles, the typology, ρ,
+Jaccard, both Ginis, the p90/p50 ratio and the concentration index are
+unchanged **exactly** (regression-tested in
+`tests/test_deprivation_functions.py`). Only levels move: 15.76 → 0.0289. The
+Layer-2 form-swap alternative carries the same anchor, so the two forms coincide
+at 1.0 there and the alternative's free `scale` cancels. The everyday DLF needs
+no anchor (it is bounded by Lmax = 1); set `reference_time_min: null` to report
+raw relative units instead. Every reported level names its own scale via the
+`units` column of `equity_indices.csv`.
+
 **Full references (to complete with volume/page):** Wang et al. (2017);
 Cantillo, Serrano, Macea, Holguín-Veras (2018); Delgado-Lindeman et al.
 (2019); anchored in the deprivation-cost-function programme of Holguín-Veras
@@ -235,7 +260,11 @@ car-based and non-substitutable, keeps its own convex DCF and is unaffected.
 ## 3a. Cross-regime standardisation (mandatory)
 
 The everyday (bounded logistic DLF) and emergency (unbounded Box-Cox DCF)
-surfaces are on incomparable scales. Raw magnitudes are **never** summed,
+surfaces are on incomparable scales — and the emergency reporting anchor of
+§3c does **not** change that: it makes the emergency level interpretable in its
+own units (multiples of the 45-min clinical-threshold cost), which is not the
+everyday unit (a fraction of the saturation ceiling). Raw magnitudes are
+**never** summed,
 differenced, co-plotted on a shared axis, or clustered together. The
 `standardize/` module is the single choke point: a `RegimeSurface` carries its
 `scale_state` and only population-weighted transforms produce comparable
@@ -371,9 +400,72 @@ sources flagged where proxied).
 ## 6. Equity statistics
 
 Population-weighted mean deprivation; population-weighted Gini (covariance
-form); concentration index against SES rank (Tier 2: income/rent proxies
-from national 100–200 m grids); within-city gradient regressions
-(deprivation on income/rent proxy, age structure, household composition).
+form); concentration index against SES rank; within-city gradient regressions
+(deprivation on the SES covariates, each regressed **univariately** so
+heterogeneously-suppressed themes keep their own support).
+
+### 6.1 Two demographic levels, never pooled
+
+Vulnerability enters on two levels, matching the two-tier design. Every
+covariate is prefixed `ses_*`, which is what carries it into the equity stage
+(`equity/pipeline.py` picks up every `ses_*` column).
+
+| level | source | resolution | availability |
+|---|---|---|---|
+| `age_census` | **Eurostat Census 2021 1 km grid** (GISCO, EPSG:3035, INSPIRE `GRD_ID`); variables of EU Reg. 2018/1799 — total population, sex, broad age (< 15 / 15–64 / ≥ 65), employed persons (voluntary), country of birth, prior residence. Prefix `ses_census_*` (`ingest/census.py`) | 1 km → **broadcast** to 100 m | **every city** |
+| `age_national`, `income_tier2` | national fine SES grids — DE Zensus 2022 100 m (population, age, household size, net rent, ownership, vacancy), NL CBS 100 m, FR INSEE Filosofi 200 m, UK LSOA+IMD. Prefix `ses_<layer>_*` (`ingest/ses.py`) | 100–200 m, native | Tier-2 countries |
+
+**The broadcast is a real limitation, stated not hidden.** A 1 km census value
+is replicated onto every 100 m analysis cell inside that kilometre, so the
+census shares carry no within-kilometre variation: they are a *neighbourhood*
+attribute of the cell, exactly like the Tier-2 ownership/vacancy covariates.
+Both levels are joined by the same mechanism, each keyed on its own grid
+(`ingest/ses.py::join_ses_to_cells`), and the resolution actually used per layer
+— plus a `broadcast_to_analysis_grid` flag — is written to
+`data/derived/<city>/ses_resolutions.json`.
+
+**Selecting the right grid out of a national archive.** Each destatis
+"Gitterdaten" zip bundles the *same* theme at 10 km, 1 km and 100 m (plus a
+`Datenzusatzbeschreibung` readme), e.g.
+`Leerstandsquote_in_Gitterzellen-100m-Gitter.csv`. The member is therefore
+chosen by resolution token (`sources.ses.resolution_m`, with per-layer
+`resolutions` / `members` overrides), the resolution is re-derived from the
+loaded file's own coordinate columns (`x_mp_100m`) and cross-checked against
+what the config asked for, and a layer that matches zero analysis cells is
+reported. Taking "the first CSV in the archive" is what silently loaded a
+coarser grid for the ownership and vacancy layers in the first Hamburg run:
+every 100 m join key missed, the covariates arrived all-NaN, dropped out of the
+gradient regressions, and left the `low_ownership` stratum with a zero
+population share.
+
+**Levels are never mixed in one cross-city comparison.** Age is comparable
+everywhere but *only at one level*: the DE Zensus cut is under-**18** at 100 m
+while the census cut is under-**15** at 1 km, so those are different variables
+and carry different `level` labels. Income/rent exists only where a Tier-2 grid
+does. Two config keys keep this explicit: `equity.ses_rank_column` (per city;
+Tier-2 cities point it at their rent grid) ranks the concentration index, while
+`equity.cityvector_ses_column` (the harmonised census employment share by
+default) is the single variable behind the cross-city `slope_ses_*` feature —
+the covariate actually used is recorded per city as `slope_ses_column`.
+
+### 6.2 Vulnerability-stratified deprivation
+
+Beyond the gradients: for each stratum — the population-weighted tail of a
+vulnerability variable (`equity.vulnerability_strata`: highest 65+ share,
+highest child share, lowest rent, lowest ownership) — we report the
+population-weighted mean deprivation the sub-population *experiences* and the
+compounding (HH) typology share within it, against the whole-FUA baseline, with
+ratio/gap columns so each row is a self-contained cross-city feature. Written
+to `equity_vulnerability.csv` (one row per stratum, so a separate file from the
+per-regime `equity_indices.csv`). Each row carries its `level`; a stratum whose
+column is absent drops out with a note, which is how income strata simply
+disappear for Tier-1 cities.
+
+**Read the ratios, not the absolute means, across regimes.** The everyday DLF
+is a fraction of its saturation ceiling and the emergency DCF is unbounded
+(§3): the two `mean_dep_*` columns are on incomparable scales even after the
+emergency reporting anchor. `equity_indices.csv` carries a `units` column
+naming the scale of every reported level.
 
 ## 7. Data quality
 

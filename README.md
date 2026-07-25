@@ -37,7 +37,8 @@ The **central output** is the *relationship* between the two surfaces:
 | | Tier 1 (continental) | Tier 2 (deep dive) |
 |---|---|---|
 | Cities | all Eurostat-OECD FUAs above config threshold | DE, NL, FR, UK, Nordics + reliable-GTFS cities |
-| Population | GHS-POP 100 m; Eurostat Census 2021 1 km | + DE Zensus 2022 100 m, NL CBS 100 m, FR INSEE Filosofi 200 m, UK LSOA+IMD |
+| Population | GHS-POP 100 m (analysis grid) | same |
+| Demographics / SES | Eurostat Census 2021 1 km (age < 15 / ≥ 65, employment, foreign-born where published; **broadcast** onto the 100 m grid — `ses_census_*`) | + DE Zensus 2022 100 m, NL CBS 100 m, FR INSEE Filosofi 200 m, UK LSOA+IMD (native resolution — `ses_<layer>_*`) |
 | Facilities | OSM (completeness-benchmarked per country) | same |
 | Modes | walk + car (harmonised, OSM) | + public transit (r5py + R5 + GTFS) |
 

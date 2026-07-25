@@ -112,3 +112,42 @@ def test_ses_covariates_allow_list_restricts_regressions(tmp_path):
     ses_terms = set(regs[regs.model == "ses"].term)
     assert "ses_age_share_ge65" in ses_terms
     assert "ses_net_rent_qm" not in ses_terms  # excluded by the allow-list
+
+
+def test_equity_indices_record_the_units_of_every_reported_level(tmp_path):
+    """A level without its units invites the cross-regime magnitude comparison
+    the standardisation layer exists to forbid (methods.md §3a/§3c)."""
+    from depacc.config import load_config
+
+    rng = np.random.default_rng(5)
+    n = 200
+    surfaces = pd.DataFrame({
+        "population": rng.uniform(1, 100, n),
+        "deprivation_everyday": rng.uniform(0, 1, n),
+        "deprivation_emergency": rng.uniform(0, 1, n),
+    })
+    out = _write_surfaces(tmp_path, "units", surfaces)
+    cfg = {**load_config(), "output": {"root": "data/derived"}}
+    run_equity(cfg, "units", tmp_path)
+
+    indices = pd.read_csv(out / "equity_indices.csv").set_index("regime")
+    assert "saturation ceiling" in indices.loc["everyday", "units"]
+    # The emergency DCF is anchored, so its level is in multiples of g(45 min).
+    assert "multiples of g(45 min)" in indices.loc["emergency", "units"]
+
+
+def test_shipped_defaults_stratify_every_city_on_the_census_age_layer():
+    """The EU census layer is what makes vulnerability available for all
+    cities, so the default strata must reference ses_census_* columns and label
+    their level so no cross-city comparison pools them with a Tier-2 layer."""
+    from depacc.config import load_config
+
+    for city in (None, "hamburg"):
+        strata = load_config(city)["equity"]["vulnerability_strata"]
+        census = [s for s in strata if s["level"] == "age_census"]
+        assert {s["column"] for s in census} == {"ses_census_share_ge65",
+                                                "ses_census_share_u15"}
+    # Hamburg additionally carries its finer national layer, kept apart.
+    hh = load_config("hamburg")["equity"]["vulnerability_strata"]
+    assert {s["level"] for s in hh} == {"age_census", "age_national",
+                                        "income_tier2"}
