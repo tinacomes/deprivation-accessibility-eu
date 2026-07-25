@@ -970,3 +970,79 @@ Recommended order, unchanged from §5.3 minus the now-completed A′:
 Two cheap items to fold into the next code pass: add the level features to the
 Layer-3 variant table (closes the fill-dependence gap in point 3 above), and
 report the ρ envelope alongside the point estimate on the city plane.
+
+### 5.7 `cityvector_ses_column` resolved — and the silent imputation it uncovers
+
+**Resolved: keep `ses_census_employment_share`.** The GISCO population-grids page
+records EMP as missing for **two** countries only, DE and FR; the other 25 report
+it. That changes the calculus completely from §5.5's framing. A cross-city
+feature that is *missing* for two countries is far better than one that means
+something slightly different in each — so the default stays, and DE/FR cities
+carry NaN on `slope_ses_*` by design rather than by accident. No config change is
+needed; what was missing was the knowledge that the gap is bounded.
+
+`ses_census_foreign_born_share` stays where it is: a regular covariate in
+Hamburg's `ses_covariates` (and the strongest everyday gradient in the table,
+β = −0.339, r² = 0.106), but **not** the harmonised cross-city slope.
+
+**Why the German Zensus employment grid is not the answer**, even if destatis
+publishes one at 100 m (the six themes we configure do not include employment,
+and the Zensus 2022 grid release is centred on population/household/dwelling
+attributes — employment status is primarily a Gemeinde-level result there):
+
+- *Definition.* "Erwerbstätige" and Reg. 2018/1799's `EMP` are not guaranteed to
+  be the same construct — age bounds, marginal employment, self-employed,
+  reference week. The regulation harmonises deliberately; a national census
+  answers national needs.
+- *Spatial support.* The census layer is 1 km **broadcast** onto 100 m cells; a
+  Zensus layer is native 100 m. A regression coefficient's magnitude depends on
+  its covariate's variance, and a broadcast covariate has systematically less
+  within-city variance than a native one — so the two β are not on the same scale
+  even if the concept were identical. This project already ruled on exactly this
+  in Deviation 3: `age_census` (under-15 at 1 km) and `age_national` (under-18 at
+  100 m) are kept as separate levels precisely so they are never pooled. Feeding
+  a national grid into the harmonised column re-commits that error inside a
+  single number, where nothing labels it.
+- *It generalises badly.* Patching country by country ends in a column that is a
+  patchwork of national definitions — the pooling failure strict mode exists to
+  prevent, reached one country at a time.
+
+If a national employment gradient is wanted, it belongs as a **separate,
+level-labelled Tier-2 feature** (`slope_ses_employment_national` beside
+`slope_ses_employment_census`), reusing the machinery age already uses. Not in
+scope now.
+
+**The finding this uncovered, which matters more than the decision.**
+`cityvector/scaling_features.py:65` imputes any residual NaN at the scaled centre:
+
+```python
+Z = np.where(np.isfinite(Z), Z, 0.0)   # a city missing a feature -> the median
+```
+
+A feature is only *dropped* when fewer than two cities carry it, or its spread is
+zero. So in a pilot where 8 of 10 cities have `slope_ses_*`, the two DE/FR cities
+are not excluded from that dimension — they are placed at the sample **median**,
+i.e. made to look exactly typical on a variable that was never measured for them,
+and then clustered on it. That is worse than either option §5.5 was weighing, and
+it is silent: the existing log line only names features that were dropped, never
+cities that were imputed.
+
+Three consequences to handle before F.5:
+
+1. **Bound and report the imputation.** Add `cityvector.max_missing_share`
+   (suggest 0.25): a feature missing for more than that share of cities is
+   dropped rather than imputed, and the log names which cities were imputed on
+   which features. Small change in `scaling_features.py`, plus a test.
+2. **The pilot's country mix.** `city_definition.stratified_countries` is
+   `["DE", "NL", "FR"]` — **two of the three are the EMP gaps** — and both
+   existing city configs (`hamburg`, `koeln`) are German. As configured, the
+   pilot would be blind on `slope_ses_*` for most of its cities and silently
+   median-imputed there. F.5's draw needs revisiting with this in mind; the
+   four-macro-region design in F.2 already fixes it if the pilot follows that
+   shape rather than the current stratified-countries list.
+3. **The concentration index has the same default.** `equity.ses_rank_column` is
+   also `ses_census_employment_share`. Hamburg overrides it with its rent grid,
+   but a Tier-1 DE or FR city with no national rent grid falls through the
+   income/rent heuristic and loses the concentration index entirely. Bounded and
+   now expected — it should be stated in methods §6.1 alongside the DE/FR gap
+   rather than discovered per city.
