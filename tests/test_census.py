@@ -594,3 +594,80 @@ def test_census_layer_merges_per_variable_files(tmp_path, monkeypatch):
     # Only share_ge65 is derivable from T + Y_GE65; the rest skip cleanly.
     assert list(layer.columns) == ["x", "y", "share_ge65"]
     assert layer.loc[0, "share_ge65"] == 0.25
+
+
+# ---------------------------------------------------------------------------
+# Shared-source prefetch: the national/continental archives are one file for
+# many cities, so a batch fetches them once instead of once per runner.
+# ---------------------------------------------------------------------------
+
+def test_prefetch_fetches_one_census_and_one_ses_set_per_country(tmp_path, monkeypatch):
+    from depacc.ingest import prefetch as pf
+
+    census_calls, ses_calls, tile_calls = [], [], []
+    monkeypatch.setattr("depacc.ingest.census.fetch_census_grid",
+                        lambda cfg, root: census_calls.append(
+                            cfg["sources"]["census"]["url"]) or {})
+    monkeypatch.setattr("depacc.ingest.ses.fetch_ses_layers",
+                        lambda cfg, root: ses_calls.append(
+                            sorted(cfg["sources"]["ses"]["urls"])) or {})
+    monkeypatch.setattr("depacc.ingest.boundaries.fetch_fua_boundary",
+                        lambda cfg, root: None)
+
+    # Two German cities sharing one census URL and one Zensus URL set.
+    done = pf.prefetch_shared(["hamburg", "hamburg"], tmp_path)
+    assert len(census_calls) == 1, "the EU census grid must be fetched once"
+    assert len(ses_calls) == 1, "one Zensus set serves every German city"
+    assert not tile_calls
+    assert set(done) == {"boundaries", "census", "ses", "ghs"}
+
+
+def test_prefetch_survives_an_unreachable_source(tmp_path, monkeypatch):
+    """A prep job that cannot reach one source must not block the batch — the
+    per-city runs then fetch what they can and warn for themselves."""
+    from depacc.ingest import prefetch as pf
+
+    def _boom(cfg, root):
+        raise OSError("network down")
+
+    monkeypatch.setattr("depacc.ingest.boundaries.fetch_fua_boundary", _boom)
+    monkeypatch.setattr("depacc.ingest.census.fetch_census_grid",
+                        lambda cfg, root: {})
+    monkeypatch.setattr("depacc.ingest.ses.fetch_ses_layers", _boom)
+    assert pf.prefetch_shared(["hamburg"], tmp_path)["boundaries"] == []
+
+
+def test_shared_and_city_raw_dirs_are_disjoint_and_cover_the_pipeline():
+    """The two CI caches must not overlap, or they fight over the same files."""
+    from depacc.ingest.prefetch import CITY_RAW_DIRS, SHARED_RAW_DIRS
+
+    assert not set(SHARED_RAW_DIRS) & set(CITY_RAW_DIRS)
+    # Every data/raw/<dir> the pipeline writes must be in exactly one cache.
+    import re
+    from pathlib import Path
+
+    used = set()
+    for src in Path("src/depacc").rglob("*.py"):
+        used |= set(re.findall(r'raw_root"\]\s*/\s*"([a-z_]+)"', src.read_text()))
+    assert used <= set(SHARED_RAW_DIRS) | set(CITY_RAW_DIRS), (
+        f"raw sub-dirs missing from the cache split: "
+        f"{sorted(used - set(SHARED_RAW_DIRS) - set(CITY_RAW_DIRS))}")
+
+
+def test_workflow_cache_paths_match_the_declared_split():
+    """The workflows' SHARED/CITY cache paths are the same split the code
+    declares — they drift silently otherwise."""
+    import re
+    from pathlib import Path
+
+    from depacc.ingest.prefetch import CITY_RAW_DIRS, SHARED_RAW_DIRS
+
+    for wf in ("run-city.yml", "tier1-batch.yml"):
+        text = Path(".github/workflows") / wf
+        content = text.read_text()
+        for var, dirs in (("SHARED_RAW_PATHS", SHARED_RAW_DIRS),
+                          ("CITY_RAW_PATHS", CITY_RAW_DIRS)):
+            block = re.search(rf"{var}: \|\n((?:\s+data/raw/\w+\n)+)", content)
+            assert block, f"{var} missing from {wf}"
+            listed = set(re.findall(r"data/raw/(\w+)", block.group(1)))
+            assert listed == set(dirs), f"{wf}:{var} lists {sorted(listed)}"

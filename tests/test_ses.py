@@ -287,3 +287,35 @@ def test_resolution_token_round_trips():
     assert resolution_token(200) == "200m"
     assert resolution_token(1000) == "1km"
     assert resolution_token(10000) == "10km"
+
+
+def test_load_inspire_csv_zip_clips_a_national_grid_on_read(tmp_path):
+    """A Zensus theme is ~3.1 M rows for Germany and a single FUA needs well
+    under 1 % of them, so the read is chunked and clipped rather than fully
+    materialised (six themes would otherwise put ~18 M rows through memory)."""
+    header = "GITTER_ID_100m;x_mp_100m;y_mp_100m;Einwohner"
+    rows = "\n".join([
+        "CRS3035RES100mN2000E4000;4050;2050;10",     # inside
+        "CRS3035RES100mN2000E4100;4150;2050;20",     # inside
+        "CRS3035RES100mN9000E9000;9050;9050;30",     # far away -> dropped
+    ])
+    zpath = tmp_path / "pop.zip"
+    zpath.write_bytes(_make_inspire_zip(rows, header).getvalue())
+
+    df = load_inspire_csv_zip(zpath, resolution_m=100, chunksize=1,
+                              bbox=(4000.0, 2000.0, 4200.0, 2100.0), pad_m=0.0)
+    assert list(df.x) == [4050, 4150]
+    assert list(df.Einwohner) == [10, 20]
+    # Unclipped read still returns everything.
+    assert len(load_inspire_csv_zip(zpath, resolution_m=100)) == 3
+
+
+def test_load_inspire_csv_zip_keeps_the_schema_when_the_bbox_is_empty(tmp_path):
+    header = "GITTER_ID_100m;x_mp_100m;y_mp_100m;Einwohner"
+    zpath = tmp_path / "pop.zip"
+    zpath.write_bytes(_make_inspire_zip(
+        "CRS3035RES100mN2000E4000;4050;2050;10", header).getvalue())
+    df = load_inspire_csv_zip(zpath, resolution_m=100,
+                              bbox=(0.0, 0.0, 100.0, 100.0), pad_m=0.0)
+    # No rows, but the columns survive so the caller still sees the schema.
+    assert df.empty and list(df.columns) == ["x", "y", "Einwohner"]

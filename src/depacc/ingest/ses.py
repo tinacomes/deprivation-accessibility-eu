@@ -102,7 +102,10 @@ def fetch_ses_layers(cfg: dict, root: Path) -> dict[str, Path]:
 
 def load_inspire_csv_zip(path: Path, value_columns: list[str] | None = None,
                          *, member: str | None = None,
-                         resolution_m: float | None = None) -> pd.DataFrame:
+                         resolution_m: float | None = None,
+                         bbox: tuple[float, float, float, float] | None = None,
+                         pad_m: float = 1000.0,
+                         chunksize: int = 500_000) -> pd.DataFrame:
     """Load a Zensus-2022-style INSPIRE grid CSV (semicolon-separated, German
     decimal commas) from a zip. Returns a frame with x, y (EPSG:3035 cell
     centroids) plus the value columns, and ``attrs["resolution_m"]`` set to the
@@ -120,8 +123,14 @@ def load_inspire_csv_zip(path: Path, value_columns: list[str] | None = None,
         name = select_grid_member(zf.namelist(), member=member,
                                   resolution_m=resolution_m,
                                   archive=str(path))
+        # These are NATIONAL grids — a Zensus theme is ~3.1 M rows for Germany,
+        # of which a single FUA needs well under 1 %. Read in chunks and clip to
+        # the FUA bbox (padded, so a cell on the boundary survives) so six themes
+        # do not put ~18 M rows through memory for one city.
         with zf.open(name) as fh:
-            df = pd.read_csv(fh, sep=";", decimal=",", low_memory=False)
+            reader = pd.read_csv(fh, sep=";", decimal=",", low_memory=False,
+                                 chunksize=chunksize if bbox is not None else None)
+            df = _read_clipped(reader, bbox, pad_m) if bbox is not None else reader
     xcol = next(c for c in df.columns if c.lower().startswith("x_mp"))
     ycol = next(c for c in df.columns if c.lower().startswith("y_mp"))
     # The coordinate column carries the grid it belongs to (`x_mp_100m`), as
@@ -145,6 +154,29 @@ def load_inspire_csv_zip(path: Path, value_columns: list[str] | None = None,
     out.attrs["member"] = name
     print(f"  {path.name}:{name} -> value columns {keep}")
     return out
+
+
+def _read_clipped(reader, bbox: tuple[float, float, float, float],
+                  pad_m: float) -> pd.DataFrame:
+    """Concatenate a chunked INSPIRE CSV read, keeping only rows whose cell
+    centroid falls in the padded ``bbox`` (EPSG:3035). An empty result keeps the
+    columns, so the caller still sees the file's schema."""
+    minx, miny, maxx, maxy = bbox
+    kept, header = [], None
+    for chunk in reader:
+        if header is None:
+            header = chunk.iloc[:0]
+        xcol = next(c for c in chunk.columns if c.lower().startswith("x_mp"))
+        ycol = next(c for c in chunk.columns if c.lower().startswith("y_mp"))
+        x = pd.to_numeric(chunk[xcol], errors="coerce")
+        y = pd.to_numeric(chunk[ycol], errors="coerce")
+        block = chunk[x.between(minx - pad_m, maxx + pad_m)
+                      & y.between(miny - pad_m, maxy + pad_m)]
+        if not block.empty:
+            kept.append(block)
+    if not kept:
+        return header if header is not None else pd.DataFrame()
+    return pd.concat(kept, ignore_index=True)
 
 
 def _is_annotation(column: str) -> bool:

@@ -379,6 +379,24 @@ landed for this:
   before re-joining, and the annotation filter also catches umlaut/`_Zeichen`
   spellings.
 
+**National and continental sources are fetched once, not once per city.** Both
+demographic levels are published as whole territories — one EU census grid, one
+Zensus theme file covering all 3.09 M German 100 m cells — so a many-city batch
+that fetches them per runner does the same multi-hundred-MB download N times.
+`depacc prefetch --city … --city …` (new) downloads exactly the shared set —
+URAU boundaries, the census grid, the national SES grids per *country*, the
+GHS-POP tiles — deduplicated across the cities named, and the Tier-1 batch runs
+it in a `warm` job before the matrix fans out. The raw cache is split to match:
+a shared cache (`boundaries`, `census`, `ghs`, `ses`, keyed on the committed
+configs, not the city) and a per-city one (`friction`, `gtfs`, `osm`,
+`overpass`). That split matters beyond bandwidth: one `data/raw` cache per city
+stored the continental archives once per city and could push the repo past
+GitHub's 10 GB cache limit, evicting the far more expensive OSM extracts. The
+split is declared in `depacc.ingest.prefetch` and regression-tested against both
+workflow files so code and YAML cannot drift. National grids are additionally
+clipped to the FUA bbox *as they are read*, so one city's ingest no longer puts
+~18 M rows (six Zensus themes) through memory.
+
 **D.3 — new outputs.** Concentration index, SES gradient regressions,
 `slope_ses_*` and vulnerability-stratified deprivation are all live.
 

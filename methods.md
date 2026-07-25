@@ -424,6 +424,19 @@ Both levels are joined by the same mechanism, each keyed on its own grid
 — plus a `broadcast_to_analysis_grid` flag — is written to
 `data/derived/<city>/ses_resolutions.json`.
 
+**One download, many cities.** Both demographic levels are published as *whole
+territories*: one EU-wide census grid, one Zensus theme file for all of Germany
+(3.09 M 100 m cells). They are downloaded once per checkout into
+`data/raw/{census,ses}` — shared, not city-scoped — and `depacc prefetch --city
+… --city …` populates them for a whole batch before the per-city jobs start, so
+a ten-city run fetches each national archive once rather than ten times. The
+workflows split the raw cache to match: a shared cache
+(`boundaries`, `census`, `ghs`, `ses`, keyed on the configs) and a per-city one
+(`friction`, `gtfs`, `osm`, `overpass`); the split is declared in
+`depacc.ingest.prefetch` and regression-tested against both workflow files. Each
+national grid is then clipped to the FUA bounding box *as it is read*, so one
+city's ingest never materialises six national themes in memory.
+
 **Selecting the right grid out of a national archive.** Each destatis
 "Gitterdaten" zip bundles the *same* theme at 10 km, 1 km and 100 m (plus a
 `Datenzusatzbeschreibung` readme), e.g.
