@@ -781,3 +781,27 @@ def test_shipped_census_config_matches_the_v3_readme():
                  "LAND_SURFACE", "POPULATED"}
     assert codes <= published, f"not in the V3 read.me: {sorted(codes - published)}"
     assert census["shares"]["employment_share"]["denominator"] == ["Y_1564"]
+
+
+def test_workflow_level_env_uses_no_step_only_functions():
+    """`hashFiles()` is only available inside a job's steps, never in the
+    workflow-level `env:` block — putting it there makes the whole file
+    unparseable ("Unrecognized function: 'hashFiles'") and EVERY trigger in the
+    repository fails, including unrelated ones. Cheap guard, expensive mistake.
+    """
+    import re
+    from pathlib import Path
+
+    step_only = ("hashFiles(", "secrets.", "needs.", "steps.", "matrix.",
+                 "job.", "runner.", "env.")
+    for wf in sorted(Path(".github/workflows").glob("*.yml")):
+        text = wf.read_text()
+        # The top-level env: block = from a line `env:` at column 0 up to the
+        # next column-0 key.
+        block = re.search(r"^env:\n((?:[ \t].*\n|\n)*)", text, re.MULTILINE)
+        if not block:
+            continue
+        for bad in step_only:
+            assert bad not in block.group(1), (
+                f"{wf.name}: workflow-level env: uses '{bad}', which is only "
+                f"available in a job's steps — inline it at the step instead")
