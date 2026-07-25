@@ -825,3 +825,148 @@ covariate), §6.2 (two references) and §7 (Layer-3) are updated to match.
 **Next:** re-run Hamburg (~6 min from cache) and read the corrected
 `hamburg_access_acceptance.csv` and `equity_ses_coverage.csv` before choosing
 between E.1 and the F pilot.
+
+### 5.5 Verification run 30160444058 — A′ confirmed, and two results changed
+
+Re-run on `main` at `567e194` (6.7 min). All six fixes verify on real data, and
+two of them **changed a published Hamburg result**.
+
+**Fix 1 verified exactly.** The Layer-3 `baseline` row now equals the pipeline:
+
+| | pipeline (`cityplane_row.csv`) | Layer-3 baseline | before A′ |
+|---|---|---|---|
+| gini_everyday | 0.656795 | 0.656795 | 0.705 |
+| spearman ρ | 0.427702 | 0.427702 | 0.462 |
+| HH @ p50 | 0.315440 | 0.315440 | 0.3224 |
+
+**Fix 2 costs the headline nothing.** Mid-rank moved the city row by
+HH 0.31545 → 0.31544 and ρ +0.0017; both Ginis, both travel-time Ginis and every
+level feature are bit-identical. The tie rule only bites when a tie block is
+large, and Hamburg's baseline composite has none (largest block 10.1 %). So this
+is correctness insurance, not a revision — the published Hamburg numbers stand.
+
+**The corrected acceptance table, and C's actual answer.**
+
+| knob | HH range | ρ range | degenerate |
+|---|---|---|---|
+| **threshold_axis** | **0.3030** | 0 | — |
+| gamma | 0.0509 | 0.1686 | 0 / 3 |
+| kappa | 0.0183 | 0.0558 | 1 / 4 |
+| k_nearest | 0.0067 | 0.0244 | 0 / 1 |
+| nearest_only | 0.0051 | 0.0174 | 0 / 1 |
+| bandwidth | 0.0015 | 0.0069 | 0 / 2 |
+| unreachable (finite fill) | 0.0000 | 3e-6 | 0 / 3 |
+| everyday_mode | — | — | **1 / 1** |
+
+Four things follow.
+
+1. **No accessibility knob beats the threshold axis.** The "how high is high"
+   choice moves the HH share ~6× more than the strongest accessibility
+   assumption. That is Workstream C's acceptance question answered, and the
+   answer is the reassuring one: the co-location result is not hostage to the
+   accessibility model. It also sharpens §4(c) — the threshold is the dominant
+   lever on the headline, so the continuous compounding intensity is the fix that
+   matters, not more accessibility sweeps.
+2. **`gamma` is the mover, as §5.2 predicted once the artifact was removed** —
+   and it moves ρ a lot: 0.389 (γ=1) to 0.558 (γ=0) around a baseline 0.428. The
+   reported "moderate positive coupling ρ = 0.43" should be **ρ ∈ [0.39, 0.56],
+   congestion-exponent envelope**. κ, having supplied the old headline, is now
+   fifth at 0.018.
+3. **The finite fill is immaterial to the deprivation targets** — 60/90/180
+   minutes move gini_everyday by 1.5e-5. The DLF saturates well before 60 min, so
+   `finite_fill_min`'s justification in `config/defaults.yaml` is now *tested*
+   rather than asserted. One caveat survives: the level features
+   (`pop_share_beyond_everyday_30` = 0.134) are built from the composite
+   **time**, which is fill-dependent, and the sweep reports only
+   deprivation-based targets. Cheap to close by adding the level features to the
+   variant table.
+4. **`everyday_mode` has no reading at all.** Its only variant is degenerate —
+   a tie block holding **87.9 %** of the population, with **99.0 %** floored at
+   t_eff = 0. Walk+car everyday, which the plan expected to dominate Layer 3, is
+   simply not askable on the friction fast path: the 1 km car surface puts a
+   facility at zero minutes for almost every cell. κ = 0.1 is the other
+   degenerate (65.7 % tie block, 90.3 % zero-floored). Both are now flagged and
+   excluded instead of setting the headline.
+
+   Worth noting even at baseline: **68.9 %** of Hamburg's population has t_eff = 0
+   for at least one everyday service (green space, median time 0.0). Not
+   degenerate — the 7-service composite de-ties it to a 10.1 % block — but it is
+   the friction resolution showing through, and it is the same quantity E.1
+   bounds.
+
+**Fix 5 changed the D.3 result, and the sign flips.** With each stratum compared
+against the cells where its own column is published:
+
+| stratum | coverage | ratio vs FUA | **ratio vs covered** | HH gap vs FUA | **vs covered** |
+|---|---|---|---|---|---|
+| elderly_census | 0.96 | 0.890 | 0.986 | +0.035 | +0.046 |
+| children_census | 0.96 | 1.081 | 1.199 | +0.055 | +0.067 |
+| elderly (national) | 0.66 | 0.886 | **1.374** | +0.024 | +0.096 |
+| children (national) | 0.63 | 0.946 | **1.516** | +0.036 | +0.117 |
+| low_rent | 0.54 | 0.843 | **1.606** | −0.011 | **+0.114** |
+| low_ownership | 0.57 | 0.273 | 0.352 | −0.232 | −0.214 |
+
+The Tier-2 reading of the previous run — *the elderly, children and low-rent
+populations experience LESS everyday deprivation than the city average* — was an
+artifact of comparing a core-biased published subsample against the whole FUA.
+On the correct base they experience **more** (1.37×, 1.52×, 1.61×), and
+`low_rent`'s compounding gap flips from −0.011 to **+0.114**. The
+census-harmonised strata (96 % coverage) barely move, so the cross-city layer was
+never affected — which is exactly the argument for keeping `age_census` the
+shipped default. `low_ownership` stays genuinely low on both bases.
+
+**Fix 4: the gate works, and it leaves a hole that must be filled before F.**
+`equity_ses_coverage.csv` (now persisted):
+
+- `ses_census_employment_share`: **295 cells, 0.17 %, 1 distinct value** — gated,
+  confirmed dead in DE.
+- `ses_vacancy_rate_Leerstandsquote`: 4633 cells, **2.6 %** — gated; it no longer
+  supplies the largest everyday gradient.
+- `ses_net_rent_durchschnMieteQM`: 25.3 %, only just over the 20 % gate — and it
+  is Hamburg's `ses_rank_column` for the concentration index. Worth a look.
+- `ses_census_foreign_born_share`: **94.2 % coverage, 165 878 cells, 2307
+  distinct** — healthy, and now regressed for the first time.
+
+`cross/cityvector.csv` has **no `slope_ses_*` columns at all**, only
+`slope_density_*`: strict mode doing its job. That is the hole. Which brings the
+open decision to a head, with data:
+
+> `ses_census_foreign_born_share` is the strongest SES-flavoured covariate in the
+> everyday table — β = −0.339, **r² = 0.106 on n = 165 878**, higher r² than
+> ownership (0.080), age (0.055) or net rent (0.042); emergency β = −0.254,
+> r² = 0.059. On coverage and signal it is the obvious replacement for the
+> employment share as `equity.cityvector_ses_column`.
+>
+> The caution: its sign matches net rent's (higher share → *lower* deprivation),
+> so both are plausibly reading urbanity, and `slope_density_*` is already in the
+> city vector as a separate feature. A country-of-birth share is also a
+> composition variable rather than an SES one, and its meaning is not identical
+> across European cities. Adopting it is a defensible, documented choice; the
+> alternative is to accept that Tier-1 cities carry no cross-city SES gradient
+> and drop `slope_ses_*` from the feature set.
+
+### 5.6 Where this leaves E and F
+
+C is now answered and E.1 has moved from "highest-value validation" to the thing
+blocking a stated axis: the friction car surface zeroes 99 % of the FUA for
+everyday services and 68.9 % of the population is already at t_eff = 0 at
+baseline. Two consequences the plan did not anticipate:
+
+- Walk+car everyday cannot be tested at all until the engine question is settled.
+- **The emergency regime runs entirely on that same car surface.** Its
+  facilities are sparse (27 EDs, 124 ambulance stations) so the zero-floor does
+  not bite the same way, but the 1 km quantisation applies to a median-3.9-minute
+  distribution, and nothing has bounded that error. E.1 covers both.
+
+Recommended order, unchanged from §5.3 minus the now-completed A′:
+
+1. **E.1** — r5 engine cross-check on Hamburg. Hamburg-only, 1–3 h runner, blocks
+   nothing, and now answers two questions instead of one.
+2. **F.1 in parallel** — `config/fua_population.csv`, pure data assembly.
+3. **Settle `cityvector_ses_column`** before F.5, or the pilot ships without a
+   cross-city SES gradient.
+4. **F.5 pilot**, then E.2–E.5 and the full F.2 sample.
+
+Two cheap items to fold into the next code pass: add the level features to the
+Layer-3 variant table (closes the fill-dependence gap in point 3 above), and
+report the ρ envelope alongside the point estimate on the city plane.
