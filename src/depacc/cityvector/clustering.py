@@ -120,7 +120,11 @@ def run_cross_city(cfg: dict, root: Path, n_clusters: int | None = None) -> None
 
     method = cfg.get("cityvector", {}).get("cross_city_scaler", "robust")
     ccfg = cfg.get("cityvector", {}).get("clustering", {})
-    scaled = scale_features(real, feature_columns(cfg), method=method)
+    scaled = scale_features(
+        real, feature_columns(cfg), method=method,
+        max_missing_share=float(cfg.get("cityvector", {})
+                                .get("max_missing_share", 0.25)),
+    )
     result = choose_k_and_cluster(
         scaled,
         k_range=tuple(ccfg.get("k_range", [2, 6])),
