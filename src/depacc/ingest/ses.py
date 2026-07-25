@@ -147,13 +147,58 @@ def load_inspire_csv_zip(path: Path, value_columns: list[str] | None = None,
     keep = value_columns or [c for c in df.columns
                              if c not in (xcol, ycol) and not _is_annotation(c)]
     out = df[[xcol, ycol, *keep]].rename(columns={xcol: "x", ycol: "y"})
-    # Zensus files use '–' / empty for suppressed cells -> NaN.
     for c in keep:
-        out[c] = pd.to_numeric(out[c], errors="coerce")
+        out[c] = _parse_values(out[c], f"{path.name}:{name}", c)
     out.attrs["resolution_m"] = float(found or resolution_m or 100.0)
     out.attrs["member"] = name
     print(f"  {path.name}:{name} -> value columns {keep}")
     return out
+
+
+# Destatis markers for a cell with no value: suppressed, zero-by-definition or
+# not applicable. Not data, and not a format problem either.
+_SUPPRESSION_MARKERS = frozenset(
+    {"", "\u2013", "\u2014", "-", ".", "..", "...", "/", "x", "X",
+     "nan", "None", "NaN"})
+
+
+def _parse_values(series: pd.Series, label: str, column: str) -> pd.Series:
+    """Numeric values of one theme column of a German-format INSPIRE CSV.
+
+    ``read_csv(decimal=",")`` only converts a column it can parse ENTIRELY as
+    numeric. A theme that marks suppressed cells with an en dash rather than
+    leaving the field empty therefore arrives as a column of STRINGS, and
+    ``pd.to_numeric("41,2")`` is NaN — so every value in it silently vanished.
+    That is precisely what happened to the ownership-rate and vacancy-rate
+    layers: they covered ~44 % of Hamburg's cells and carried not one value,
+    while net-rent and household-size (whose suppressed cells are empty, so the
+    column parsed as numeric on read) were fine.
+
+    A string column is therefore normalised here — decimal comma to point, plus
+    the decorations a rate column sometimes carries (percent sign, non-breaking
+    or thin space) — and if it STILL yields nothing while holding non-marker
+    text, the raw values are reported, so the format is identifiable from one run
+    instead of inferred over several. Thousands separators are not expected in
+    these machine-readable files; a value like "1.234,5" would fail and be
+    reported rather than silently mis-parsed.
+    """
+    if pd.api.types.is_numeric_dtype(series):
+        return pd.to_numeric(series, errors="coerce")
+    text = series.astype(str).str.strip().fillna("")
+    present = ~text.isin(_SUPPRESSION_MARKERS)
+    parsed = pd.to_numeric(
+        text.str.replace("\u00a0", "", regex=False)   # non-breaking space
+            .str.replace("\u2009", "", regex=False)   # thin space
+            .str.replace(" ", "", regex=False)
+            .str.replace("%", "", regex=False)
+            .str.replace(",", ".", regex=False),       # German decimal comma
+        errors="coerce")
+    if not parsed.notna().any() and present.any():
+        samples = text[present].unique()[:5].tolist()
+        print(f"WARNING: {label} column '{column}' has {int(present.sum())} "
+              f"non-empty values but NONE parse as numbers — the resulting ses_ "
+              f"column would be entirely empty. Raw samples: {samples}")
+    return parsed
 
 
 def _read_clipped(reader, bbox: tuple[float, float, float, float],

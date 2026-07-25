@@ -365,12 +365,22 @@ used for the join (the data wins over the config promise); and
 `join_ses_to_cells` reports coverage instead of yielding a silent empty
 covariate.
 
-**…and the member was only half of it.** With the fix in place the next run
-loaded the right members — `Zensus2022_Eigentuemerquote_100m-Gitter.csv`
-(2 525 440 cells) and `Zensus2022_Leerstandsquote_100m-Gitter.csv` (2 566 712) —
-and **both still matched no analysis cell**, while `net_rent` (25.3 %) and
-`household_size` (44.5 %) joined normally off the same grid. Two follow-ups
-landed for this:
+**…and the member was only half of it — the rest was a decimal comma.** With the
+member fix in place the run loaded the right files and the split diagnostic
+showed the true shape: ownership covered **43.9 %** of analysis cells and vacancy
+**44.3 %** (comparable to household_size's 44.5 %), yet *every joined value was
+missing*. Not a grid mismatch, and not credibly suppression either.
+
+The cause: `read_csv(decimal=",")` only converts a column it can parse **entirely**
+as numeric. These two themes mark suppressed cells with an en dash rather than
+leaving the field empty, so the column arrived as **strings** — and
+`pd.to_numeric("41,2")` is NaN. Every value in both themes was destroyed on load.
+Net-rent and household-size were unaffected because their suppressed cells are
+empty, which lets the whole column parse as numeric on read. `_parse_values` now
+normalises a string column properly (decimal comma to point, plus percent sign
+and non-breaking/thin spaces) and, if a column still yields nothing while holding
+non-marker text, prints the **raw sample values** so the format is identifiable
+from one run rather than inferred over three. Two follow-ups also landed:
 
 - The coverage diagnostic conflated two different failures. It now reports
   **grid coverage** (`key.isin(layer index)`) separately from **value presence**
