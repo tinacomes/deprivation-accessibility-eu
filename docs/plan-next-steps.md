@@ -825,3 +825,284 @@ covariate), §6.2 (two references) and §7 (Layer-3) are updated to match.
 **Next:** re-run Hamburg (~6 min from cache) and read the corrected
 `hamburg_access_acceptance.csv` and `equity_ses_coverage.csv` before choosing
 between E.1 and the F pilot.
+
+### 5.5 Verification run 30160444058 — A′ confirmed, and two results changed
+
+Re-run on `main` at `567e194` (6.7 min). All six fixes verify on real data, and
+two of them **changed a published Hamburg result**.
+
+**Fix 1 verified exactly.** The Layer-3 `baseline` row now equals the pipeline:
+
+| | pipeline (`cityplane_row.csv`) | Layer-3 baseline | before A′ |
+|---|---|---|---|
+| gini_everyday | 0.656795 | 0.656795 | 0.705 |
+| spearman ρ | 0.427702 | 0.427702 | 0.462 |
+| HH @ p50 | 0.315440 | 0.315440 | 0.3224 |
+
+**Fix 2 costs the headline nothing.** Mid-rank moved the city row by
+HH 0.31545 → 0.31544 and ρ +0.0017; both Ginis, both travel-time Ginis and every
+level feature are bit-identical. The tie rule only bites when a tie block is
+large, and Hamburg's baseline composite has none (largest block 10.1 %). So this
+is correctness insurance, not a revision — the published Hamburg numbers stand.
+
+**The corrected acceptance table, and C's actual answer.**
+
+| knob | HH range | ρ range | degenerate |
+|---|---|---|---|
+| **threshold_axis** | **0.3030** | 0 | — |
+| gamma | 0.0509 | 0.1686 | 0 / 3 |
+| kappa | 0.0183 | 0.0558 | 1 / 4 |
+| k_nearest | 0.0067 | 0.0244 | 0 / 1 |
+| nearest_only | 0.0051 | 0.0174 | 0 / 1 |
+| bandwidth | 0.0015 | 0.0069 | 0 / 2 |
+| unreachable (finite fill) | 0.0000 | 3e-6 | 0 / 3 |
+| everyday_mode | — | — | **1 / 1** |
+
+Four things follow.
+
+1. **No accessibility knob beats the threshold axis.** The "how high is high"
+   choice moves the HH share ~6× more than the strongest accessibility
+   assumption. That is Workstream C's acceptance question answered, and the
+   answer is the reassuring one: the co-location result is not hostage to the
+   accessibility model. It also sharpens §4(c) — the threshold is the dominant
+   lever on the headline, so the continuous compounding intensity is the fix that
+   matters, not more accessibility sweeps.
+2. **`gamma` is the mover, as §5.2 predicted once the artifact was removed** —
+   and it moves ρ a lot: 0.389 (γ=1) to 0.558 (γ=0) around a baseline 0.428. The
+   reported "moderate positive coupling ρ = 0.43" should be **ρ ∈ [0.39, 0.56],
+   congestion-exponent envelope**. κ, having supplied the old headline, is now
+   fifth at 0.018.
+3. **The finite fill is immaterial to the deprivation targets** — 60/90/180
+   minutes move gini_everyday by 1.5e-5. The DLF saturates well before 60 min, so
+   `finite_fill_min`'s justification in `config/defaults.yaml` is now *tested*
+   rather than asserted. One caveat survives: the level features
+   (`pop_share_beyond_everyday_30` = 0.134) are built from the composite
+   **time**, which is fill-dependent, and the sweep reports only
+   deprivation-based targets. Cheap to close by adding the level features to the
+   variant table.
+4. **`everyday_mode` has no reading at all.** Its only variant is degenerate —
+   a tie block holding **87.9 %** of the population, with **99.0 %** floored at
+   t_eff = 0. Walk+car everyday, which the plan expected to dominate Layer 3, is
+   simply not askable on the friction fast path: the 1 km car surface puts a
+   facility at zero minutes for almost every cell. κ = 0.1 is the other
+   degenerate (65.7 % tie block, 90.3 % zero-floored). Both are now flagged and
+   excluded instead of setting the headline.
+
+   Worth noting even at baseline: **68.9 %** of Hamburg's population has t_eff = 0
+   for at least one everyday service (green space, median time 0.0). Not
+   degenerate — the 7-service composite de-ties it to a 10.1 % block — but it is
+   the friction resolution showing through, and it is the same quantity E.1
+   bounds.
+
+**Fix 5 changed the D.3 result, and the sign flips.** With each stratum compared
+against the cells where its own column is published:
+
+| stratum | coverage | ratio vs FUA | **ratio vs covered** | HH gap vs FUA | **vs covered** |
+|---|---|---|---|---|---|
+| elderly_census | 0.96 | 0.890 | 0.986 | +0.035 | +0.046 |
+| children_census | 0.96 | 1.081 | 1.199 | +0.055 | +0.067 |
+| elderly (national) | 0.66 | 0.886 | **1.374** | +0.024 | +0.096 |
+| children (national) | 0.63 | 0.946 | **1.516** | +0.036 | +0.117 |
+| low_rent | 0.54 | 0.843 | **1.606** | −0.011 | **+0.114** |
+| low_ownership | 0.57 | 0.273 | 0.352 | −0.232 | −0.214 |
+
+The Tier-2 reading of the previous run — *the elderly, children and low-rent
+populations experience LESS everyday deprivation than the city average* — was an
+artifact of comparing a core-biased published subsample against the whole FUA.
+On the correct base they experience **more** (1.37×, 1.52×, 1.61×), and
+`low_rent`'s compounding gap flips from −0.011 to **+0.114**. The
+census-harmonised strata (96 % coverage) barely move, so the cross-city layer was
+never affected — which is exactly the argument for keeping `age_census` the
+shipped default. `low_ownership` stays genuinely low on both bases.
+
+**Fix 4: the gate works, and it leaves a hole that must be filled before F.**
+`equity_ses_coverage.csv` (now persisted):
+
+- `ses_census_employment_share`: **295 cells, 0.17 %, 1 distinct value** — gated,
+  confirmed dead in DE.
+- `ses_vacancy_rate_Leerstandsquote`: 4633 cells, **2.6 %** — gated; it no longer
+  supplies the largest everyday gradient.
+- `ses_net_rent_durchschnMieteQM`: 25.3 %, only just over the 20 % gate — and it
+  is Hamburg's `ses_rank_column` for the concentration index. Worth a look.
+- `ses_census_foreign_born_share`: **94.2 % coverage, 165 878 cells, 2307
+  distinct** — healthy, and now regressed for the first time.
+
+`cross/cityvector.csv` has **no `slope_ses_*` columns at all**, only
+`slope_density_*`: strict mode doing its job. That is the hole. Which brings the
+open decision to a head, with data:
+
+> `ses_census_foreign_born_share` is the strongest SES-flavoured covariate in the
+> everyday table — β = −0.339, **r² = 0.106 on n = 165 878**, higher r² than
+> ownership (0.080), age (0.055) or net rent (0.042); emergency β = −0.254,
+> r² = 0.059. On coverage and signal it is the obvious replacement for the
+> employment share as `equity.cityvector_ses_column`.
+>
+> The caution: its sign matches net rent's (higher share → *lower* deprivation),
+> so both are plausibly reading urbanity, and `slope_density_*` is already in the
+> city vector as a separate feature. A country-of-birth share is also a
+> composition variable rather than an SES one, and its meaning is not identical
+> across European cities. Adopting it is a defensible, documented choice; the
+> alternative is to accept that Tier-1 cities carry no cross-city SES gradient
+> and drop `slope_ses_*` from the feature set.
+
+### 5.6 Where this leaves E and F
+
+C is now answered and E.1 has moved from "highest-value validation" to the thing
+blocking a stated axis: the friction car surface zeroes 99 % of the FUA for
+everyday services and 68.9 % of the population is already at t_eff = 0 at
+baseline. Two consequences the plan did not anticipate:
+
+- Walk+car everyday cannot be tested at all until the engine question is settled.
+- **The emergency regime runs entirely on that same car surface.** Its
+  facilities are sparse (27 EDs, 124 ambulance stations) so the zero-floor does
+  not bite the same way, but the 1 km quantisation applies to a median-3.9-minute
+  distribution, and nothing has bounded that error. E.1 covers both.
+
+Recommended order, unchanged from §5.3 minus the now-completed A′:
+
+1. **E.1** — r5 engine cross-check on Hamburg. Hamburg-only, 1–3 h runner, blocks
+   nothing, and now answers two questions instead of one.
+2. **F.1 in parallel** — `config/fua_population.csv`, pure data assembly.
+3. **Settle `cityvector_ses_column`** before F.5, or the pilot ships without a
+   cross-city SES gradient.
+4. **F.5 pilot**, then E.2–E.5 and the full F.2 sample.
+
+Two cheap items to fold into the next code pass: add the level features to the
+Layer-3 variant table (closes the fill-dependence gap in point 3 above), and
+report the ρ envelope alongside the point estimate on the city plane.
+
+### 5.7 `cityvector_ses_column` resolved — and the silent imputation it uncovers
+
+**Resolved: keep `ses_census_employment_share`.** The GISCO population-grids page
+records EMP as missing for **two** countries only, DE and FR; the other 25 report
+it. That changes the calculus completely from §5.5's framing. A cross-city
+feature that is *missing* for two countries is far better than one that means
+something slightly different in each — so the default stays, and DE/FR cities
+carry NaN on `slope_ses_*` by design rather than by accident. No config change is
+needed; what was missing was the knowledge that the gap is bounded.
+
+`ses_census_foreign_born_share` stays where it is: a regular covariate in
+Hamburg's `ses_covariates` (and the strongest everyday gradient in the table,
+β = −0.339, r² = 0.106), but **not** the harmonised cross-city slope.
+
+**Why the German Zensus employment grid is not the answer**, even if destatis
+publishes one at 100 m (the six themes we configure do not include employment,
+and the Zensus 2022 grid release is centred on population/household/dwelling
+attributes — employment status is primarily a Gemeinde-level result there):
+
+- *Definition.* "Erwerbstätige" and Reg. 2018/1799's `EMP` are not guaranteed to
+  be the same construct — age bounds, marginal employment, self-employed,
+  reference week. The regulation harmonises deliberately; a national census
+  answers national needs.
+- *Spatial support.* The census layer is 1 km **broadcast** onto 100 m cells; a
+  Zensus layer is native 100 m. A regression coefficient's magnitude depends on
+  its covariate's variance, and a broadcast covariate has systematically less
+  within-city variance than a native one — so the two β are not on the same scale
+  even if the concept were identical. This project already ruled on exactly this
+  in Deviation 3: `age_census` (under-15 at 1 km) and `age_national` (under-18 at
+  100 m) are kept as separate levels precisely so they are never pooled. Feeding
+  a national grid into the harmonised column re-commits that error inside a
+  single number, where nothing labels it.
+- *It generalises badly.* Patching country by country ends in a column that is a
+  patchwork of national definitions — the pooling failure strict mode exists to
+  prevent, reached one country at a time.
+
+If a national employment gradient is wanted, it belongs as a **separate,
+level-labelled Tier-2 feature** (`slope_ses_employment_national` beside
+`slope_ses_employment_census`), reusing the machinery age already uses. Not in
+scope now.
+
+**The finding this uncovered, which matters more than the decision.**
+`cityvector/scaling_features.py:65` imputes any residual NaN at the scaled centre:
+
+```python
+Z = np.where(np.isfinite(Z), Z, 0.0)   # a city missing a feature -> the median
+```
+
+A feature is only *dropped* when fewer than two cities carry it, or its spread is
+zero. So in a pilot where 8 of 10 cities have `slope_ses_*`, the two DE/FR cities
+are not excluded from that dimension — they are placed at the sample **median**,
+i.e. made to look exactly typical on a variable that was never measured for them,
+and then clustered on it. That is worse than either option §5.5 was weighing, and
+it is silent: the existing log line only names features that were dropped, never
+cities that were imputed.
+
+Three consequences to handle before F.5:
+
+1. **Bound and report the imputation.** Add `cityvector.max_missing_share`
+   (suggest 0.25): a feature missing for more than that share of cities is
+   dropped rather than imputed, and the log names which cities were imputed on
+   which features. Small change in `scaling_features.py`, plus a test.
+2. **The pilot's country mix.** `city_definition.stratified_countries` is
+   `["DE", "NL", "FR"]` — **two of the three are the EMP gaps** — and both
+   existing city configs (`hamburg`, `koeln`) are German. As configured, the
+   pilot would be blind on `slope_ses_*` for most of its cities and silently
+   median-imputed there. F.5's draw needs revisiting with this in mind; the
+   four-macro-region design in F.2 already fixes it if the pilot follows that
+   shape rather than the current stratified-countries list.
+3. **The concentration index has the same default.** `equity.ses_rank_column` is
+   also `ses_census_employment_share`. Hamburg overrides it with its rent grid,
+   but a Tier-1 DE or FR city with no national rent grid falls through the
+   income/rent heuristic and loses the concentration index entirely. Bounded and
+   now expected — it should be stated in methods §6.1 alongside the DE/FR gap
+   rather than discovered per city.
+
+### 5.8 E.1 implemented
+
+`depacc engine-check --city <id> --engine r5` (module
+`src/depacc/quality/engine_check.py`, workflow
+`.github/workflows/engine-check.yml`, methods.md §7.1).
+
+What it does: re-routes one city under an alternative engine and reports
+per-regime and per-service travel-time medians/p90 with the population-weighted
+Spearman between engines, the city-row indicators (both Ginis, ρ, the four class
+shares) recomputed identically on each, and the typology flip share. Outputs
+`validation/<city>_engine_check.csv` plus a hexbin scatter; both are now
+persisted to `depacc-results` alongside the sensitivity tables.
+
+Three design choices worth stating, because each of them is a way the check
+could have quietly measured the wrong thing:
+
+- **Facilities are inherited, not re-extracted.** Hamburg's friction config takes
+  facilities from Overpass while an r5 config takes them from the .pbf. Letting
+  that vary would confound engine disagreement with facility-set disagreement,
+  which is E.2's separate question. The shadow run copies `cells.parquet` and
+  every `facilities_*.parquet` verbatim; only the OD matrices and what follows
+  are recomputed.
+- **It calls `run_access` / `run_deprivation`, not a re-implementation.** The
+  Layer-3 sweep shipped for one run with its own composite and therefore its own
+  baseline (§5.2). A validation module that re-derived surfaces would be the same
+  trap. The self-test pins it: running the check with the city's *own* engine must
+  give every delta exactly zero, ρ = 1 and a 0 % flip share.
+- **The shadow is nested at `data/derived/<city>/engine_<engine>/`.** A sibling
+  directory would be picked up by `tools/persist_results.py`, which walks
+  `data/derived/*` and treats each entry as a city, and published as a phantom
+  city. Nested, it is invisible to that walk and rides in the same per-city
+  derived cache as the baseline it is compared against. Divergence and equity are
+  never run for it, so it cannot reach `cityplane.csv`.
+
+Rank agreement is the headline the table is built around, not the level delta:
+every output in this study is rank-based, so an engine that shifts all times by a
+constant costs nothing while one that *reorders* cells invalidates the typology.
+The tests assert exactly that contrast — a monotone +5 min shift gives ρ = 1 with
+a 5-minute median delta and a 0 % flip share; a reversal gives ρ = −1 with no
+median movement and a flip share above 50 %.
+
+**To run it:** Actions → "engine cross-check (E.1)" → Run workflow, `city:
+hamburg`, `engine: r5`. Budget 1–3 h on the first uncached run (it downloads a
+state-level .pbf and routes ~176 k origins × 9 services through R5). The shadow
+surfaces are cached, so a re-dispatch that only re-runs the comparison is
+minutes; `reuse: false` forces a full re-route. Nothing is pushed to
+`depacc-results` from the workflow itself — the outputs come back as the
+`depacc-engine-check-hamburg` artifact.
+
+The questions it should answer, in order of what they block:
+
+1. Is `t_regime_emergency` rank-stable between engines? If not, `gini_emergency`
+   and the divergence gap — axes of the central result — are resting on a 1 km
+   raster artefact.
+2. How far does the everyday walk surface move? §2.2 of this plan predicted
+   intra-core quantisation at ~2 pixels per 30-min walk; this measures it.
+3. Does walk+car everyday stop being degenerate under r5? If it does, the
+   Layer-3 `everyday_mode` axis becomes evaluable and Workstream C's expected
+   dominant knob can finally be tested.

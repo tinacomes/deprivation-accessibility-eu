@@ -76,6 +76,11 @@ SENSITIVITY_FILES = (
     "flip_cells.csv",
     "typology_share_envelope.csv",
 )
+# Workstream E outputs, passed through verbatim (see _export_validation).
+VALIDATION_GLOBS = (
+    "*_engine_check.csv",
+    "*_engine_scatter.png",
+)
 SENSITIVITY_GLOBS = (
     "*_deprivation_sensitivity.csv",
     # Layer-3 accessibility sweep (depacc sensitivity --layer access): per-city
@@ -148,6 +153,27 @@ def _export_sensitivity(results: Path, derived: Path) -> None:
     print(f"exported {copied} sensitivity file(s) to {dest_dir}")
 
 
+def _export_validation(results: Path, derived: Path) -> None:
+    """Pass the validation outputs (data/derived/validation/*) through verbatim.
+
+    Workstream E's artefacts — the routing-engine cross-check first — belong on
+    the results branch for the same reason the sensitivity tables do: they are
+    small, reusable and the thing a reader asks for when they want to know how
+    much the Tier-1 friction fast path costs. No-op when no check has been run.
+    """
+    src_dir = derived / "validation"
+    if not src_dir.exists():
+        return
+    dest_dir = results / "validation"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    copied = 0
+    for pattern in VALIDATION_GLOBS:
+        for src in sorted(src_dir.glob(pattern)):
+            shutil.copy2(src, dest_dir / src.name)
+            copied += 1
+    print(f"exported {copied} validation file(s) to {dest_dir}")
+
+
 def cmd_export(results: Path, derived: Path) -> None:
     exported = 0
     (results / "cities").mkdir(parents=True, exist_ok=True)
@@ -168,6 +194,7 @@ def cmd_export(results: Path, derived: Path) -> None:
                 shutil.copy2(src, dest / src.name)
         exported += 1
     _export_sensitivity(results, derived)
+    _export_validation(results, derived)
     cross = results / "cross"
     cross.mkdir(exist_ok=True)
     for name in CROSS_FILES:

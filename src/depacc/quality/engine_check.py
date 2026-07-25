@@ -1,0 +1,383 @@
+"""Workstream E.1 — routing-engine cross-check.
+
+Tier-1 runs the **friction** fast path: least-cost paths over the Weiss et al.
+1 km walking / motorised surfaces. It is what makes a 48-city sample affordable,
+and nothing has ever quantified how wrong it is. This module runs one city a
+second time under an alternative engine (r5 over the real OSM street network),
+holding *everything else fixed*, and reports the disagreement.
+
+Run 30160444058 turned this from a validation nicety into a blocker. Two facts
+from it:
+
+* The friction **car** surface gives 99.0 % of Hamburg's cells a zero-minute pair
+  for everyday services, and 68.9 % of the population sits at ``t_eff = 0`` for at
+  least one everyday service even at baseline. A 1 km pixel containing a facility
+  is a zero-minute trip for every cell inside it. That degeneracy killed the
+  Layer-3 walk+car variant outright — the axis the plan expected to dominate the
+  accessibility sweep cannot be evaluated at all on this engine.
+* The **emergency regime is car-only**. Its whole distribution — median 3.9 min to
+  an ED, p90 14.4, ``gini_emergency`` 0.62, an axis of the central city-plane
+  result — is computed on that same quantised surface. With 27 EDs over a
+  6135 km² FUA the zero-floor does not bite the way it does for supermarkets, but
+  nothing bounds the error either.
+
+**What is held fixed.** The comparison isolates the ROUTING ENGINE and nothing
+else. The shadow run reuses the baseline's `cells.parquet` and — importantly —
+its `facilities_*.parquet` verbatim, never re-extracting them. Hamburg's friction
+config takes facilities from Overpass while an r5 config would take them from the
+.pbf, and letting that vary would confound engine disagreement with facility-set
+disagreement, which is Workstream E.2's separate question. Only the OD matrices
+and everything downstream of them are recomputed.
+
+Outputs (under ``<derived>/validation/``):
+    <city>_engine_check.csv      per-quantity base vs alt, delta, rank agreement
+    <city>_engine_scatter.png    cell-level travel time, friction vs alternative
+"""
+
+from __future__ import annotations
+
+import copy
+import shutil
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+from depacc.divergence.colocation import weighted_spearman
+from depacc.divergence.typology import class_shares, classify
+from depacc.equity.indices import weighted_gini
+from depacc.ingest.pipeline import derived_dir
+from depacc.sensitivity.harness import flip_cells
+from depacc.standardize import RegimeSurface, to_percentile
+
+#: Ingest artefacts the shadow run inherits verbatim. Facilities are on this list
+#: on purpose — see the module docstring.
+_INHERITED = ("cells.parquet", "fua_boundary.parquet",
+              # Reused when the baseline already fetched them; re-derived by
+              # ensure_network() when the friction path never did.
+              "network_pbf_path.txt", "gtfs_paths.txt")
+_INHERITED_GLOBS = ("facilities_*.parquet",)
+
+
+def shadow_city_id(city: str, engine: str) -> str:
+    """Derived-dir id for the shadow run, NESTED inside the city's own directory.
+
+    ``hamburg/engine_r5`` rather than a sibling ``hamburg__engine_r5``:
+    ``tools/persist_results.py`` walks ``data/derived/*`` and treats each entry as
+    a city, so a sibling would be published to ``depacc-results`` as a phantom
+    city. Nested, it is invisible to that walk and travels in the same per-city
+    derived cache as everything else it is compared against.
+    """
+    return f"{city}/engine_{engine}"
+
+
+def shadow_config(cfg: dict, engine: str, modes: list[str] | None = None) -> dict:
+    """The city's config with the routing engine (and optionally the mode set)
+    overridden. Everything else — services, cutoffs, softmin, catchment,
+    deprivation functions, unreachable policy — is untouched, which is what makes
+    the difference attributable to the engine."""
+    alt = copy.deepcopy(cfg)
+    alt["routing"]["engine"] = engine
+    if modes:
+        alt["routing"]["modes"] = list(modes)
+    return alt
+
+
+def prepare_shadow(cfg: dict, city: str, root: Path, engine: str,
+                   modes: list[str] | None = None) -> tuple[dict, Path, Path]:
+    """Create the shadow derived dir and populate it with the inherited ingest
+    artefacts. Returns ``(alt_cfg, base_out, alt_out)``."""
+    base_out = derived_dir(cfg, city, root)
+    if not (base_out / "cells.parquet").exists():
+        raise RuntimeError(
+            f"no cells.parquet in {base_out} — run the baseline pipeline for "
+            f"'{city}' before the engine check")
+    alt_cfg = shadow_config(cfg, engine, modes)
+    alt_out = derived_dir(alt_cfg, shadow_city_id(city, engine), root)
+
+    copied = []
+    for name in _INHERITED:
+        src = base_out / name
+        if src.exists():
+            shutil.copy2(src, alt_out / name)
+            copied.append(name)
+    for pattern in _INHERITED_GLOBS:
+        for src in sorted(base_out.glob(pattern)):
+            shutil.copy2(src, alt_out / src.name)
+            copied.append(src.name)
+    print(f"engine-check[{engine}]: inherited {len(copied)} ingest artefact(s) "
+          f"from the baseline run (facilities included — this compares engines, "
+          f"not facility sources)")
+    return alt_cfg, base_out, alt_out
+
+
+def ensure_network(alt_cfg: dict, city: str, root: Path, alt_out: Path) -> None:
+    """Make sure the alternative engine's network inputs exist.
+
+    The friction path never downloads a street network (``ingest/pipeline.py``
+    only fetches the .pbf when facilities come from it), so a friction-configured
+    city has no ``network_pbf_path.txt``. Fetch, clip and merge it here — WITHOUT
+    re-extracting facilities, which the shadow run inherits.
+    """
+    if alt_cfg["routing"].get("engine") != "r5":
+        return
+    if alt_cfg.get("city", {}).get("synthetic"):
+        return   # the demo fixture routes analytically; there is no network
+
+    if not (alt_out / "network_pbf_path.txt").exists():
+        import geopandas as gpd
+
+        from depacc.ingest.osm import clip_pbf, fetch_pbfs, merge_pbfs
+
+        fua = gpd.read_parquet(alt_out / "fua_boundary.parquet")
+        pbfs = fetch_pbfs(alt_cfg, root)
+        pad = 0.1
+        minx, miny, maxx, maxy = fua.to_crs("EPSG:4326").total_bounds
+        bbox = (minx - pad, miny - pad, maxx + pad, maxy + pad)
+        raw_osm = root / alt_cfg["output"]["raw_root"] / "osm"
+        clipped = [
+            clip_pbf(p, bbox,
+                     raw_osm / f"{p.name.removesuffix('.osm.pbf')}_{city}_clip.osm.pbf")
+            for p in pbfs
+        ]
+        network_pbf = merge_pbfs(clipped, raw_osm / f"{city}_merged.osm.pbf")
+        (alt_out / "network_pbf_path.txt").write_text(str(network_pbf))
+        print(f"engine-check: street network ready ({network_pbf.name})")
+
+    if "transit" in (alt_cfg["routing"].get("modes") or []) \
+            and not (alt_out / "gtfs_paths.txt").exists():
+        import geopandas as gpd
+
+        from depacc.ingest.gtfs import fetch_gtfs
+
+        fua = gpd.read_parquet(alt_out / "fua_boundary.parquet")
+        feeds = fetch_gtfs(alt_cfg, root, fua)
+        (alt_out / "gtfs_paths.txt").write_text("\n".join(map(str, feeds)))
+        print(f"engine-check: GTFS feeds {[p.name for p in feeds]}")
+
+
+def run_alternative(alt_cfg: dict, city: str, root: Path, engine: str) -> Path:
+    """Route and build the deprivation surfaces under the alternative engine.
+
+    Deliberately calls the SAME ``run_access`` / ``run_deprivation`` the
+    pipeline uses: a re-implementation would be one more place for the two paths
+    to diverge, which is the mistake the Layer-3 sweep already made once.
+    Divergence/equity are NOT run — the shadow must never reach ``cityplane.csv``
+    or the cross-city tables.
+    """
+    from depacc.access.matrices import run_access
+    from depacc.deprivation.pipeline import run_deprivation
+
+    shadow = shadow_city_id(city, engine)
+    run_access(alt_cfg, shadow, root)
+    run_deprivation(alt_cfg, shadow, root)
+    return derived_dir(alt_cfg, shadow, root)
+
+
+# --------------------------------------------------------------------------- #
+# Comparison                                                                   #
+# --------------------------------------------------------------------------- #
+def _weighted_rank_agreement(a: np.ndarray, b: np.ndarray,
+                             pop: np.ndarray) -> float:
+    """Population-weighted Spearman of two same-city quantities, via the audited
+    percentile path (percentiles are the weighted ranks)."""
+    mask = np.isfinite(a) & np.isfinite(b) & np.isfinite(pop) & (pop > 0)
+    if mask.sum() < 2:
+        return float("nan")
+    sa = to_percentile(RegimeSurface(a[mask], pop[mask], "everyday", "cmp", "raw"))
+    sb = to_percentile(RegimeSurface(b[mask], pop[mask], "everyday", "cmp", "raw"))
+    return weighted_spearman(sa, sb)
+
+
+def _weighted_median(v: np.ndarray, w: np.ndarray) -> float:
+    mask = np.isfinite(v) & np.isfinite(w) & (w > 0)
+    if not mask.any():
+        return float("nan")
+    vv, ww = v[mask], w[mask]
+    order = np.argsort(vv)
+    vv, ww = vv[order], ww[order]
+    cum = np.cumsum(ww) - 0.5 * ww
+    return float(np.interp(0.5 * ww.sum(), cum, vv))
+
+
+def _row(scope: str, item: str, base, alt, *, spearman=np.nan, n=np.nan) -> dict:
+    base_f, alt_f = float(base), float(alt)
+    delta = alt_f - base_f
+    return {
+        "scope": scope, "item": item,
+        "base": base_f, "alt": alt_f, "delta": delta,
+        "rel_delta": delta / base_f if base_f not in (0.0,) and np.isfinite(base_f)
+        else np.nan,
+        "spearman": spearman, "n": n,
+    }
+
+
+def compare_engines(base_out: Path, alt_out: Path, cfg: dict, city: str,
+                    alt_engine: str, threshold: float = 0.5) -> pd.DataFrame:
+    """Base vs alternative engine on one city's surfaces.
+
+    Three families of row:
+
+    * ``travel_time`` — per regime and per service, the pop-weighted median and
+      p90 under each engine plus the population-weighted Spearman between them.
+      The Spearman is the number that matters for this project: every headline
+      output is rank-based, so an engine that shifts all times by a constant
+      costs nothing while one that REORDERS cells invalidates the typology.
+    * ``indicator`` — the city-row scalars (both Ginis, ρ, HH share) recomputed
+      identically on each engine's surfaces.
+    * ``typology`` — the population share whose co-location class changes.
+    """
+    base = pd.read_parquet(base_out / "surfaces.parquet")
+    alt = pd.read_parquet(alt_out / "surfaces.parquet")
+    alt = alt.reindex(base.index)
+    pop = base["population"].to_numpy(float)
+    rows: list[dict] = []
+
+    services = [c[len("t_regime_"):] for c in base.columns
+                if c.startswith("t_regime_")]
+    for item in sorted(services, key=lambda s: (s not in ("everyday", "emergency"), s)):
+        col = f"t_regime_{item}"
+        if col not in alt.columns:
+            print(f"  engine-check: '{col}' absent under {alt_engine}; skipped")
+            continue
+        a, b = base[col].to_numpy(float), alt[col].to_numpy(float)
+        both = np.isfinite(a) & np.isfinite(b) & (pop > 0)
+        # One rank agreement per ITEM, repeated on both of its rows: it is a
+        # property of the cell-level series, not of the summary statistic, and a
+        # blank on the p90 row reads as "not computed" rather than "same number".
+        rho = _weighted_rank_agreement(a, b, pop)
+        rows.append(_row("travel_time", f"{item}_median_min",
+                         _weighted_median(a, pop), _weighted_median(b, pop),
+                         spearman=rho, n=int(both.sum())))
+        rows.append(_row("travel_time", f"{item}_p90_min",
+                         np.nanpercentile(a[both], 90) if both.any() else np.nan,
+                         np.nanpercentile(b[both], 90) if both.any() else np.nan,
+                         spearman=rho, n=int(both.sum())))
+
+    surfaces = {}
+    for regime in ("everyday", "emergency"):
+        col = f"deprivation_{regime}"
+        if col not in base.columns or col not in alt.columns:
+            continue
+        sb = RegimeSurface(base[col].to_numpy(float), pop, regime, city, "raw")
+        sa = RegimeSurface(alt[col].to_numpy(float), pop, regime, city, "raw")
+        surfaces[regime] = (sb, sa)
+        rows.append(_row("indicator", f"gini_{regime}",
+                         weighted_gini(sb.values, pop),
+                         weighted_gini(sa.values, pop)))
+
+    if {"everyday", "emergency"} <= surfaces.keys():
+        pcts = {r: (to_percentile(sb), to_percentile(sa))
+                for r, (sb, sa) in surfaces.items()}
+        rho_b = weighted_spearman(pcts["everyday"][0], pcts["emergency"][0])
+        rho_a = weighted_spearman(pcts["everyday"][1], pcts["emergency"][1])
+        rows.append(_row("indicator", "spearman_rho", rho_b, rho_a))
+
+        lab_b = classify(pcts["everyday"][0].values, pcts["emergency"][0].values,
+                         threshold)
+        lab_a = classify(pcts["everyday"][1].values, pcts["emergency"][1].values,
+                         threshold)
+        sh_b = class_shares(lab_b, pop)["population_share"].to_dict()
+        sh_a = class_shares(lab_a, pop)["population_share"].to_dict()
+        for cls in ("LL", "LH", "HL", "HH"):
+            rows.append(_row("indicator", f"share_{cls}_{int(threshold * 100)}",
+                             sh_b.get(cls, np.nan), sh_a.get(cls, np.nan)))
+        fc = flip_cells(lab_b, [lab_a], pop)
+        rows.append(_row("typology", f"flip_pop_share_{int(threshold * 100)}",
+                         0.0, fc["sensitive_pop_share"]))
+
+    table = pd.DataFrame(rows)
+    table.insert(0, "alt_engine", alt_engine)
+    table.insert(0, "base_engine", cfg["routing"].get("engine", "r5"))
+    table.insert(0, "city", city)
+    return table
+
+
+# --------------------------------------------------------------------------- #
+# Figure                                                                       #
+# --------------------------------------------------------------------------- #
+def _scatter(base_out: Path, alt_out: Path, cfg: dict, city: str,
+             alt_engine: str, table: pd.DataFrame, out_png: Path) -> None:
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except Exception:  # pragma: no cover - viz extra not installed
+        print("  matplotlib not installed; skipping engine scatter")
+        return
+    from depacc.viz.pipeline import _watermark
+
+    base = pd.read_parquet(base_out / "surfaces.parquet")
+    alt = pd.read_parquet(alt_out / "surfaces.parquet").reindex(base.index)
+    base_engine = cfg["routing"].get("engine", "r5")
+    name = cfg["city"].get("name", city)
+
+    regimes = [r for r in ("everyday", "emergency")
+               if f"t_regime_{r}" in base.columns and f"t_regime_{r}" in alt.columns]
+    if not regimes:
+        return
+    fig, axes = plt.subplots(1, len(regimes), figsize=(5.6 * len(regimes), 5.2),
+                             squeeze=False)
+    for ax, regime in zip(axes[0], regimes):
+        a = base[f"t_regime_{regime}"].to_numpy(float)
+        b = alt[f"t_regime_{regime}"].to_numpy(float)
+        m = np.isfinite(a) & np.isfinite(b)
+        hb = ax.hexbin(a[m], b[m], gridsize=60, bins="log", mincnt=1,
+                       cmap="viridis", linewidths=0)
+        hi = float(np.nanpercentile(np.concatenate([a[m], b[m]]), 99.5)) if m.any() else 1.0
+        ax.plot([0, hi], [0, hi], color="#d1495b", lw=1.2, ls="--", label="1:1")
+        ax.set_xlim(0, hi)
+        ax.set_ylim(0, hi)
+        rho = table.query("item == @regime + '_median_min'")["spearman"]
+        rho_txt = f"ρ = {float(rho.iloc[0]):.3f}" if len(rho) and np.isfinite(rho.iloc[0]) else ""
+        ax.set_title(f"{regime} — {rho_txt}", fontsize=10)
+        ax.set_xlabel(f"{base_engine} t_regime (min)")
+        ax.set_ylabel(f"{alt_engine} t_regime (min)")
+        ax.legend(frameon=False, fontsize=8, loc="lower right")
+        fig.colorbar(hb, ax=ax, label="cells (log)")
+    fig.suptitle(f"{name}: routing-engine cross-check, {base_engine} vs {alt_engine}",
+                 fontsize=12)
+    _watermark(fig, cfg)
+    fig.tight_layout()
+    fig.savefig(out_png, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+
+
+# --------------------------------------------------------------------------- #
+# Driver                                                                       #
+# --------------------------------------------------------------------------- #
+def run_engine_check(cfg: dict, city: str, root: Path, engine: str = "r5",
+                     modes: list[str] | None = None,
+                     threshold: float = 0.5,
+                     reuse: bool = True) -> pd.DataFrame:
+    """Full E.1 cross-check for one city. Returns the comparison table."""
+    base_engine = cfg["routing"].get("engine", "r5")
+    if base_engine == engine and not modes:
+        print(f"NOTE: engine-check comparing '{engine}' against itself — every "
+              f"delta should come out zero; this is the plumbing self-test")
+    alt_cfg, base_out, alt_out = prepare_shadow(cfg, city, root, engine, modes)
+    ensure_network(alt_cfg, city, root, alt_out)
+    if reuse and (alt_out / "surfaces.parquet").exists():
+        print(f"engine-check: reusing the cached {engine} surfaces in {alt_out}")
+    else:
+        run_alternative(alt_cfg, city, root, engine)
+
+    table = compare_engines(base_out, alt_out, cfg, city, engine, threshold)
+    val_dir = root / cfg["output"]["root"] / "validation"
+    val_dir.mkdir(parents=True, exist_ok=True)
+    table.to_csv(val_dir / f"{city}_engine_check.csv", index=False)
+    _scatter(base_out, alt_out, cfg, city, engine, table,
+             val_dir / f"{city}_engine_scatter.png")
+
+    tt = table[table.scope == "travel_time"].dropna(subset=["spearman"])
+    if not tt.empty:
+        worst = tt.loc[tt["spearman"].idxmin()]
+        print(f"  {city}: rank agreement {base_engine} vs {engine} — "
+              f"worst {worst['item']} ρ={worst['spearman']:.3f}, "
+              f"median ρ={tt['spearman'].median():.3f}")
+    flip = table[table.scope == "typology"]
+    if not flip.empty:
+        print(f"  {city}: {float(flip.iloc[0]['alt']):.1%} of the population "
+              f"changes co-location class under {engine}")
+    print(f"engine-check outputs -> {val_dir}")
+    return table

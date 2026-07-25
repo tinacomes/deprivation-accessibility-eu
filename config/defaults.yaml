@@ -305,6 +305,16 @@ cityvector:
   # Cross-city feature standardisation before clustering: "robust"
   # (median / IQR; default — small, outlier-prone sample) or "zscore".
   cross_city_scaler: "robust"
+  # A feature missing for more than this share of cities is DROPPED rather than
+  # imputed. A city with no value for a retained feature lands at the sample
+  # median of it — declared exactly typical on a variable never measured for it,
+  # then clustered on that. Below the bound that is an acceptable trade for
+  # keeping the dimension (and every imputed city/feature pair is named in the
+  # log); above it, the dimension is mostly fiction. `slope_ses_*` is the live
+  # case: activity status is voluntary under Reg. 2018/1799 and DE and FR are
+  # the only two countries that do not report it, so every German and French
+  # city carries NaN there by design — see methods.md §6.1.
+  max_missing_share: 0.25
   clustering:
     k_range: [2, 6]      # candidate cluster counts; k chosen by silhouette
     bootstrap: 50        # resamples for the stability (ARI) check

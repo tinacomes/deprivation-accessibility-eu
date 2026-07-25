@@ -169,3 +169,64 @@ def test_slope_ses_absent_when_no_ses_covariate_qualifies(tmp_path):
     # Age is vulnerability, not SES — it must not silently become slope_ses_*.
     assert "slope_ses_everyday" not in vectors.columns
     assert "slope_ses_column" not in vectors.columns
+
+
+# ---------------------------------------------------------------------------
+# Missing-feature handling: the imputation must be bounded and never silent.
+# ---------------------------------------------------------------------------
+
+def _vectors_with_gap(n, missing, col="slope_ses_everyday", seed=7):
+    """n cities, `missing` of them carrying no value for `col`."""
+    v = _vectors(n, seed=seed)
+    v[col] = np.linspace(-1.0, 1.0, n)
+    v.loc[v.index[:missing], col] = np.nan
+    return v
+
+
+def test_feature_missing_for_too_many_cities_is_dropped_not_imputed(capsys):
+    """A city with no value for a retained feature lands at the sample MEDIAN of
+    it — declared exactly typical on a variable never measured for it, and then
+    clustered on that. `slope_ses_*` is the live case: activity status is
+    voluntary under Reg. 2018/1799 and DE and FR are the two countries that do
+    not report it. Past the bound, dropping the dimension is the honest move."""
+    from depacc.cityvector.features import feature_columns
+
+    cfg = load_config("demo")
+    cols = feature_columns(cfg)
+    # 4 of 10 missing (40 %) — over the 25 % default.
+    scaled = scale_features(_vectors_with_gap(10, 4), cols, max_missing_share=0.25)
+    assert "slope_ses_everyday" not in scaled.feature_names
+    out = capsys.readouterr().out
+    assert "missing for 40% of cities" in out
+
+
+def test_feature_missing_for_a_few_cities_is_imputed_and_named(capsys):
+    """Under the bound the dimension is worth keeping, but every imputed
+    (city, feature) pair must appear in the log — the old code named dropped
+    features and never named an imputed city."""
+    from depacc.cityvector.features import feature_columns
+
+    cfg = load_config("demo")
+    cols = feature_columns(cfg)
+    v = _vectors_with_gap(10, 1)          # 10 % missing, under the bound
+    scaled = scale_features(v, cols, max_missing_share=0.25)
+    assert "slope_ses_everyday" in scaled.feature_names
+
+    j = scaled.feature_names.index("slope_ses_everyday")
+    assert scaled.imputed[0, j]           # the gap is recorded on the token...
+    assert not scaled.imputed[1:, j].any()
+    assert scaled.matrix[0, j] == 0.0     # ...and sits at the scaled centre
+    assert "imputed at the sample centre" in capsys.readouterr().out
+
+
+def test_max_missing_share_is_configurable():
+    from depacc.cityvector.features import feature_columns
+
+    cfg = load_config("demo")
+    cols = feature_columns(cfg)
+    v = _vectors_with_gap(10, 4)
+    assert "slope_ses_everyday" not in scale_features(
+        v, cols, max_missing_share=0.25).feature_names
+    # A deliberately permissive bound keeps it (and still names the imputations).
+    assert "slope_ses_everyday" in scale_features(
+        v, cols, max_missing_share=0.9).feature_names
