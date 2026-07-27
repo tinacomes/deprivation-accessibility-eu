@@ -162,6 +162,15 @@ routing:
   # sensitivity-testable and apply to every routing engine.
   origin_chunk: 5000
   k_nearest: 30
+  # Wall-clock budget for the access stage, in minutes. null = unlimited (the
+  # default: an interactive run should never stop itself). Set it in CI, where
+  # a hosted runner caps a job at 6 h and CANCELS it on timeout — and a
+  # cancelled job skips the cache-save step, so an unbudgeted overrun throws
+  # away every matrix it built (run 30164334307 lost 2 h 20 of Hamburg walk
+  # routing that way). With a budget the stage stops cleanly inside the job,
+  # the cache is written, and the next dispatch resumes from the last finished
+  # origin chunk. Overridable per run with DEPACC_ROUTING_BUDGET_MIN.
+  time_budget_min: null
 
 softmin:
   # Soft-minimum smoothing parameter kappa (per minute). Larger kappa -> closer

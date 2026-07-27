@@ -1089,12 +1089,78 @@ a 5-minute median delta and a 0 % flip share; a reversal gives ρ = −1 with no
 median movement and a flip share above 50 %.
 
 **To run it:** Actions → "engine cross-check (E.1)" → Run workflow, `city:
-hamburg`, `engine: r5`. Budget 1–3 h on the first uncached run (it downloads a
-state-level .pbf and routes ~176 k origins × 9 services through R5). The shadow
-surfaces are cached, so a re-dispatch that only re-runs the comparison is
-minutes; `reuse: false` forces a full re-route. Nothing is pushed to
-`depacc-results` from the workflow itself — the outputs come back as the
-`depacc-engine-check-hamburg` artifact.
+hamburg`, `engine: r5`. The shadow surfaces are cached, so a re-dispatch that
+only re-runs the comparison is minutes; `reuse: false` forces a full re-route.
+Nothing is pushed to `depacc-results` from the workflow itself — the outputs
+come back as the `depacc-engine-check-hamburg` artifact.
+
+**Runtime — the 1–3 h estimate above was wrong by roughly a factor of four**
+(§5.9). It is now measured, and the workflow is built to be resumed rather than
+to finish in one dispatch.
+
+### 5.9 E.1's real cost, and why the first attempt returned nothing
+
+Run 30164334307 was dispatched with the estimate above and produced no outputs
+at all. Two separate failures, one of measurement and one of mechanism.
+
+**Measurement.** Timestamps from that run, on Hamburg's 176 137 origins:
+
+| phase | wall clock |
+| --- | --- |
+| .pbf fetch + osmium clip of 3 Geofabrik extracts + merge | ~1.3 min |
+| R5 network build (`hamburg_merged.osm.pbf`) | ~12 min (inside the first matrix) |
+| `gp`, walk (30 min cutoff) | ~32 min incl. the network build |
+| `pharmacy`, walk | 21.5 min |
+| `supermarket`, walk | 26.3 min |
+| `school_primary`, walk (`school_secondary` aliases, free) | 25.9 min |
+| `green_space_local`, walk (`green_space_district` aliases, free) | 35.2 min |
+| **five walk services** | **~2 h 22** |
+| `emergency_dept_hospital`, car (60 min cutoff) | **> 2 h 37, unfinished when the job was cancelled** |
+
+The everyday regime is walk-only and the emergency regime is car-only, so the
+two emergency services carry a 60-minute cutoff rather than 30. The R5 street
+search is superlinear in the cutoff — doubling it over a road network, not a
+footpath network, explores far more of the graph per origin — so each car
+matrix costs multiples of a walk one. A complete Hamburg r5 cross-check is
+therefore **~8–12 h, not 1–3**. That is more than the 6 h hard cap on a
+GitHub-hosted job: **E.1 was never completable in a single run**, at any
+timeout setting.
+
+**Mechanism.** The job's own `timeout-minutes: 300` fired at exactly 5 h and
+GitHub *cancelled* the job. A cancelled job skips post steps, so
+`actions/cache` never saved — and the 2 h 22 of finished walk matrices went
+with it. `depacc engine-check` had not reached `compare_engines`, so
+`data/derived/validation/` did not exist, which is the whole content of the
+"No files were found with the provided path" artefact warning. That warning was
+the symptom; the cancellation was the disease.
+
+**What changed.** The access stage is now resumable at two levels and stops
+itself before the runner can cancel it:
+
+- `routing.time_budget_min` / `DEPACC_ROUTING_BUDGET_MIN` (unlimited by
+  default, 240 min in the workflow) makes `run_access` stop cleanly and raise
+  `RoutingBudgetExhausted` while the job is still alive, so the cache *is*
+  written. The CLI reports it as exit code 2 — a resumable stop, distinct from
+  a failure — and refuses to run later stages, because deprivation surfaces
+  built on a half-routed city would mark every unrouted cell service-deprived.
+- Inside a matrix, each finished origin chunk is written to
+  `od_<service>_<mode>.partial/chunk_NNNNN.parquet` and reused on re-entry.
+  Whole-matrix granularity is not enough when one car matrix outlives a job.
+- The workflow gives the routing step its own `timeout-minutes` *below* the
+  job timeout (a step timeout fails the step, and post steps still run), always
+  writes a status file into the upload path, and treats exit 2 as a notice.
+
+So the operating procedure is: dispatch, let it stop on budget, dispatch again.
+Each run is strictly forward progress. For a single-dispatch answer covering
+the everyday regime only, dispatch with `modes: walk` (~2.5 h), then re-dispatch
+with `modes` blank to add the emergency car regime.
+
+One comparison bug was fixed alongside it: the travel-time medians and p90s
+summarised each engine over *its own* reachable cells, which mixes a level
+difference with a composition one — an engine that gives up on the far
+periphery would post a lower median for that reason alone. They are now paired
+on the cells both engines reach, with the composition difference reported
+separately as `coverage` rows (`<item>_reachable_pop_share`).
 
 The questions it should answer, in order of what they block:
 

@@ -140,3 +140,67 @@ def test_check_reports_the_rank_disagreement_that_matters(tmp_path):
     assert tab2.loc["everyday_median_min", "delta"] == pytest.approx(0.0, abs=0.2)
     # A reordering leaves the median untouched but moves the typology.
     assert tab2.loc["flip_pop_share_50", "alt"] > 0.5
+
+
+def test_travel_times_are_compared_on_the_cells_both_engines_reach(tmp_path):
+    """Summarising each engine over its OWN reachable set confounds a level
+    difference with a composition one: an engine that simply gives up on the
+    far periphery would post a lower median for that reason alone. The
+    travel-time rows must be PAIRED — and the composition difference reported
+    separately rather than swallowed."""
+    n = 100
+    pop = np.ones(n)
+    t_ev = np.linspace(1.0, 100.0, n)
+    t_em = np.linspace(1.0, 50.0, n)
+
+    def _write(dirpath, ev, em):
+        dirpath.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame({
+            "population": pop,
+            "t_regime_everyday": ev, "t_regime_emergency": em,
+            "deprivation_everyday": np.nan_to_num(ev) / 200.0,
+            "deprivation_emergency": em / 200.0,
+        }).to_parquet(dirpath / "surfaces.parquet")
+
+    base = tmp_path / "base"
+    _write(base, t_ev, t_em)
+
+    # The alternative reaches only the nearest half of the city, and is 2 min
+    # SLOWER on every cell it does reach.
+    alt_ev = np.where(np.arange(n) < n // 2, t_ev + 2.0, np.nan)
+    alt = tmp_path / "alt"
+    _write(alt, alt_ev, t_em)
+
+    cfg = {"routing": {"engine": "friction"}, "city": {"name": "T"}}
+    tab = compare_engines(base, alt, cfg, "t", "alt").set_index("item")
+
+    row = tab.loc["everyday_median_min"]
+    assert row["n"] == n // 2
+    # Paired: the +2 min penalty is what shows up, NOT the ~-25 min that
+    # comparing base-over-all against alt-over-half would have produced.
+    assert row["delta"] == pytest.approx(2.0, abs=0.6)
+    assert row["base"] < 55.0
+
+    cov = tab.loc["everyday_reachable_pop_share"]
+    assert cov["base"] == pytest.approx(1.0)
+    assert cov["alt"] == pytest.approx(0.5)
+
+
+def test_an_interrupted_check_leaves_a_progress_manifest(tmp_path):
+    """Run 30164334307 timed out and uploaded nothing at all — the artefact
+    step reported "No files were found". A stop must be legible as an artefact,
+    naming what is done and what is still owed."""
+    from depacc.access.matrices import RoutingBudgetExhausted
+    from depacc.quality.engine_check import write_progress_manifest
+
+    exc = RoutingBudgetExhausted(done=["gp,walk", "pharmacy,walk"],
+                                 pending=["emergency_dept_hospital,car"],
+                                 elapsed_min=241.0)
+    path = write_progress_manifest(tmp_path, "hamburg", "r5", exc)
+
+    table = pd.read_csv(path)
+    assert path.name == "hamburg_engine_check_progress.csv"
+    assert set(table["status"]) == {"done", "pending"}
+    assert table.loc[table.status == "pending", "matrix"].tolist() == \
+        ["emergency_dept_hospital,car"]
+    assert (table["alt_engine"] == "r5").all()
