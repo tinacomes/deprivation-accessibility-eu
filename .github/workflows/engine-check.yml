@@ -13,26 +13,34 @@ name: engine cross-check (E.1)
 # depacc-engine-check-<city>. Nothing is pushed to depacc-results: the shadow run
 # is a validation artefact, not a city.
 #
-# Budget: MEASURED on run 30164334307 (Hamburg, r5, 176 137 origins), not
-# guessed. Network fetch/clip/merge + R5 build ~12 min; each walk service
-# (30 min cutoff) 21-35 min, five of them ~2 h 20; the emergency car services
-# (60 min cutoff, a far larger street search per origin) had not finished after
-# 2 h 37 when the 5 h job timeout cancelled the run. Realistic total for
-# Hamburg under r5 is ~8-12 h — MORE THAN THE 6 h GitHub-hosted job cap, so
-# this cannot be a single run and never could.
+# Budget: MEASURED on runs 30164334307 and 30251028718 (Hamburg, r5, 176 137
+# origins), not guessed.
 #
-# It is therefore RESUMABLE by design. `budget_min` stops the access stage
-# cleanly while the job is still alive, which matters because a job that hits
-# its own timeout is CANCELLED, and a cancelled job skips actions/cache's save
-# step — that is how run 30164334307 threw away 2 h 20 of finished walk
-# matrices and uploaded an empty artefact. Stopping under budget writes the
-# cache, so re-dispatching this workflow picks up at the last finished origin
-# chunk. Repeat until the run reports the comparison; each dispatch is
-# strictly forward progress.
+#   network fetch/clip/merge + R5 build   ~15-27 min
+#   each walk service (30 min cutoff)     18-27 min; five of them ~1 h 53
+#   emergency car (60 min cutoff)         ~39.5 min per 5 000-origin chunk
+#                                         = ~24 h PER SERVICE, two services
 #
-# Faster alternative: dispatch with modes=walk for a walk-only cross-check
-# (~2.5 h, one dispatch, covers the everyday regime), then re-dispatch with
-# modes blank to add the emergency car regime.
+# Forwards, the emergency leg alone is ~47 h — far past the 6 h hard cap on a
+# GitHub-hosted job. Two mechanisms make this tractable:
+#
+# 1. `reverse_modes: car` routes the emergency matrices FACILITIES -> CELLS and
+#    transposes them back. R5 costs one street search per ORIGIN, so 27
+#    emergency departments cost 27 searches rather than 176 137 — minutes, not
+#    a day. Exact only for a symmetric network, so the run MEASURES the
+#    direction asymmetry against any forward-routed chunks on disk and writes
+#    it to validation/<city>_engine_reverse_asymmetry.csv.
+# 2. `budget_min` stops the access stage cleanly while the job is still alive.
+#    A job that hits its own timeout is CANCELLED, and a cancelled job skips
+#    actions/cache's save step — that is how run 30164334307 threw away 2 h 20
+#    of finished walk matrices and uploaded an empty artefact. Stopping under
+#    budget writes the cache, so a re-dispatch picks up at the last finished
+#    origin chunk.
+#
+# Do NOT dispatch with modes=walk expecting a walk-only cross-check: the mode
+# override only touches routing.modes, while regimes.emergency.modes stays
+# ["car"], so run_deprivation finds no emergency service and raises
+# "No services computed for regime 'emergency'".
 #
 # ALWAYS DISPATCH EVERY RUN FROM THE SAME BRANCH. GitHub scopes a cache to the
 # branch that wrote it: a branch can read its own caches and the DEFAULT
@@ -68,6 +76,10 @@ on:
         description: "Wall-clock minutes the routing may use before stopping cleanly and caching its progress (must stay below the job timeout)"
         required: false
         default: "240"
+      reverse_modes:
+        description: "Modes routed facilities->cells and transposed back (blank = none). 'car' turns the ~24 h/service emergency leg into minutes; the run reports the measured direction asymmetry."
+        required: false
+        default: "car"
 
 # Two dispatches for the same city must never run at once: they would restore
 # the same derived cache, route overlapping work, and the later save would
@@ -205,6 +217,9 @@ jobs:
           if [ "${{ inputs.reuse }}" != "true" ]; then
             ARGS+=(--no-reuse)
           fi
+          # Always pass the flag: with no values it explicitly DISABLES reverse
+          # routing, which is how a run asks for the slow exact direction.
+          ARGS+=(--reverse-modes ${{ inputs.reverse_modes }})
           set +e
           depacc engine-check "${ARGS[@]}"
           rc=$?
@@ -232,6 +247,7 @@ jobs:
             echo "engine:     ${{ inputs.engine }}"
             echo "modes:      ${{ inputs.modes }}"
             echo "budget_min: ${{ inputs.budget_min }}"
+            echo "reverse:    ${{ inputs.reverse_modes }}"
             echo "exit_code:  ${{ steps.check.outputs.rc }}"
             echo
             echo "OD matrices in the shadow derived dir:"

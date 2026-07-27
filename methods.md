@@ -573,6 +573,29 @@ cell as service-deprived; the CLI surfaces this as exit code 2, distinct from a
 failure. A cross-check of a large city is thus run over several dispatches, each
 of which is strictly forward progress.
 
+**Reverse routing for the emergency regime.** Measured on run 30251028718, a
+60-minute-cutoff car matrix costs ~39.5 min per 5 000-origin chunk — ~24 h per
+emergency service, ~47 h for the two of them, which no sequence of CI jobs
+should be spent on. R5's cost is one street search **per origin**, with
+destinations read off the resulting cost surface, so for a service whose
+facilities are far outnumbered by cells the matrix is routed **facilities →
+cells** and transposed back: 27 emergency departments cost 27 searches instead
+of 176 137. Enabled per mode by `routing.reverse_direction` (empty by default),
+and refused where cells do not outnumber facilities by at least 20×, below
+which the transpose loses.
+
+The transposed matrix is identical to the forward one only if the network is
+symmetric, and a car network is not — one-way streets and turn restrictions
+make travel time direction-dependent. That error is therefore **measured, not
+assumed**: `asymmetry_report` compares the reverse matrix against any
+forward-routed chunks already on disk (for Hamburg, the 20 000 origins
+checkpointed before run 30251028718 hit its budget, which cost nothing extra to
+reuse) and writes the median, p90 and maximum absolute discrepancy to
+`validation/<city>_engine_reverse_asymmetry.csv`. Read that file before reading
+the emergency rows of the comparison. Note also that for `ambulance_station`
+the reversed direction is arguably the substantively correct one: emergency
+response time is station-to-patient, not patient-to-station.
+
 Two findings from run 30160444058 make this the validation that gates the rest.
 The friction *car* surface gives 99.0 % of Hamburg's cells a zero-minute pair for
 everyday services — a 1 km pixel holding a facility is a zero-minute trip for
