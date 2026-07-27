@@ -216,6 +216,76 @@ def test_finished_origin_chunks_are_checkpointed_and_reused(tmp_path, monkeypatc
     assert sorted(od.origin.unique()) == [f"c{i}" for i in range(10)]
 
 
+def test_repeated_dispatches_converge_without_repeating_work(tmp_path, monkeypatch):
+    """The operating procedure is "dispatch until it finishes", so the property
+    that matters is not just that a stop is clean but that the dispatches
+    COMPOSE: each makes forward progress, none re-routes anything an earlier
+    one finished, and the last one produces the comparison.
+
+    Simulated by budgeting each dispatch to a fixed number of matrices — what a
+    240-minute budget does to Hamburg — with the derived directory persisting
+    in between, which is exactly what the workflow's cache provides.
+    """
+    from depacc.access import matrices as m
+    from depacc.cli import main
+
+    root = tmp_path / "dispatched"
+    for stage in ("ingest", "access", "deprivation"):
+        assert main(["run", "--city", "demo", "--stage", stage,
+                     "--project-root", str(root)]) == 0
+
+    routed: list[str] = []
+    real_matrix = m._synthetic_matrix
+    real_deadline = m._Deadline          # captured BEFORE any patching
+    monkeypatch.setattr(m, "_synthetic_matrix",
+                        lambda *a, **kw: (routed.append(a[2]),
+                                          real_matrix(*a, **kw))[1])
+
+    per_dispatch = 3
+
+    class _ExpiresAfterN:
+        budget_min = 240.0
+        elapsed_min = 240.0
+
+        def __init__(self, start):
+            self._start = start
+
+        def expired(self):
+            return len(routed) - self._start >= per_dispatch
+
+    dispatches = 0
+    while True:
+        dispatches += 1
+        assert dispatches < 25, "not converging"
+        start = len(routed)
+        monkeypatch.setattr(m, "_Deadline", lambda _b, _s=start: _ExpiresAfterN(_s))
+        rc = main(["engine-check", "--city", "demo", "--engine", "synthetic",
+                   "--project-root", str(root)])
+        if rc == 0:
+            break
+        assert rc == 2, f"dispatch {dispatches} exited {rc}, not a budget stop"
+        assert len(routed) - start > 0, \
+            f"dispatch {dispatches} made no forward progress — this is the " \
+            f"livelock the whole resume design has to avoid"
+
+    assert dispatches > 1, "budget never bit; the test proves nothing"
+    total_dispatched = len(routed)
+    assert (root / "data/derived/validation/demo_engine_check.csv").exists()
+
+    # The decisive one: routing the same city in a single unbudgeted run costs
+    # the SAME number of matrices. Any work repeated across dispatches would
+    # show up here as a higher count above.
+    oneshot = tmp_path / "oneshot"
+    monkeypatch.setattr(m, "_Deadline", real_deadline)
+    for stage in ("ingest", "access", "deprivation"):
+        assert main(["run", "--city", "demo", "--stage", stage,
+                     "--project-root", str(oneshot)]) == 0
+    routed.clear()   # count the SHADOW routing only, as above
+    assert main(["engine-check", "--city", "demo", "--engine", "synthetic",
+                 "--project-root", str(oneshot)]) == 0
+    assert total_dispatched == len(routed)
+
+
 def test_a_completed_matrix_clears_its_checkpoints(demo_access, tmp_path,
                                                    monkeypatch):
     """Stale chunk files would be silently re-read into a later matrix, so a

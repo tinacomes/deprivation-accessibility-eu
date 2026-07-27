@@ -34,6 +34,13 @@ name: engine cross-check (E.1)
 # (~2.5 h, one dispatch, covers the everyday regime), then re-dispatch with
 # modes blank to add the emergency car regime.
 #
+# ALWAYS DISPATCH EVERY RUN FROM THE SAME BRANCH. GitHub scopes a cache to the
+# branch that wrote it: a branch can read its own caches and the DEFAULT
+# branch's, and nothing else. Dispatch once from a feature branch and once from
+# main and the second run restores nothing, re-routing hours of finished work.
+# Dispatching from main throughout is the safest, because main's caches are
+# also visible to every other branch.
+#
 # The alternative surfaces are cached under
 # data/derived/<city>/engine_<engine>/, so a re-dispatch that only wants the
 # comparison re-run is minutes; pass reuse=false to force re-routing.
@@ -61,6 +68,14 @@ on:
         description: "Wall-clock minutes the routing may use before stopping cleanly and caching its progress (must stay below the job timeout)"
         required: false
         default: "240"
+
+# Two dispatches for the same city must never run at once: they would restore
+# the same derived cache, route overlapping work, and the later save would
+# silently discard the other's progress. Queue them instead — and do NOT cancel
+# the one in flight, which would lose everything it has routed so far.
+concurrency:
+  group: engine-check-${{ inputs.city }}-${{ inputs.engine }}
+  cancel-in-progress: false
 
 env:
   MPLBACKEND: Agg
@@ -108,15 +123,27 @@ jobs:
       - name: Install depacc (full stack)
         run: pip install -e ".[full,dev]"
 
+      # ------------------------------------------------------------------
+      # Caches are RESTORE-only here, with explicit `if: always()` saves after
+      # the routing step. This is not a style choice — actions/cache@v4
+      # declares `post-if: success()`, so its automatic save is skipped the
+      # moment anything in the job fails, and skipped entirely when the job is
+      # cancelled. That is precisely how run 30164334307 lost 2 h 22 of
+      # finished walk matrices. Its `save-always` input carries an upstream
+      # deprecation notice ("does not work as intended"); the documented
+      # replacement is this restore/save split.
+      # ------------------------------------------------------------------
       - name: Restore/seed the SHARED raw-data cache
-        uses: actions/cache@v4
+        id: cache_raw_shared
+        uses: actions/cache/restore@v4
         with:
           path: ${{ env.SHARED_RAW_PATHS }}
           key: depacc-raw-shared-v1-${{ hashFiles('config/defaults.yaml', 'config/cities/*.yaml') }}
           restore-keys: depacc-raw-shared-v1-
 
       - name: Restore this city's raw-data cache
-        uses: actions/cache@v4
+        id: cache_raw_city
+        uses: actions/cache/restore@v4
         with:
           path: ${{ env.CITY_RAW_PATHS }}
           key: depacc-raw-city-${{ inputs.city }}-${{ hashFiles('config/cities/*.yaml') }}
@@ -129,12 +156,22 @@ jobs:
       # outputs live inside it (data/derived/<city>/engine_<engine>/) so a
       # re-dispatch resumes instead of re-routing.
       - name: Restore per-city derived cache
-        uses: actions/cache@v4
+        id: cache_derived
+        uses: actions/cache/restore@v4
         with:
           path: data/derived/${{ inputs.city }}
           key: depacc-derived-${{ inputs.city }}-${{ github.run_id }}
           restore-keys: |
             depacc-derived-${{ inputs.city }}-
+
+      - name: Report what was restored
+        run: |
+          echo "shared raw : ${{ steps.cache_raw_shared.outputs.cache-matched-key || 'MISS' }}"
+          echo "city raw   : ${{ steps.cache_raw_city.outputs.cache-matched-key || 'MISS' }}"
+          echo "derived    : ${{ steps.cache_derived.outputs.cache-matched-key || 'MISS' }}"
+          echo
+          echo "Restored OD matrices for the shadow run:"
+          ls -1 "data/derived/${{ inputs.city }}/engine_${{ inputs.engine }}"/od_*.parquet 2>/dev/null | sed 's/^/  /' || echo "  (none — this is the first routing dispatch)"
 
       # The check compares against the city's existing baseline surfaces. If the
       # derived cache was evicted, rebuild them first — the comparison is
@@ -148,11 +185,12 @@ jobs:
             depacc run --city "${{ inputs.city }}" --stage deprivation
           fi
 
-      # Step-level timeout, deliberately BELOW the job timeout: a step that
-      # times out FAILS (post steps, and therefore the cache save, still run),
-      # whereas a job that times out is CANCELLED (they do not). The budget
-      # inside depacc should stop first and more gracefully; this is the guard
-      # for the case where one origin chunk itself overruns.
+      # Step-level timeout, deliberately BELOW the job timeout. A step that
+      # times out FAILS, and later `if: always()` steps — including the cache
+      # saves — still run; a job that times out is CANCELLED, and nothing after
+      # it runs at all. The budget inside depacc should stop first and more
+      # gracefully; this is the guard for the case where one origin chunk
+      # itself overruns.
       - name: Cross-check against ${{ inputs.engine }}
         id: check
         timeout-minutes: 320
@@ -205,9 +243,47 @@ jobs:
             done
           } | tee "$m"
 
+      # ------------------------------------------------------------------
+      # SAVE, unconditionally and BEFORE the gate step below can fail the job.
+      # This is the step that makes "dispatch until it finishes" work at all.
+      # continue-on-error so that a duplicate-key collision (another dispatch
+      # racing this one) can never fail an otherwise good run.
+      # ------------------------------------------------------------------
+      - name: Save the per-city derived cache (routing progress)
+        if: always()
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: data/derived/${{ inputs.city }}
+          # Keyed on run_id, so it is never an exact hit and this always
+          # writes a new entry carrying whatever this run managed to route.
+          key: depacc-derived-${{ inputs.city }}-${{ github.run_id }}
+
+      # The raw caches are content-keyed and therefore only worth writing when
+      # this run actually fetched something new. The city one has never been
+      # saved successfully (run 30164334307 logged "Cache not found for input
+      # keys: depacc-raw-city-hamburg-..."), which is why that run re-downloaded
+      # and re-clipped 676 MB of Geofabrik extracts.
+      - name: Save this city's raw-data cache
+        if: always() && steps.cache_raw_city.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.CITY_RAW_PATHS }}
+          key: depacc-raw-city-${{ inputs.city }}-${{ hashFiles('config/cities/*.yaml') }}
+
+      - name: Save the SHARED raw-data cache
+        if: always() && steps.cache_raw_shared.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.SHARED_RAW_PATHS }}
+          key: depacc-raw-shared-v1-${{ hashFiles('config/defaults.yaml', 'config/cities/*.yaml') }}
+
       # Exit code 2 is depacc's "stopped on budget, progress is cached,
       # re-dispatch to resume" — a resumable stop, not a failure. Anything else
-      # non-zero is a real failure and must fail the run.
+      # non-zero is a real failure and must fail the run. This runs LAST so
+      # that failing it cannot cost the saves above.
       - name: Fail on a real error (not a budget stop)
         if: always()
         run: |
