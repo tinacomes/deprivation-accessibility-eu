@@ -91,6 +91,9 @@ class AccessProgress:
     done: list[str] = field(default_factory=list)
     pending: list[str] = field(default_factory=list)
     skipped: list[str] = field(default_factory=list)
+    #: Per-matrix reverse-routing asymmetry stats, when reverse routing ran and
+    #: forward-routed chunks were available to check it against.
+    asymmetry: dict = field(default_factory=dict)
 
     @property
     def complete(self) -> bool:
@@ -135,6 +138,35 @@ def _routing_budget_min(cfg: dict) -> float | None:
               f"{raw!r}; routing without a budget")
         return None
     return value if value > 0 else None
+
+
+#: Reverse routing is only worth it when destinations vastly outnumber origins.
+#: Below this ratio the transpose costs more than it saves, so it is refused.
+_REVERSE_MIN_RATIO = 20.0
+
+
+def _reverse_modes(cfg: dict) -> set[str]:
+    """Modes whose matrices are routed FACILITIES -> CELLS and transposed back.
+
+    R5's cost scales with the number of ORIGINS: each origin is one street
+    search, and destinations are read off the resulting cost surface. Hamburg
+    has 176 137 cells and 27 emergency departments, so routing forwards is
+    176 137 searches and backwards is 27 — measured at ~39.5 min per 5 000-cell
+    chunk, that is the difference between ~24 h and minutes (run 30251028718).
+
+    The transposed matrix is the same OD pair set with the same times **iff the
+    network is symmetric**. It is not exactly: one-way streets and turn
+    restrictions make car time direction-dependent. So this is OFF by default
+    and, when on, :func:`asymmetry_report` measures the error against whatever
+    forward-routed origin chunks are on disk rather than assuming it away.
+
+    For ``ambulance_station`` the reversed direction is arguably the meaningful
+    one anyway — emergency response time is station-to-patient.
+    """
+    raw = (cfg.get("routing") or {}).get("reverse_direction") or []
+    if isinstance(raw, str):
+        raw = [raw]
+    return {str(m) for m in raw}
 
 
 def _route_sensitivity_modes(cfg: dict) -> bool:
@@ -301,6 +333,8 @@ def run_access(cfg: dict, city: str, root: Path) -> AccessProgress:
     empty_facilities: set[str] = set()
 
     plan = _routing_plan(out, services, modes, service_modes, aliases)
+    reverse_modes = _reverse_modes(cfg)
+    asymmetry: dict[str, dict] = {}
     deadline = _Deadline(_routing_budget_min(cfg))
     if deadline.budget_min is not None:
         print(f"access[{city}]: routing budget {deadline.budget_min:g} min "
@@ -372,8 +406,27 @@ def run_access(cfg: dict, city: str, root: Path) -> AccessProgress:
             elif engine == "r5":
                 if network is None:
                     network = _build_r5_network(cfg, city, out)
+                # R5's cost is one street search PER ORIGIN, so when a service
+                # has far fewer facilities than the city has cells, searching
+                # from the facilities and transposing is orders of magnitude
+                # cheaper. Refused below the ratio guard, where it would lose.
+                ratio = len(cells) / max(len(facilities), 1)
+                reverse = mode in reverse_modes and ratio >= _REVERSE_MIN_RATIO
+                if mode in reverse_modes and not reverse:
+                    print(f"  {label}: reverse routing declined — only "
+                          f"{len(facilities)} facilities vs {len(cells)} cells "
+                          f"({ratio:.1f}x < {_REVERSE_MIN_RATIO:.0f}x)")
+                if reverse:
+                    print(f"  {label}: routing REVERSED — {len(facilities)} "
+                          f"facility searches instead of {len(cells)} cell "
+                          f"searches ({ratio:.0f}x fewer)", flush=True)
                 od = _r5_matrix(network, cells, facilities, mode, cfg,  # trims per chunk
-                                part_dir=_partial_dir(od_path), deadline=deadline)
+                                part_dir=_partial_dir(od_path, reverse),
+                                deadline=deadline, reverse=reverse)
+                if reverse:
+                    stats = asymmetry_report(_forward_chunks(od_path), od, label)
+                    if stats:
+                        asymmetry[label] = stats
             else:
                 raise ValueError(f"Unknown routing engine '{engine}'")
         except _ChunkBudgetStop as stop:
@@ -391,6 +444,7 @@ def run_access(cfg: dict, city: str, root: Path) -> AccessProgress:
               f"[{(time.monotonic() - started) / 60.0:.1f} min]", flush=True)
         progress.done.append(label)
 
+    progress.asymmetry = asymmetry
     if not progress.complete:
         print(f"access[{city}]: {len(progress.done)} matrix/matrices built in "
               f"{deadline.elapsed_min:.1f} min; {len(progress.pending)} left "
@@ -418,17 +472,64 @@ def _classify_tail(out: Path, tasks: list[dict], progress: AccessProgress) -> No
             progress.pending.append(label)
 
 
-def _partial_dir(od_path: Path) -> Path:
-    """Where an in-flight matrix's finished origin chunks live. A sibling
-    directory rather than a suffix on the parquet so a half-built matrix can
-    never be mistaken for a finished one by ``od_path.exists()``."""
-    return od_path.with_suffix(".partial")
+def _partial_dir(od_path: Path, reverse: bool = False) -> Path:
+    """Where an in-flight matrix's finished chunks live. A sibling directory
+    rather than a suffix on the parquet, so a half-built matrix can never be
+    mistaken for a finished one by ``od_path.exists()``.
+
+    Forward and reverse get SEPARATE directories: their chunks index different
+    things (cells vs facilities), so reusing one for the other would silently
+    load a handful of cell-chunks as though they were facility-chunks.
+    """
+    return od_path.with_suffix(".partial-rev" if reverse else ".partial")
 
 
 def _clear_partials(od_path: Path) -> None:
     import shutil
 
-    shutil.rmtree(_partial_dir(od_path), ignore_errors=True)
+    for reverse in (False, True):
+        shutil.rmtree(_partial_dir(od_path, reverse), ignore_errors=True)
+
+
+def asymmetry_report(forward: pd.DataFrame, reverse: pd.DataFrame,
+                     label: str) -> dict | None:
+    """Measure what reverse routing actually cost, on the pairs both directions
+    computed.
+
+    Reverse routing assumes the network is symmetric; one-way streets and turn
+    restrictions mean it is not. Rather than assert the error is small, this
+    quantifies it against forward-routed chunks that happen to be on disk —
+    for Hamburg, the 4 chunks (20 000 origins) checkpointed by run 30251028718
+    before its budget expired, which cost nothing extra to reuse.
+    """
+    if forward.empty or reverse.empty:
+        return None
+    merged = forward.merge(reverse, on=["origin", "dest"],
+                           suffixes=("_fwd", "_rev"))
+    if merged.empty:
+        return None
+    d = (merged["time_rev"] - merged["time_fwd"]).abs()
+    stats = {
+        "pairs": int(len(merged)),
+        "median_abs_min": float(d.median()),
+        "p90_abs_min": float(d.quantile(0.90)),
+        "max_abs_min": float(d.max()),
+        "mean_signed_min": float((merged["time_rev"] - merged["time_fwd"]).mean()),
+    }
+    print(f"  asymmetry[{label}]: on {stats['pairs']} pairs both directions "
+          f"computed — median |Δ| {stats['median_abs_min']:.2f} min, "
+          f"p90 {stats['p90_abs_min']:.2f}, max {stats['max_abs_min']:.2f}, "
+          f"mean signed {stats['mean_signed_min']:+.2f}", flush=True)
+    return stats
+
+
+def _forward_chunks(od_path: Path) -> pd.DataFrame:
+    """Any forward-routed chunks left over from an earlier interrupted run."""
+    part = _partial_dir(od_path, reverse=False)
+    files = sorted(part.glob("chunk_*.parquet")) if part.exists() else []
+    if not files:
+        return pd.DataFrame(columns=["origin", "dest", "time"])
+    return pd.concat([pd.read_parquet(f) for f in files], ignore_index=True)
 
 
 def _synthetic_matrix(cells: pd.DataFrame, facilities: pd.DataFrame,
@@ -476,7 +577,8 @@ def keep_k_nearest(od: pd.DataFrame, k: int) -> pd.DataFrame:
 
 def _r5_matrix(network, cells: pd.DataFrame, facilities: pd.DataFrame,
                mode: str, cfg: dict, *, part_dir: Path | None = None,
-               deadline: "_Deadline | None" = None) -> pd.DataFrame:
+               deadline: "_Deadline | None" = None,
+               reverse: bool = False) -> pd.DataFrame:
     import datetime
 
     import geopandas as gpd
@@ -498,10 +600,26 @@ def _r5_matrix(network, cells: pd.DataFrame, facilities: pd.DataFrame,
     chunk = int(cfg["routing"].get("origin_chunk", 5000))
     k = int(cfg["routing"].get("k_nearest", 30))
 
-    destinations = gpd.GeoDataFrame(
-        {"id": facilities.dest_id},
-        geometry=gpd.points_from_xy(facilities.lon, facilities.lat), crs="EPSG:4326",
-    )
+    # Reverse mode swaps which side R5 searches FROM. The returned frame is
+    # transposed back to (origin=cell, dest=facility) below, so everything
+    # downstream sees an ordinary forward matrix.
+    if reverse:
+        search_from = gpd.GeoDataFrame(
+            {"id": facilities.dest_id},
+            geometry=gpd.points_from_xy(facilities.lon, facilities.lat),
+            crs="EPSG:4326",
+        )
+        destinations = gpd.GeoDataFrame(
+            {"id": cells.cell_id},
+            geometry=gpd.points_from_xy(cells.lon, cells.lat), crs="EPSG:4326",
+        )
+    else:
+        search_from = None       # built per chunk from `cells` below
+        destinations = gpd.GeoDataFrame(
+            {"id": facilities.dest_id},
+            geometry=gpd.points_from_xy(facilities.lon, facilities.lat),
+            crs="EPSG:4326",
+        )
 
     # r5py >= 1.0 exposes TravelTimeMatrix (the instance IS the result);
     # older versions used TravelTimeMatrixComputer(...).compute_travel_times().
@@ -518,15 +636,21 @@ def _r5_matrix(network, cells: pd.DataFrame, facilities: pd.DataFrame,
             tt = pd.DataFrame(r5py.TravelTimeMatrix(network, **kwargs))
         else:  # pragma: no cover - legacy r5py
             tt = r5py.TravelTimeMatrixComputer(network, **kwargs).compute_travel_times()
+        # Transpose in reverse mode: R5 searched from the facilities, but every
+        # consumer of an OD parquet expects origin=cell, dest=facility.
+        names = ({"from_id": "dest", "to_id": "origin"} if reverse
+                 else {"from_id": "origin", "to_id": "dest"})
         return tt.rename(
-            columns={"from_id": "origin", "to_id": "dest", "travel_time": "time"}
+            columns={**names, "travel_time": "time"}
         ).dropna(subset=["time"])[["origin", "dest", "time"]]
 
-    # Batch origins so peak memory is one chunk's matrix, not 176k x n_dest.
-    # Each finished chunk is also checkpointed to part_dir: a single car matrix
-    # over a large FUA outlives a CI job, so whole-matrix granularity would
-    # throw away hours of routing every time a run is cut short.
-    starts = list(range(0, len(cells), chunk))
+    # Batch the side R5 searches FROM, so peak memory is one chunk's matrix
+    # rather than the whole product. Each finished chunk is also checkpointed to
+    # part_dir: a single forward car matrix over a large FUA outlives a CI job,
+    # so whole-matrix granularity would throw away hours of routing every time a
+    # run is cut short.
+    from_frame = facilities if reverse else cells
+    starts = list(range(0, len(from_frame), chunk))
     if part_dir is not None:
         part_dir.mkdir(parents=True, exist_ok=True)
     parts, restored = [], 0
@@ -539,21 +663,30 @@ def _r5_matrix(network, cells: pd.DataFrame, facilities: pd.DataFrame,
         if deadline is not None and deadline.expired():
             raise _ChunkBudgetStop(i, len(starts))
         if restored:
-            print(f"  resumed from {restored} checkpointed origin chunk(s)",
-                  flush=True)
+            print(f"  resumed from {restored} checkpointed chunk(s)", flush=True)
             restored = 0
-        sub = cells.iloc[start:start + chunk]
-        origins = gpd.GeoDataFrame(
-            {"id": sub.cell_id},
-            geometry=gpd.points_from_xy(sub.lon, sub.lat), crs="EPSG:4326",
-        )
-        part = keep_k_nearest(_compute(origins), k)
+        if reverse:
+            origins = search_from.iloc[start:start + chunk]
+        else:
+            sub = cells.iloc[start:start + chunk]
+            origins = gpd.GeoDataFrame(
+                {"id": sub.cell_id},
+                geometry=gpd.points_from_xy(sub.lon, sub.lat), crs="EPSG:4326",
+            )
+        part = _compute(origins)
+        # Forward: one chunk holds whole origins, so trimming to the k nearest
+        # is safe here and bounds memory. Reverse: a chunk holds ALL cells for a
+        # FEW facilities, so per-chunk trimming would keep k per facility-batch
+        # instead of k per cell — trim once, after the concat.
+        if not reverse:
+            part = keep_k_nearest(part, k)
         if cp is not None:
             part.to_parquet(cp)
         parts.append(part)
     if not parts:
         return pd.DataFrame(columns=["origin", "dest", "time"])
-    return pd.concat(parts, ignore_index=True)
+    od = pd.concat(parts, ignore_index=True)
+    return keep_k_nearest(od, k) if reverse else od
 
 
 def _next_weekday(weekday: str, hhmm: str):

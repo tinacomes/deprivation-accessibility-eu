@@ -286,6 +286,91 @@ def test_repeated_dispatches_converge_without_repeating_work(tmp_path, monkeypat
     assert total_dispatched == len(routed)
 
 
+def test_reverse_routing_transposes_back_to_origin_cell(tmp_path, monkeypatch):
+    """R5 costs one street search per ORIGIN, so a service with 27 facilities
+    and 176k cells is ~6500x cheaper routed backwards. The transpose must be
+    invisible downstream: every consumer expects origin=cell, dest=facility.
+    """
+    pytest.importorskip("geopandas")
+    calls: list = []
+    _install_stub_r5py(monkeypatch, calls)
+    cells, facilities, cfg = _chunked_inputs(n_cells=10, chunk=4)
+
+    od = _r5_matrix(None, cells, facilities, "car", cfg, reverse=True)
+
+    # R5 searched from the two FACILITIES, not from the ten cells.
+    assert calls == [["f0", "f1"]]
+    assert set(od.origin) == set(cells.cell_id)
+    assert set(od.dest) == set(facilities.dest_id)
+    assert len(od) == len(cells) * len(facilities)
+
+
+def test_reverse_keeps_k_nearest_per_cell_not_per_facility_batch(tmp_path,
+                                                                 monkeypatch):
+    """The subtle one. Forward, a chunk holds whole origins, so trimming to the
+    k nearest per chunk is correct. Reverse, a chunk holds ALL cells for a FEW
+    facilities — trimming per chunk would keep k per facility-batch and let
+    k x n_chunks rows through per cell. Trimming must happen after the concat.
+    """
+    pytest.importorskip("geopandas")
+    calls: list = []
+    _install_stub_r5py(monkeypatch, calls)
+    # 6 facilities in chunks of 2 => 3 chunks; k=2 must still mean 2 per cell.
+    cells = pd.DataFrame({
+        "cell_id": [f"c{i}" for i in range(5)],
+        "lon": np.linspace(10.0, 10.1, 5), "lat": np.linspace(53.5, 53.6, 5),
+    })
+    facilities = pd.DataFrame({
+        "dest_id": [f"f{i}" for i in range(6)],
+        "lon": np.linspace(10.0, 10.1, 6), "lat": np.linspace(53.5, 53.6, 6),
+    })
+    cfg = {"routing": {
+        "departure": {"weekday": "tuesday", "time_window_start": "08:00",
+                      "time_window_minutes": 60},
+        "max_time_min": 60, "walk_speed_kmh": 4.8,
+        "origin_chunk": 2, "k_nearest": 2,
+    }}
+
+    od = _r5_matrix(None, cells, facilities, "car", cfg, reverse=True)
+
+    assert len(calls) == 3, "expected the facilities to be chunked"
+    assert od.groupby("origin").size().max() == 2
+
+
+def test_reverse_and_forward_checkpoints_never_share_a_directory(tmp_path):
+    """Their chunks index different things — cells forward, facilities reverse —
+    so one directory for both would load a handful of cell-chunks as though
+    they were facility-chunks, silently truncating the matrix."""
+    od_path = tmp_path / "od_emergency_dept_hospital_car.parquet"
+    assert _partial_dir(od_path, reverse=False) != _partial_dir(od_path, reverse=True)
+    assert _partial_dir(od_path, reverse=False).name.endswith(".partial")
+    assert _partial_dir(od_path, reverse=True).name.endswith(".partial-rev")
+
+
+def test_asymmetry_is_measured_on_the_pairs_both_directions_computed():
+    """Reverse routing trades exactness for speed, so the error has to be
+    reported rather than assumed. Hamburg has 4 forward chunks (20 000 origins)
+    already on disk from run 30251028718 to check it against, for free."""
+    from depacc.access.matrices import asymmetry_report
+
+    forward = pd.DataFrame({
+        "origin": ["c0", "c1", "c2"], "dest": ["f0", "f0", "f0"],
+        "time": [10.0, 20.0, 30.0],
+    })
+    # c2 is absent from the reverse frame; it must not enter the statistics.
+    reverse = pd.DataFrame({
+        "origin": ["c0", "c1", "c3"], "dest": ["f0", "f0", "f0"],
+        "time": [11.0, 23.0, 99.0],
+    })
+    stats = asymmetry_report(forward, reverse, "emergency_dept_hospital,car")
+    assert stats["pairs"] == 2
+    assert stats["median_abs_min"] == pytest.approx(2.0)
+    assert stats["max_abs_min"] == pytest.approx(3.0)
+    assert stats["mean_signed_min"] == pytest.approx(2.0)
+    assert asymmetry_report(forward, pd.DataFrame(columns=forward.columns),
+                            "x") is None
+
+
 def test_a_completed_matrix_clears_its_checkpoints(demo_access, tmp_path,
                                                    monkeypatch):
     """Stale chunk files would be silently re-read into a later matrix, so a

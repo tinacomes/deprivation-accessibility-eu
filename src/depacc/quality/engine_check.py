@@ -71,20 +71,30 @@ def shadow_city_id(city: str, engine: str) -> str:
     return f"{city}/engine_{engine}"
 
 
-def shadow_config(cfg: dict, engine: str, modes: list[str] | None = None) -> dict:
-    """The city's config with the routing engine (and optionally the mode set)
-    overridden. Everything else — services, cutoffs, softmin, catchment,
-    deprivation functions, unreachable policy — is untouched, which is what makes
-    the difference attributable to the engine."""
+def shadow_config(cfg: dict, engine: str, modes: list[str] | None = None,
+                  reverse_modes: list[str] | None = None) -> dict:
+    """The city's config with the routing engine (and optionally the mode set
+    and the reverse-routed modes) overridden. Everything else — services,
+    cutoffs, softmin, catchment, deprivation functions, unreachable policy — is
+    untouched, which is what makes the difference attributable to the engine.
+
+    ``reverse_modes`` is a COST control, not a model parameter: it changes which
+    direction R5 searches, not what is being measured. It belongs on the shadow
+    only — the friction baseline routes over a raster and has no direction.
+    """
     alt = copy.deepcopy(cfg)
     alt["routing"]["engine"] = engine
     if modes:
         alt["routing"]["modes"] = list(modes)
+    if reverse_modes is not None:
+        alt["routing"]["reverse_direction"] = list(reverse_modes)
     return alt
 
 
 def prepare_shadow(cfg: dict, city: str, root: Path, engine: str,
-                   modes: list[str] | None = None) -> tuple[dict, Path, Path]:
+                   modes: list[str] | None = None,
+                   reverse_modes: list[str] | None = None,
+                   ) -> tuple[dict, Path, Path]:
     """Create the shadow derived dir and populate it with the inherited ingest
     artefacts. Returns ``(alt_cfg, base_out, alt_out)``."""
     base_out = derived_dir(cfg, city, root)
@@ -92,7 +102,7 @@ def prepare_shadow(cfg: dict, city: str, root: Path, engine: str,
         raise RuntimeError(
             f"no cells.parquet in {base_out} — run the baseline pipeline for "
             f"'{city}' before the engine check")
-    alt_cfg = shadow_config(cfg, engine, modes)
+    alt_cfg = shadow_config(cfg, engine, modes, reverse_modes)
     alt_out = derived_dir(alt_cfg, shadow_city_id(city, engine), root)
 
     copied = []
@@ -156,7 +166,7 @@ def ensure_network(alt_cfg: dict, city: str, root: Path, alt_out: Path) -> None:
         print(f"engine-check: GTFS feeds {[p.name for p in feeds]}")
 
 
-def run_alternative(alt_cfg: dict, city: str, root: Path, engine: str) -> Path:
+def run_alternative(alt_cfg: dict, city: str, root: Path, engine: str):
     """Route and build the deprivation surfaces under the alternative engine.
 
     Deliberately calls the SAME ``run_access`` / ``run_deprivation`` the
@@ -173,9 +183,29 @@ def run_alternative(alt_cfg: dict, city: str, root: Path, engine: str) -> Path:
     from depacc.deprivation.pipeline import run_deprivation
 
     shadow = shadow_city_id(city, engine)
-    run_access(alt_cfg, shadow, root)
+    progress = run_access(alt_cfg, shadow, root)
     run_deprivation(alt_cfg, shadow, root)
-    return derived_dir(alt_cfg, shadow, root)
+    return progress
+
+
+def write_asymmetry_report(val_dir: Path, city: str, engine: str,
+                           asymmetry: dict) -> Path | None:
+    """Persist the measured cost of reverse routing, if any was done.
+
+    Reverse routing trades an exactness assumption (a symmetric network) for
+    orders of magnitude of speed. That trade has to be auditable, so the
+    measured error ships next to the comparison it enabled rather than living
+    only in a log line.
+    """
+    if not asymmetry:
+        return None
+    val_dir.mkdir(parents=True, exist_ok=True)
+    rows = [{"city": city, "alt_engine": engine, "matrix": label, **stats}
+            for label, stats in sorted(asymmetry.items())]
+    path = val_dir / f"{city}_engine_reverse_asymmetry.csv"
+    pd.DataFrame(rows).to_csv(path, index=False)
+    print(f"engine-check: reverse-routing asymmetry -> {path}")
+    return path
 
 
 def write_progress_manifest(val_dir: Path, city: str, engine: str,
@@ -398,7 +428,8 @@ def _scatter(base_out: Path, alt_out: Path, cfg: dict, city: str,
 def run_engine_check(cfg: dict, city: str, root: Path, engine: str = "r5",
                      modes: list[str] | None = None,
                      threshold: float = 0.5,
-                     reuse: bool = True) -> pd.DataFrame:
+                     reuse: bool = True,
+                     reverse_modes: list[str] | None = None) -> pd.DataFrame:
     """Full E.1 cross-check for one city. Returns the comparison table."""
     base_engine = cfg["routing"].get("engine", "r5")
     if base_engine == engine and not modes:
@@ -411,16 +442,18 @@ def run_engine_check(cfg: dict, city: str, root: Path, engine: str = "r5",
     val_dir = root / cfg["output"]["root"] / "validation"
     val_dir.mkdir(parents=True, exist_ok=True)
 
-    alt_cfg, base_out, alt_out = prepare_shadow(cfg, city, root, engine, modes)
+    alt_cfg, base_out, alt_out = prepare_shadow(cfg, city, root, engine,
+                                                modes, reverse_modes)
     ensure_network(alt_cfg, city, root, alt_out)
     if reuse and (alt_out / "surfaces.parquet").exists():
         print(f"engine-check: reusing the cached {engine} surfaces in {alt_out}")
     else:
         try:
-            run_alternative(alt_cfg, city, root, engine)
+            progress = run_alternative(alt_cfg, city, root, engine)
         except RoutingBudgetExhausted as exc:
             write_progress_manifest(val_dir, city, engine, exc)
             raise
+        write_asymmetry_report(val_dir, city, engine, progress.asymmetry)
 
     table = compare_engines(base_out, alt_out, cfg, city, engine, threshold)
     table.to_csv(val_dir / f"{city}_engine_check.csv", index=False)

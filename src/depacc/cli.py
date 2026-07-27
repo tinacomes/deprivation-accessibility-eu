@@ -145,6 +145,13 @@ def main(argv: list[str] | None = None) -> int:
                      help="typology percentile cut for the flip share (default 0.5)")
     eng.add_argument("--no-reuse", action="store_true",
                      help="re-route even if the alternative surfaces are cached")
+    eng.add_argument("--reverse-modes", nargs="*", default=None,
+                     help="modes to route FACILITIES->CELLS and transpose back "
+                          "(e.g. --reverse-modes car). R5 costs one street "
+                          "search per origin, so for a service with few "
+                          "facilities this is orders of magnitude cheaper; the "
+                          "run reports the measured direction asymmetry. Pass "
+                          "with no values to disable.")
     eng.add_argument("--project-root", type=Path,
                      default=Path(__file__).resolve().parents[2])
 
@@ -263,7 +270,8 @@ def main(argv: list[str] | None = None) -> int:
         try:
             run_engine_check(cfg, args.city, args.project_root,
                              engine=args.engine, modes=args.modes,
-                             threshold=args.threshold, reuse=not args.no_reuse)
+                             threshold=args.threshold, reuse=not args.no_reuse,
+                             reverse_modes=args.reverse_modes)
         except RoutingBudgetExhausted as exc:
             return _report_budget_exhausted(exc)
         return 0

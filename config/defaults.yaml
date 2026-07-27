@@ -162,6 +162,16 @@ routing:
   # sensitivity-testable and apply to every routing engine.
   origin_chunk: 5000
   k_nearest: 30
+  # Modes routed FACILITIES -> CELLS and transposed back. R5 costs one street
+  # search per ORIGIN, so for a service with few facilities (27 emergency
+  # departments vs 176 137 Hamburg cells) searching from the facilities is
+  # orders of magnitude cheaper: measured at ~39.5 min per 5 000-cell forward
+  # chunk, that is ~24 h vs minutes per emergency service (run 30251028718).
+  # The transpose is exact only for a symmetric network — one-way streets and
+  # turn restrictions make car time direction-dependent — so this is EMPTY by
+  # default and the access stage reports the measured asymmetry whenever it is
+  # switched on. Only applied where cells outnumber facilities >= 20x.
+  reverse_direction: []
   # Wall-clock budget for the access stage, in minutes. null = unlimited (the
   # default: an interactive run should never stop itself). Set it in CI, where
   # a hosted runner caps a job at 6 h and CANCELS it on timeout — and a
