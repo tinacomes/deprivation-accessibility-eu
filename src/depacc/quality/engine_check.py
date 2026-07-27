@@ -164,6 +164,10 @@ def run_alternative(alt_cfg: dict, city: str, root: Path, engine: str) -> Path:
     to diverge, which is the mistake the Layer-3 sweep already made once.
     Divergence/equity are NOT run — the shadow must never reach ``cityplane.csv``
     or the cross-city tables.
+
+    Propagates ``RoutingBudgetExhausted`` when the routing budget ran out: the
+    surfaces must NOT be built on a partly-routed city, because every unrouted
+    cell would come out looking service-deprived.
     """
     from depacc.access.matrices import run_access
     from depacc.deprivation.pipeline import run_deprivation
@@ -172,6 +176,30 @@ def run_alternative(alt_cfg: dict, city: str, root: Path, engine: str) -> Path:
     run_access(alt_cfg, shadow, root)
     run_deprivation(alt_cfg, shadow, root)
     return derived_dir(alt_cfg, shadow, root)
+
+
+def write_progress_manifest(val_dir: Path, city: str, engine: str,
+                            exc: "RoutingBudgetExhausted") -> Path:
+    """Record what an interrupted cross-check finished and what it still owes.
+
+    Written into the validation directory the workflow uploads, so a run that
+    was cut short reports its state as an artefact instead of as an empty
+    upload with a "No files were found" warning — which is exactly how run
+    30164334307 presented a five-hour timeout.
+    """
+    val_dir.mkdir(parents=True, exist_ok=True)
+    rows = ([{"city": city, "alt_engine": engine, "matrix": m, "status": "done"}
+             for m in exc.done]
+            + [{"city": city, "alt_engine": engine, "matrix": m, "status": "pending"}
+               for m in exc.pending])
+    path = val_dir / f"{city}_engine_check_progress.csv"
+    pd.DataFrame(rows, columns=["city", "alt_engine", "matrix", "status"]) \
+        .to_csv(path, index=False)
+    print(f"engine-check: INCOMPLETE after {exc.elapsed_min:.1f} min — "
+          f"{len(exc.done)} matrix/matrices done, {len(exc.pending)} pending. "
+          f"Progress is checkpointed in the per-city derived cache; "
+          f"re-dispatch the workflow to resume. Manifest -> {path}")
+    return path
 
 
 # --------------------------------------------------------------------------- #
@@ -219,10 +247,13 @@ def compare_engines(base_out: Path, alt_out: Path, cfg: dict, city: str,
     Three families of row:
 
     * ``travel_time`` — per regime and per service, the pop-weighted median and
-      p90 under each engine plus the population-weighted Spearman between them.
-      The Spearman is the number that matters for this project: every headline
-      output is rank-based, so an engine that shifts all times by a constant
-      costs nothing while one that REORDERS cells invalidates the typology.
+      p90 over the cells BOTH engines reached, plus the population-weighted
+      Spearman between them. The Spearman is the number that matters for this
+      project: every headline output is rank-based, so an engine that shifts
+      all times by a constant costs nothing while one that REORDERS cells
+      invalidates the typology.
+    * ``coverage`` — the population share each engine reaches at all, which the
+      paired travel-time rows deliberately hold constant.
     * ``indicator`` — the city-row scalars (both Ginis, ρ, HH share) recomputed
       identically on each engine's surfaces.
     * ``typology`` — the population share whose co-location class changes.
@@ -241,18 +272,36 @@ def compare_engines(base_out: Path, alt_out: Path, cfg: dict, city: str,
             print(f"  engine-check: '{col}' absent under {alt_engine}; skipped")
             continue
         a, b = base[col].to_numpy(float), alt[col].to_numpy(float)
-        both = np.isfinite(a) & np.isfinite(b) & (pop > 0)
+        pos = pop > 0
+        both = np.isfinite(a) & np.isfinite(b) & pos
+        # PAIRED comparison: both summaries run on the cells BOTH engines
+        # reached. Summarising each engine over its own reachable set would mix
+        # a level difference with a composition difference — an engine that
+        # drops the far periphery would look faster for that reason alone.
+        # The composition difference is not discarded, it is reported
+        # separately as the coverage rows below.
         # One rank agreement per ITEM, repeated on both of its rows: it is a
         # property of the cell-level series, not of the summary statistic, and a
         # blank on the p90 row reads as "not computed" rather than "same number".
         rho = _weighted_rank_agreement(a, b, pop)
         rows.append(_row("travel_time", f"{item}_median_min",
-                         _weighted_median(a, pop), _weighted_median(b, pop),
+                         _weighted_median(a[both], pop[both]),
+                         _weighted_median(b[both], pop[both]),
                          spearman=rho, n=int(both.sum())))
         rows.append(_row("travel_time", f"{item}_p90_min",
                          np.nanpercentile(a[both], 90) if both.any() else np.nan,
                          np.nanpercentile(b[both], 90) if both.any() else np.nan,
                          spearman=rho, n=int(both.sum())))
+        # Who each engine can reach at all, before the pairing throws the
+        # disagreement away. A large gap here means the paired rows above speak
+        # for a shrinking slice of the city and must be read with that in mind.
+        pop_total = pop[pos].sum()
+        rows.append(_row("coverage", f"{item}_reachable_pop_share",
+                         pop[np.isfinite(a) & pos].sum() / pop_total
+                         if pop_total > 0 else np.nan,
+                         pop[np.isfinite(b) & pos].sum() / pop_total
+                         if pop_total > 0 else np.nan,
+                         n=int(both.sum())))
 
     surfaces = {}
     for regime in ("everyday", "emergency"):
@@ -355,16 +404,25 @@ def run_engine_check(cfg: dict, city: str, root: Path, engine: str = "r5",
     if base_engine == engine and not modes:
         print(f"NOTE: engine-check comparing '{engine}' against itself — every "
               f"delta should come out zero; this is the plumbing self-test")
+    from depacc.access.matrices import RoutingBudgetExhausted
+
+    # Created BEFORE the multi-hour routing so an interrupted run still has
+    # somewhere to leave its progress manifest for the artefact upload.
+    val_dir = root / cfg["output"]["root"] / "validation"
+    val_dir.mkdir(parents=True, exist_ok=True)
+
     alt_cfg, base_out, alt_out = prepare_shadow(cfg, city, root, engine, modes)
     ensure_network(alt_cfg, city, root, alt_out)
     if reuse and (alt_out / "surfaces.parquet").exists():
         print(f"engine-check: reusing the cached {engine} surfaces in {alt_out}")
     else:
-        run_alternative(alt_cfg, city, root, engine)
+        try:
+            run_alternative(alt_cfg, city, root, engine)
+        except RoutingBudgetExhausted as exc:
+            write_progress_manifest(val_dir, city, engine, exc)
+            raise
 
     table = compare_engines(base_out, alt_out, cfg, city, engine, threshold)
-    val_dir = root / cfg["output"]["root"] / "validation"
-    val_dir.mkdir(parents=True, exist_ok=True)
     table.to_csv(val_dir / f"{city}_engine_check.csv", index=False)
     _scatter(base_out, alt_out, cfg, city, engine, table,
              val_dir / f"{city}_engine_scatter.png")

@@ -13,9 +13,28 @@ name: engine cross-check (E.1)
 # depacc-engine-check-<city>. Nothing is pushed to depacc-results: the shadow run
 # is a validation artefact, not a city.
 #
-# Budget: the first uncached run downloads a state-level .pbf and routes ~176k
-# origins x 9 services through R5 — allow 1-3 h (per the run-city workflow's own
-# note). The alternative surfaces are cached under
+# Budget: MEASURED on run 30164334307 (Hamburg, r5, 176 137 origins), not
+# guessed. Network fetch/clip/merge + R5 build ~12 min; each walk service
+# (30 min cutoff) 21-35 min, five of them ~2 h 20; the emergency car services
+# (60 min cutoff, a far larger street search per origin) had not finished after
+# 2 h 37 when the 5 h job timeout cancelled the run. Realistic total for
+# Hamburg under r5 is ~8-12 h — MORE THAN THE 6 h GitHub-hosted job cap, so
+# this cannot be a single run and never could.
+#
+# It is therefore RESUMABLE by design. `budget_min` stops the access stage
+# cleanly while the job is still alive, which matters because a job that hits
+# its own timeout is CANCELLED, and a cancelled job skips actions/cache's save
+# step — that is how run 30164334307 threw away 2 h 20 of finished walk
+# matrices and uploaded an empty artefact. Stopping under budget writes the
+# cache, so re-dispatching this workflow picks up at the last finished origin
+# chunk. Repeat until the run reports the comparison; each dispatch is
+# strictly forward progress.
+#
+# Faster alternative: dispatch with modes=walk for a walk-only cross-check
+# (~2.5 h, one dispatch, covers the everyday regime), then re-dispatch with
+# modes blank to add the emergency car regime.
+#
+# The alternative surfaces are cached under
 # data/derived/<city>/engine_<engine>/, so a re-dispatch that only wants the
 # comparison re-run is minutes; pass reuse=false to force re-routing.
 
@@ -38,6 +57,10 @@ on:
         description: "Reuse cached alternative surfaces if present (false re-routes from scratch)"
         required: false
         default: "true"
+      budget_min:
+        description: "Wall-clock minutes the routing may use before stopping cleanly and caching its progress (must stay below the job timeout)"
+        required: false
+        default: "240"
 
 env:
   MPLBACKEND: Agg
@@ -58,7 +81,12 @@ env:
 jobs:
   engine-check:
     runs-on: ubuntu-latest
-    timeout-minutes: 300
+    # Just under the 6 h hard cap for GitHub-hosted runners. This is the
+    # BACKSTOP, not the plan: hitting it cancels the job, and a cancelled job
+    # skips actions/cache's save step, losing every matrix built. `budget_min`
+    # (default 240) and the routing step's own timeout below are what keep the
+    # run inside it.
+    timeout-minutes: 355
     steps:
       - uses: actions/checkout@v4
 
@@ -120,7 +148,17 @@ jobs:
             depacc run --city "${{ inputs.city }}" --stage deprivation
           fi
 
+      # Step-level timeout, deliberately BELOW the job timeout: a step that
+      # times out FAILS (post steps, and therefore the cache save, still run),
+      # whereas a job that times out is CANCELLED (they do not). The budget
+      # inside depacc should stop first and more gracefully; this is the guard
+      # for the case where one origin chunk itself overruns.
       - name: Cross-check against ${{ inputs.engine }}
+        id: check
+        timeout-minutes: 320
+        continue-on-error: true
+        env:
+          DEPACC_ROUTING_BUDGET_MIN: ${{ inputs.budget_min }}
         run: |
           ARGS=(--city "${{ inputs.city }}" --engine "${{ inputs.engine }}")
           if [ -n "${{ inputs.modes }}" ]; then
@@ -129,13 +167,59 @@ jobs:
           if [ "${{ inputs.reuse }}" != "true" ]; then
             ARGS+=(--no-reuse)
           fi
+          set +e
           depacc engine-check "${ARGS[@]}"
+          rc=$?
+          set -e
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          exit $rc
 
       - name: Show the comparison
         if: always()
         run: |
           f="data/derived/validation/${{ inputs.city }}_engine_check.csv"
           [ -f "$f" ] && cat "$f" || echo "no comparison written"
+
+      # Always leave something in the upload path, so a run that stopped on
+      # budget reports its state as an artefact rather than as an empty upload
+      # with a "No files were found" warning.
+      - name: Record the routing progress
+        if: always()
+        run: |
+          mkdir -p data/derived/validation
+          m="data/derived/validation/${{ inputs.city }}_engine_check_status.txt"
+          {
+            echo "run:        ${{ github.run_id }}"
+            echo "city:       ${{ inputs.city }}"
+            echo "engine:     ${{ inputs.engine }}"
+            echo "modes:      ${{ inputs.modes }}"
+            echo "budget_min: ${{ inputs.budget_min }}"
+            echo "exit_code:  ${{ steps.check.outputs.rc }}"
+            echo
+            echo "OD matrices in the shadow derived dir:"
+            ls -la "data/derived/${{ inputs.city }}/engine_${{ inputs.engine }}"/od_*.parquet 2>/dev/null || echo "  (none)"
+            echo
+            echo "Checkpointed (incomplete) matrices:"
+            for d in "data/derived/${{ inputs.city }}/engine_${{ inputs.engine }}"/od_*.partial; do
+              [ -d "$d" ] && echo "  $(basename "$d"): $(ls "$d" | wc -l) origin chunk(s)"
+            done
+          } | tee "$m"
+
+      # Exit code 2 is depacc's "stopped on budget, progress is cached,
+      # re-dispatch to resume" — a resumable stop, not a failure. Anything else
+      # non-zero is a real failure and must fail the run.
+      - name: Fail on a real error (not a budget stop)
+        if: always()
+        run: |
+          rc="${{ steps.check.outputs.rc }}"
+          if [ "$rc" = "0" ]; then
+            echo "cross-check complete"
+          elif [ "$rc" = "2" ]; then
+            echo "::notice::Routing stopped on its ${{ inputs.budget_min }} min budget with progress cached. Re-dispatch this workflow for '${{ inputs.city }}' to resume from the last finished origin chunk."
+          else
+            echo "::error::engine-check failed with exit code ${rc:-<step killed>}"
+            exit 1
+          fi
 
       - name: Upload validation outputs
         if: always()

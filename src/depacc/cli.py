@@ -257,11 +257,15 @@ def main(argv: list[str] | None = None) -> int:
     cfg = load_config(args.city)
 
     if args.command == "engine-check":
+        from depacc.access.matrices import RoutingBudgetExhausted
         from depacc.quality.engine_check import run_engine_check
 
-        run_engine_check(cfg, args.city, args.project_root, engine=args.engine,
-                         modes=args.modes, threshold=args.threshold,
-                         reuse=not args.no_reuse)
+        try:
+            run_engine_check(cfg, args.city, args.project_root,
+                             engine=args.engine, modes=args.modes,
+                             threshold=args.threshold, reuse=not args.no_reuse)
+        except RoutingBudgetExhausted as exc:
+            return _report_budget_exhausted(exc)
         return 0
 
     if args.command == "validate":
@@ -279,8 +283,33 @@ def main(argv: list[str] | None = None) -> int:
                   f"'{args.stage}': {stages}", flush=True)
     for stage in stages:
         print(f"=== stage: {stage} ===", flush=True)
-        _run_stage(stage, cfg, args.city, args.project_root)
+        try:
+            _run_stage(stage, cfg, args.city, args.project_root)
+        except _budget_exhausted() as exc:
+            # Stop the pipeline here: every later stage would read a
+            # half-routed city and report its unrouted cells as deprived.
+            return _report_budget_exhausted(exc)
     return 0
+
+
+def _budget_exhausted() -> type[Exception]:
+    from depacc.access.matrices import RoutingBudgetExhausted
+
+    return RoutingBudgetExhausted
+
+
+#: Exit code for "stopped on budget, nothing is wrong, re-dispatch to resume".
+#: Distinct from 1 so CI can tell a resumable stop from a real failure.
+BUDGET_EXIT_CODE = 2
+
+
+def _report_budget_exhausted(exc: Exception) -> int:
+    print(f"\n{exc}", file=sys.stderr)
+    print("Nothing was lost: finished matrices and finished origin chunks are "
+          "on disk under data/derived/. Re-run the same command (or "
+          "re-dispatch the workflow, which restores the per-city derived "
+          "cache) to continue from here.", file=sys.stderr)
+    return BUDGET_EXIT_CODE
 
 
 if __name__ == "__main__":

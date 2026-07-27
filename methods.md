@@ -543,13 +543,35 @@ matrices and everything downstream are recomputed, through the *same*
 `data/derived/<city>/engine_<engine>/`, nested so it can never be mistaken for a
 city, and divergence/equity are not run, so it never reaches `cityplane.csv`.
 
-Three families of number. **Travel time**, per regime and per service: the
+Four families of number. **Travel time**, per regime and per service: the
 population-weighted median and p90 under each engine, plus the population-weighted
 Spearman between them. The Spearman is the one that matters here — every headline
 output is rank-based, so an engine that shifts all times by a constant costs
-nothing while one that *reorders* cells invalidates the typology. **Indicators**:
-both Ginis, ρ and the four class shares, recomputed identically on each engine's
-surfaces. **Typology**: the population share whose co-location class changes.
+nothing while one that *reorders* cells invalidates the typology. Both summaries
+are computed on the cells **both** engines reach: summarising each engine over
+its own reachable set would confound a level difference with a composition one,
+since an engine that gives up on the far periphery would post a lower median for
+that reason alone. **Coverage** keeps that composition difference visible rather
+than discarding it — the population share each engine reaches at all, per item.
+**Indicators**: both Ginis, ρ and the four class shares, recomputed identically
+on each engine's surfaces. **Typology**: the population share whose co-location
+class changes.
+
+**Cost, and resumption.** Measured on Hamburg (176 137 origins, run
+30164334307): ~12 min to build the R5 network, 21–35 min per walk service at a
+30-minute cutoff (~2 h 22 for the five everyday services), and multiples of that
+per emergency service, whose car regime carries a 60-minute cutoff over a road
+rather than footpath network. A full r5 cross-check of one large FUA is ~8–12 h
+— longer than a CI job may live. The access stage therefore takes an optional
+wall-clock budget (`routing.time_budget_min`, or `DEPACC_ROUTING_BUDGET_MIN`;
+unlimited by default) and checkpoints at two levels: a finished (service, mode)
+matrix is skipped on re-entry, and within a matrix each finished origin chunk is
+written to `od_<service>_<mode>.partial/chunk_NNNNN.parquet`. On exhausting the
+budget it raises `RoutingBudgetExhausted` rather than continuing, because
+deprivation surfaces built on a partly-routed city would report every unrouted
+cell as service-deprived; the CLI surfaces this as exit code 2, distinct from a
+failure. A cross-check of a large city is thus run over several dispatches, each
+of which is strictly forward progress.
 
 Two findings from run 30160444058 make this the validation that gates the rest.
 The friction *car* surface gives 99.0 % of Hamburg's cells a zero-minute pair for
