@@ -604,6 +604,37 @@ unevaluable. And the **emergency regime is car-only**: its median 3.9 min to an 
 and its Gini of 0.62, an axis of the central city-plane result, rest entirely on
 that same quantised surface with nothing bounding the error.
 
+**The measured answer (Hamburg, run 30275890587).** The error is now bounded.
+Population-weighted over the cells both engines reach, friction understates
+travel time everywhere and worst where facilities are dense: the emergency
+median moves 2.96 → 8.50 min (+187 %), the everyday median 3.95 → 6.67 (+69 %),
+green space 1.23 → 5.10 (+314 %) and ambulance stations 1.96 → 6.00 (+207 %) —
+precisely the services a 1 km pixel is most likely to contain. Rank agreement is
+moderate, not high: ρ ranges from 0.732 (schools) to 0.890 (emergency
+departments), so this is genuine reordering rather than a constant shift.
+`gini_emergency` falls 0.621 → 0.437 (−30 %) and `gini_everyday` 0.657 → 0.545
+(−17 %). Against that, the divergence ρ between the two percentile surfaces
+holds at 0.428 → 0.402 (−6 %) and all four typology class shares move by ≤ 0.5
+pp — while **23.7 % of the population changes class**, i.e. cells swap
+symmetrically and the aggregate composition is engine-robust even though the
+per-cell assignment is not.
+
+Consequently: class shares, the divergence ρ and rank-based city orderings are
+reportable from the Tier-1 friction sample; absolute travel times, both Ginis as
+levels, and any per-cell typology map are not, without an engine-error band.
+
+Two rows of the comparison table are artefacts rather than results. Every
+everyday `p90_min` reads `120.0 → 120.0`: that is `max_time_min` acting as the
+`cap_at_max_time` finite fill, so at least 10 % of the population is capped on
+all five everyday categories under both engines and the row carries no
+information. Relatedly, the everyday scatter is a six-band lattice at
+~24-minute intervals — `finite_fill / total composite weight` = 120/5 — because
+a cell cut off from *j* of the five categories sits at ≈ 24 *j*. Above the
+deprivation threshold `t_regime_everyday` therefore stops behaving like a travel
+time and behaves like a count of unmet categories, and the everyday ρ is
+substantially a measure of agreement on that count. The emergency panel, where
+no cap is in play, is the interpretable one.
+
 ## 7a. Robustness harness (structured, not probabilistic)
 
 `sensitivity/` recomputes only the **standardised / rank-based** targets

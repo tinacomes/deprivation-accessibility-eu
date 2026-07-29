@@ -1172,3 +1172,109 @@ The questions it should answer, in order of what they block:
 3. Does walk+car everyday stop being degenerate under r5? If it does, the
    Layer-3 `everyday_mode` axis becomes evaluable and Workstream C's expected
    dominant knob can finally be tested.
+
+### 5.10 E.1 answered — run 30275890587 (Hamburg, friction vs r5)
+
+Complete in 8 minutes after reverse routing (§5.9): 27 hospital searches and
+124 ambulance-station searches instead of 176 137 cell searches, 2.2 and 4.0 min
+respectively. The direction approximation was validated against the 234 788
+pairs the abandoned forward run had already checkpointed — **median |Δ| 1.0 min,
+p90 2.0, max 8.0, mean signed +0.22 min** on an 11-minute median. R5 returns
+whole minutes, so part of that 1-minute median is quantisation rather than true
+asymmetry. No directional bias worth correcting for.
+
+#### The answer, in one line
+
+**Levels are badly wrong under friction, ranks are moderately wrong, aggregate
+typology shares are robust, and cell-level class assignment is not.**
+
+#### Levels
+
+Population-weighted, over the cells both engines reach:
+
+| item | friction | r5 | rel. Δ | ρ |
+| --- | --- | --- | --- | --- |
+| emergency median | 2.96 | 8.50 | **+187 %** | 0.881 |
+| emergency p90 | 12.72 | 20.00 | +57 % | |
+| everyday median | 3.95 | 6.67 | +69 % | 0.867 |
+| `emergency_dept_hospital` median | 3.89 | 11.00 | +183 % | 0.890 |
+| `ambulance_station` median | 1.96 | 6.00 | +207 % | 0.783 |
+| `green_space_*` median | 1.23 | 5.10 | **+314 %** | 0.792 |
+| `school_*` median | 3.69 | 6.68 | +81 % | **0.732** (worst) |
+| `gp` median | 5.18 | 7.42 | +43 % | 0.865 |
+| `pharmacy` median | 5.33 | 7.14 | +34 % | 0.838 |
+| `supermarket` median | 3.30 | 5.52 | +68 % | 0.788 |
+
+The friction surface is fast everywhere, and worst where facilities are dense —
+green space (+314 %) and ambulance stations (+207 %) are exactly the services a
+1 km pixel is most likely to contain, and a pixel containing a facility is a
+~0-minute trip for everything inside it. This is §5.8's zero-floor, quantified.
+
+#### Indicators
+
+| indicator | friction | r5 | Δ |
+| --- | --- | --- | --- |
+| `gini_emergency` | 0.621 | 0.437 | **−0.185 (−30 %)** |
+| `gini_everyday` | 0.657 | 0.545 | −0.112 (−17 %) |
+| `spearman_rho` (everyday↔emergency) | 0.428 | 0.402 | −0.026 (−6 %) |
+| `share_LL_50` | 0.3152 | 0.3188 | +0.4 pp |
+| `share_LH_50` | 0.1848 | 0.1812 | −0.4 pp |
+| `share_HL_50` | 0.1846 | 0.1791 | −0.5 pp |
+| `share_HH_50` | 0.3154 | 0.3209 | +0.5 pp |
+| `flip_pop_share_50` | — | **0.237** | 23.7 % of population |
+
+The four class shares move by at most 0.5 pp while **23.7 % of the population
+changes class**. Those two facts together mean the cells are swapping
+*symmetrically*: the typology's aggregate composition is engine-robust, its
+per-cell assignment is not. Any map of the typology is a map of the engine as
+much as of the city; any cross-city comparison of the shares is defensible.
+
+The divergence relationship itself — ρ between the everyday and emergency
+percentile surfaces, the central city-plane axis — survives at 0.428 → 0.402.
+
+#### Two artefacts in the table that are NOT findings
+
+**Every everyday `p90_min` row reads `120.0 → 120.0, delta 0`.** That is
+`max_time_min`, the `cap_at_max_time` finite fill, not agreement. A p90 of
+exactly 120 means at least 10 % of the population is capped on *all five*
+everyday categories under both engines — consistent with the 12–17 %
+per-service `pop_service_deprived_share`, i.e. the rural commuting-zone ring is
+beyond a 30-minute walk of everything. The everyday p90 comparison carries no
+information and must not be quoted as robustness.
+
+**The everyday scatter is a lattice, and the lattice is the cap.** The hexbin
+shows six discrete bands on both axes at ~24-minute intervals. That is
+`finite_fill / total_composite_weight = 120 / 5`: the everyday composite is a
+weighted mean over five categories (gp, pharmacy, supermarket, school 0.5+0.5,
+green space 0.5+0.5), so a cell cut off from *j* of them sits at ≈ 24 *j*. The
+visible clusters are (friction *j*, r5 *j*) pairs, and the off-diagonal ones are
+cells where the engines disagree on **how many categories are out of reach** —
+not on travel time. So the everyday ρ = 0.867 is substantially a measure of
+agreement on that count. The emergency panel, which has no cap in play, is the
+clean and interpretable one: a dense unimodal cloud sitting almost entirely
+above the 1:1 line.
+
+That is a finding about `t_regime_everyday` as a *metric*, independent of E.1:
+above the deprivation threshold it stops behaving like a travel time and starts
+behaving like a count of unmet categories.
+
+#### What this blocks, and what it does not
+
+Safe to report from the Tier-1 friction sample:
+- typology **class shares** and their cross-city variation (≤ 0.5 pp engine
+  sensitivity);
+- the everyday↔emergency divergence **ρ** (−6 %);
+- rank-based city orderings, with the caveat that ρ = 0.73–0.89 is not a
+  constant shift.
+
+Not safe without an engine correction or an explicit caveat:
+- **absolute travel times** in minutes (understated by 34–314 % by service);
+- **`gini_emergency` and `gini_everyday` as levels** (−30 % and −17 %);
+- **per-cell typology class**, hence any published choropleth of it.
+
+Open question for the next iteration: `gini_emergency` is an axis of the central
+city-plane result and it moves 30 % between engines on the one city where both
+have been run. Either the Tier-1 Ginis get an explicit engine-error band, or the
+cross-city Gini claims need a second r5 city to establish whether the −30 % is a
+stable offset (correctable) or city-specific (not). One more city under E.1 now
+costs ~10 minutes of runner time, so this is cheap to settle.
