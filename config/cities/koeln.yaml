@@ -30,4 +30,22 @@ sources:
     licence: "dl-de/by-2-0"
 
 routing:
-  modes: ["walk", "car", "transit"]
+  # MUST be stated explicitly. `config/defaults.yaml` sets `engine: "r5"`, so a
+  # city config that omits this silently inherits full R5 routing — and with
+  # `transit` in the mode set that is the heaviest path the pipeline has. Run
+  # 30476375657 dispatched the engine cross-check for this city and spent over
+  # an hour inside "Ensure the baseline surfaces exist", because the *baseline*
+  # was being routed with R5 forward (~47 h for the emergency leg alone,
+  # measured on Hamburg in §5.9) rather than with the friction fast path.
+  #
+  # Tier 2 is about the DATA SOURCES (Zensus 100 m, GTFS, national grids), not
+  # about the routing engine: the engine is chosen per run. The baseline is the
+  # friction fast path, exactly as Hamburg's is, which is also what makes this
+  # city usable as the BASE of an engine cross-check against r5.
+  #
+  # For the full transit deep-dive, switch to:
+  #   engine: "r5"
+  #   modes: ["walk", "car", "transit"]
+  # and expect hours, not minutes (route with `routing.reverse_direction`).
+  engine: "friction"
+  modes: ["walk", "car"]

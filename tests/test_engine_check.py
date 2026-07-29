@@ -85,7 +85,7 @@ def test_same_engine_check_is_a_perfect_null(demo_baseline, tmp_path_factory):
     cfg, root = demo_baseline
     table = run_engine_check(cfg, "demo", root,
                              engine=cfg["routing"].get("engine", "r5"),
-                             reuse=False)
+                             reuse=False, self_test=True)
 
     assert not table.empty
     assert (table["delta"].abs() < 1e-9).all(), \
@@ -98,6 +98,18 @@ def test_same_engine_check_is_a_perfect_null(demo_baseline, tmp_path_factory):
 
     val = root / cfg["output"]["root"] / "validation"
     assert (val / "demo_engine_check.csv").exists()
+
+
+def test_same_engine_check_is_refused_without_the_self_test_flag(demo_baseline):
+    """A cross-check of an engine against itself returns zeros by construction
+    AND pays for a second full routing to get them. Run 30476375657 dispatched
+    exactly that — Köln's config omitted `routing.engine`, inherited r5 from the
+    defaults, and the "friction vs r5" check became r5 vs r5 — so this must
+    fail fast rather than warn and proceed."""
+    cfg, root = demo_baseline
+    with pytest.raises(ValueError, match="against itself"):
+        run_engine_check(cfg, "demo", root,
+                         engine=cfg["routing"].get("engine", "r5"))
 
 
 def test_check_reports_the_rank_disagreement_that_matters(tmp_path):

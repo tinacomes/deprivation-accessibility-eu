@@ -152,6 +152,12 @@ def main(argv: list[str] | None = None) -> int:
                           "facilities this is orders of magnitude cheaper; the "
                           "run reports the measured direction asymmetry. Pass "
                           "with no values to disable.")
+    eng.add_argument("--self-test", action="store_true",
+                     help="allow comparing the city's own engine against "
+                          "itself. Every delta is then zero by construction "
+                          "(the plumbing check); without this flag such a run "
+                          "is refused rather than silently paying for a second "
+                          "full routing to produce zeros.")
     eng.add_argument("--project-root", type=Path,
                      default=Path(__file__).resolve().parents[2])
 
@@ -271,7 +277,8 @@ def main(argv: list[str] | None = None) -> int:
             run_engine_check(cfg, args.city, args.project_root,
                              engine=args.engine, modes=args.modes,
                              threshold=args.threshold, reuse=not args.no_reuse,
-                             reverse_modes=args.reverse_modes)
+                             reverse_modes=args.reverse_modes,
+                             self_test=args.self_test)
         except RoutingBudgetExhausted as exc:
             return _report_budget_exhausted(exc)
         return 0

@@ -1350,3 +1350,58 @@ routing — **~30 min, comparable to a friction run**, where §5.9 measured
    the walk+car everyday axis (degenerate on friction, evaluable on r5) and
    retires the zero-floor artefact (68.9 % of population at t_eff = 0) at the
    source. The decision needs the second-city evidence, not this paragraph.
+
+### 5.12 Why run 30476375657 hung: four settings defects, not a slow pipeline
+
+Dispatched after merging PR #16 and still inside step 11, "Ensure the baseline
+surfaces exist", after 1 h 10 — never reaching the cross-check it was for.
+The step timings tell the story: the shared raw cache restored in 6 s (hit),
+while **both per-city caches returned in 0 s (miss)**. So the job was not
+cross-checking anything; it was rebuilding a city's entire baseline from
+scratch, and doing it on the slowest possible path.
+
+**(1) The baseline-rebuild step had neither of the two guards the cross-check
+step has.** `DEPACC_ROUTING_BUDGET_MIN` and `timeout-minutes` were both set
+only on "Cross-check against r5". Step 11 runs plain `depacc run --stage
+deprivation`, so its routing budget was unlimited and nothing could stop it
+before the **job** timeout — which *cancels*, and a cancelled job skips the
+`if: always()` cache saves, discarding every matrix built. That is exactly the
+run-30164334307 failure §5.9 diagnosed; the fix was applied to one step and not
+the other. Fixed: the baseline step now carries the budget and a 165-min
+timeout, and a budget stop (exit 2) is treated as forward progress — caches
+save, the cross-check is skipped, a re-dispatch resumes.
+
+**(2) The step timeouts could not fit inside the job timeout.** 320 min for the
+cross-check plus an unbounded baseline, inside a 355-min job. The arithmetic
+never worked; it was simply never exercised until a cache missed. Now 165 + 165
+= 330, leaving ~25 min for setup, cache saves and upload, with `budget_min`
+(default lowered 240 → 150) documented as **per step**.
+
+**(3) `config/cities/koeln.yaml` never declared `routing.engine`, so it
+inherited `r5` from the defaults** — and its `modes` included `transit`. Hamburg
+states `engine: "friction"` explicitly; Köln's omission meant the *baseline*
+being rebuilt was a full forward-R5 three-mode Tier-2 routing, the ~47-h path
+of §5.9, with no budget. Tier 2 is about the data sources, not the engine.
+Fixed: Köln now mirrors Hamburg (`friction`, `["walk", "car"]`), and
+`test_every_city_declares_its_routing_engine` fails any city config that omits
+the engine or pairs friction with transit.
+
+**(4) The run could not have answered anything even if it had finished.** With
+Köln inheriting `r5`, an `--engine r5` cross-check compares r5 against **itself**:
+every delta is zero by construction, and the job pays for a second full routing
+to prove it. `run_engine_check` printed a NOTE and continued — a warning at
+minute zero of a multi-hour job is not a guard. It now **raises**, naming the
+fix, unless `--self-test` is passed.
+
+One more gap closed while here: the baseline rebuild ignored reverse routing
+entirely, because `--reverse-modes` is an `engine-check` flag and the baseline
+goes through `depacc run`. `routing.reverse_direction` now falls back to
+`DEPACC_REVERSE_MODES`, which the workflow sets on both steps.
+
+**What this run cost, and what to do.** Nothing is recoverable from it: it will
+either be cancelled at the job timeout or stopped by hand, and in both cases the
+saves are skipped. Cancel it. Then, with these fixes on main, re-dispatch for
+`koeln` — the baseline is friction (minutes), the r5 shadow reverses both car
+and walk, and the whole cross-check is one dispatch. That is the second-city
+run §5.10 asked for, and it is what decides whether the −30 % `gini_emergency`
+offset is a stable engine bias or city-specific.

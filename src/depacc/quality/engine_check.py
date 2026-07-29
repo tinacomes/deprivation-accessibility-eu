@@ -481,10 +481,29 @@ def run_engine_check(cfg: dict, city: str, root: Path, engine: str = "r5",
                      modes: list[str] | None = None,
                      threshold: float = 0.5,
                      reuse: bool = True,
-                     reverse_modes: list[str] | None = None) -> pd.DataFrame:
+                     reverse_modes: list[str] | None = None,
+                     self_test: bool = False) -> pd.DataFrame:
     """Full E.1 cross-check for one city. Returns the comparison table."""
     base_engine = cfg["routing"].get("engine", "r5")
-    if base_engine == engine and not modes:
+    if base_engine == engine and not modes and not self_test:
+        # REFUSE, do not warn. Comparing an engine against itself returns a
+        # table of exact zeros by construction — and it pays for a second full
+        # routing of the city to get there. Run 30476375657 dispatched exactly
+        # this: Köln's config omitted `routing.engine`, so it inherited r5 from
+        # the defaults and the "friction vs r5" cross-check was r5 vs r5, with
+        # both sides routed forward. A warning printed at minute zero of a
+        # multi-hour job is not a guard; it scrolls past and the run burns
+        # anyway. The self-test is still available, explicitly.
+        raise ValueError(
+            f"engine-check for '{city}' would compare '{engine}' against "
+            f"itself: the city's configured routing.engine is already "
+            f"'{base_engine}', so every delta is zero by construction and the "
+            f"run pays for a second full routing to prove it. Point --engine "
+            f"at a DIFFERENT engine (the cross-check exists to bound the "
+            f"friction fast path against r5), set routing.engine in "
+            f"config/cities/{city}.yaml to the baseline you mean, or pass "
+            f"self_test=True if you really want the plumbing self-test.")
+    if base_engine == engine:
         print(f"NOTE: engine-check comparing '{engine}' against itself — every "
               f"delta should come out zero; this is the plumbing self-test")
     from depacc.access.matrices import RoutingBudgetExhausted

@@ -1,6 +1,7 @@
 """Config loading, deep merge, city overlay, missing-parameter guard."""
 
 import pytest
+import yaml
 
 from depacc.config import (
     ConfigError,
@@ -75,6 +76,32 @@ def test_city_overlay_hamburg():
     assert cfg["routing"]["engine"] == "friction"
     assert cfg["routing"]["modes"] == ["walk", "car"]
     assert cfg["routing"]["max_time_min"] == 120  # inherited default
+
+
+def test_every_city_declares_its_routing_engine():
+    """A city config that omits `routing.engine` inherits `r5` from the
+    defaults, which is the most expensive path the pipeline has — and it does so
+    silently. Köln omitted it, so run 30476375657 spent over an hour rebuilding
+    a *baseline* with forward R5 routing before the cross-check it was
+    dispatched for could even start. The engine is a per-city cost decision and
+    every real city must state it."""
+    from depacc.config import CONFIG_DIR
+
+    cities = [p.stem for p in sorted((CONFIG_DIR / "cities").glob("*.yaml"))
+              if p.stem != "demo"]
+    assert cities, "no city configs found"
+    for city in cities:
+        raw = yaml.safe_load((CONFIG_DIR / "cities" / f"{city}.yaml").read_text())
+        engine = ((raw.get("routing") or {}).get("engine"))
+        assert engine, (
+            f"config/cities/{city}.yaml does not declare routing.engine; it "
+            f"would silently inherit '{load_config()['routing']['engine']}'")
+        modes = (raw.get("routing") or {}).get("modes") or []
+        if engine == "friction":
+            # The friction engine raises on transit (access/friction.py), so a
+            # config pairing them fails only once routing has already started.
+            assert "transit" not in modes, (
+                f"{city}: friction engine cannot route transit")
 
 
 def test_unknown_city_raises():
