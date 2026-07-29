@@ -134,6 +134,16 @@ def test_baseline_recompute_matches_pipeline(demo_cache):
                        equal_nan=True, atol=1e-9)
     assert np.allclose(t, surfaces["t_regime_everyday"].to_numpy(float),
                        equal_nan=True, atol=1e-9)
+    # ...and so do the composite-time LEVEL features, which the variant table
+    # now reports per variant (they carry the finite fill; plan §5.5 point 3).
+    from depacc.cityvector.features import level_features
+    from depacc.sensitivity.access import _everyday_level_shares
+
+    pipeline_levels = level_features(surfaces, cfg)
+    sweep_levels = _everyday_level_shares(
+        t, cells["population"].to_numpy(float), cfg)
+    for col, share in sweep_levels.items():
+        assert share == pytest.approx(pipeline_levels[col], abs=1e-9), col
 
 
 def test_k_subset_bounds_destinations(demo_cache):
@@ -223,17 +233,45 @@ def test_threshold_axis_is_rho_invariant(demo_sweep):
 
 
 def test_acceptance_table(demo_sweep):
-    _, _, table = demo_sweep
+    cfg, _, table = demo_sweep
     acc = acceptance_table(table)
     assert (acc.knob == "threshold_axis").any()
     thr_row = acc[acc.knob == "threshold_axis"].iloc[0]
     assert thr_row["rho_range"] == 0.0  # ρ threshold-range is 0 by construction
+    # Level features are swept per knob; the threshold axis cannot move them.
+    level_range_cols = [c for c in acc.columns
+                        if c.startswith("pop_share_beyond_") and c.endswith("_range")]
+    assert level_range_cols, "level features missing from the acceptance table"
+    for c in level_range_cols:
+        assert thr_row[c] == 0.0
+    # The unreachable (finite-fill) axis exists to move exactly these columns.
+    unreach = acc[acc.knob == "unreachable"]
+    if not unreach.empty:
+        assert np.isfinite(unreach.iloc[0][level_range_cols[0]])
     # ρ carries no "exceeds" verdict: the threshold axis cannot move ρ at all
     # (it acts after the percentile transform), so such a test passes for any
     # knob with a nonzero range and says nothing.
     assert "rho_exceeds_threshold" not in acc.columns
     assert {"n_variants", "n_degenerate"} <= set(acc.columns)
     assert (acc["n_degenerate"] <= acc["n_variants"]).all()
+
+
+def test_rho_envelope_brackets_baseline_and_skips_degenerates(demo_sweep):
+    from depacc.sensitivity.access import rho_envelope
+
+    _, _, table = demo_sweep
+    env = rho_envelope(table)
+    assert env is not None
+    lo, hi = env
+    base = float(table[table.variant == "baseline"]["spearman_rho"].iloc[0])
+    assert lo <= base <= hi
+    # The envelope is exactly the min/max over the sound (non-degenerate,
+    # non-threshold) variants — degenerate rows cannot set its bounds.
+    sound = table[(table.axis != "threshold")
+                  & ~table["degenerate"].fillna(False).astype(bool)]
+    rho = pd.to_numeric(sound["spearman_rho"], errors="coerce").dropna()
+    assert lo == pytest.approx(float(rho.min()))
+    assert hi == pytest.approx(float(rho.max()))
 
 
 def test_degenerate_variants_are_flagged_and_excluded(demo_sweep):

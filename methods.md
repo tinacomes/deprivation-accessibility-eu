@@ -345,6 +345,17 @@ population-weighted. Two consequences matter when reading it:
   co-location). All three are reported in `cityplane_row.csv`. The raw
   `LL/HL/LH` shares add nothing once `HH` is known and should not be
   interpreted as independent evidence.
+- **`compounding_intensity` is the threshold-free headline.** The Layer-3
+  acceptance table (§7a) showed the "how high is high" threshold moves the
+  `HH` share ~6× more than the strongest accessibility assumption, so any
+  thresholded compounding number is substantially a statement about the cut.
+  `compounding_intensity` — the population-weighted mean of
+  `min(everyday_pct, emergency_pct)`, i.e. how deep into *both* percentile
+  distributions the typical person sits — removes the threshold entirely.
+  Because both marginals are population-weighted-uniform by construction, it
+  has fixed anchors: **1/3 under independence, 1/2 under perfect coupling,
+  1/4 under perfect divergence**. Reported in `cityplane_row.csv` beside the
+  thresholded shares (which remain, for their map and their interpretability).
 - Each cell is rendered **exactly once**, sized to the grid pitch. (An earlier
   per-class draw loop with oversized markers let the last-drawn class overplot
   the others at high cell counts, so Hamburg's map showed ~80% `HH` regardless
@@ -592,9 +603,24 @@ forward-routed chunks already on disk (for Hamburg, the 20 000 origins
 checkpointed before run 30251028718 hit its budget, which cost nothing extra to
 reuse) and writes the median, p90 and maximum absolute discrepancy to
 `validation/<city>_engine_reverse_asymmetry.csv`. Read that file before reading
-the emergency rows of the comparison. Note also that for `ambulance_station`
-the reversed direction is arguably the substantively correct one: emergency
-response time is station-to-patient, not patient-to-station.
+the emergency rows of the comparison. Hamburg's measured car asymmetry
+(234 788 pairs): median |Δ| 1.0 min on an 11-min median, mean signed
++0.22 min — and R5 reports whole minutes, so part of that is quantisation.
+Note also that for `ambulance_station` the reversed direction is arguably the
+substantively correct one: emergency response time is station-to-patient, not
+patient-to-station.
+
+**Reverse routing extends to walk.** Walking is not subject to one-way streets
+or turn restrictions, so the symmetry assumption is *safer* for walk than the
+measured-1-minute car case, and every everyday service has 600–2 000 facilities
+against 176 137 cells — well past the 20× guard. The workflow therefore
+defaults `reverse_modes` to `car walk`, which turns the ~2 h 22 forward walk leg
+into minutes per service: a **complete second-city cross-check now costs
+roughly the network build plus minutes of routing** (~30 min end to end),
+where the first Hamburg attempt burned a 5-hour job and produced nothing. That
+matters because §5.10's open question — is the −30 % `gini_emergency` offset a
+stable engine bias (correctable) or city-specific (not)? — needs exactly one
+or two more r5 cities to answer, and they are now cheap.
 
 Two findings from run 30160444058 make this the validation that gates the rest.
 The friction *car* surface gives 99.0 % of Hamburg's cells a zero-minute pair for
@@ -634,6 +660,15 @@ deprivation threshold `t_regime_everyday` therefore stops behaving like a travel
 time and behaves like a count of unmet categories, and the everyday ρ is
 substantially a measure of agreement on that count. The emergency panel, where
 no cap is in play, is the interpretable one.
+
+The comparison table therefore carries **two rank agreements per item**:
+`spearman`, over all paired cells, and `spearman_uncapped` (with `n_uncapped`),
+computed after removing every cell whose value contains the finite fill under
+*either* engine — for a per-service item the cells at the fill, for a regime
+composite the cells with any filled component. `spearman` partly measures
+agreement on who is cut off; `spearman_uncapped` measures agreement on travel
+time where both engines actually route. A large gap between them says the
+headline ρ leans on the cap.
 
 ## 7a. Robustness harness (structured, not probabilistic)
 
@@ -704,6 +739,19 @@ Ginis** move, plus which cells flip class
 (`sensitivity/<city>_access_sensitivity.csv`, a flip-cell map, and an acceptance
 table naming which knobs beat the threshold axis). A test pins the `baseline`
 variant to the pipeline's saved surfaces.
+
+Two additions close gaps the first corrected sweep left open. **The
+composite-time LEVEL features** (`pop_share_beyond_everyday_<thr>`, §4.3) are
+reported per variant and their per-knob ranges join the acceptance table: the
+*deprivation* targets proved fill-invariant (the DLF saturates well before
+60 min), but the level features are built from the composite **time**, which
+contains the finite fill whenever a cell misses a service, so their
+fill-dependence has to be measured rather than presumed absent. And the
+**coupling ρ is quoted with its accessibility envelope**: the min–max ρ across
+the non-degenerate variants (`rho_envelope`; on Hamburg the congestion exponent
+alone spans 0.39–0.56 around a baseline 0.43), printed by the sweep and
+annotated per city on the plane figure — the point estimate alone overstates
+the accessibility model's precision.
 
 **Degenerate variants are flagged and excluded from the acceptance ranges.** A
 variant whose everyday surface collapses into a single exact-tie block holding

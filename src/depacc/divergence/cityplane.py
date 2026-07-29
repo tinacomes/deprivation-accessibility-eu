@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 
 from depacc.divergence.colocation import (
+    compounding_intensity,
     compounding_pop_share,
     jaccard_high,
     weighted_spearman,
@@ -56,6 +57,12 @@ def city_row(everyday_raw: RegimeSurface, emergency_raw: RegimeSurface,
         "p90_p50_ratio_emergency": _p90_p50(emergency_raw.values, pop),
         # coupling (scale-free, from percentiles).
         "spearman_rho": weighted_spearman(e_p, m_p),
+        # threshold-FREE compounding: pop-weighted mean of min(ev_pct, em_pct).
+        # Anchors: 1/3 independence, 1/2 perfect coupling, 1/4 perfect
+        # divergence. The HH share moves ~6x more under the threshold choice
+        # than under any accessibility knob (Layer-3 acceptance), so the
+        # headline compounding number must not hinge on one cut.
+        "compounding_intensity": compounding_intensity(e_p, m_p),
     }
     row["divergence_gap"] = row["gini_emergency"] - row["gini_everyday"]
     for thr in thresholds:

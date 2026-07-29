@@ -1278,3 +1278,130 @@ have been run. Either the Tier-1 Ginis get an explicit engine-error band, or the
 cross-city Gini claims need a second r5 city to establish whether the −30 % is a
 stable offset (correctable) or city-specific (not). One more city under E.1 now
 costs ~10 minutes of runner time, so this is cheap to settle.
+
+### 5.11 A–D completeness audit, and what run 30275890587 changes (review pass)
+
+An independent audit of workstreams A–D against the code at `c500c1c` and the
+run's own job logs (the comparison CSV is printed by the "Show the comparison"
+step, so every §5.10 number was re-verified against the artifact's source
+rather than trusted). Verdict first: **A–D are implemented as §5.4–§5.7
+describe** — all six A′ fixes, the anchor-calibrated Layer-2 swap, the
+Layer-3 sweep with degeneracy handling, the census/Zensus ingest, the support
+gate, the two-reference vulnerability table, and the `max_missing_share`
+imputation bound are all in the code and confirmed by runs. Four elements the
+plan called for were still missing; all four are now landed:
+
+1. **The continuous compounding intensity** (§1.1 assigned it to D; §5.5
+   called it "the fix that matters"): `compounding_intensity` — pop-weighted
+   mean of `min(ev_pct, em_pct)`, anchors 1/3 independent, 1/2 coupled,
+   1/4 divergent — joins `cityplane_row.csv`, the coupling feature group and
+   the scaling outcomes (`divergence/colocation.py`, methods §4.1).
+2. **Level features per Layer-3 variant** (§5.5 point 3, §5.6): the sweep was
+   computing and discarding the composite time; `pop_share_beyond_everyday_*`
+   is now a per-variant column and its per-knob range joins the acceptance
+   table, with the threshold axis pinned at exactly 0. The baseline test also
+   pins these to the pipeline's own level features.
+3. **The ρ envelope** (§5.5 point 2, §5.6): `rho_envelope` over the
+   non-degenerate variants, printed by the sweep and annotated per city on
+   the plane figure — "ρ = 0.43" becomes "ρ = 0.43 [0.39, 0.56]".
+4. **`spearman_uncapped` in the engine check** (§5.10's own caveat about
+   itself): the headline ρ = 0.867 partly measures agreement on who is capped;
+   the comparison table now also reports the rank agreement with every
+   fill-capped cell removed from both engines, per item.
+
+Still deliberately open (F-scoped, unchanged from §5.7): `config/
+fua_population.csv` (F.1), the pilot's country mix vs the DE/FR EMP gap, and
+E.2–E.5. The §4(c) aggregation sweeps (leave-one-service-out, weight
+perturbation, weakest-link emergency composite) remain unassigned to any
+workstream — they should be scheduled with the pilot, where their envelopes
+first become comparable across cities.
+
+#### The "not great" intermediate results are a finding, not a failure
+
+The E.1 numbers deserve a plain statement, because they read badly on first
+contact: the comparison machinery is sound (the self-test pins same-engine
+deltas to zero, the comparison is paired, the reverse-routing error is
+measured at median |Δ| 1.0 min, and the §5.10 table reproduces from the logs
+exactly). What the numbers say is that the **friction fast path, not the
+pipeline, is the weak link**: levels understated 34–314 %, both Ginis
+understated as levels, 23.7 % of people changing typology class — while the
+aggregate class shares (≤ 0.5 pp), the divergence ρ (−6 %) and rank orderings
+hold. §5.10's read-out stands.
+
+#### Reverse routing changed E's economics — and possibly Tier-1's engine
+
+The premise "friction is what makes a 48-city sample affordable" predates
+reverse routing. Measured on this run, the two emergency car matrices cost
+2.2 + 4.0 min as 151 facility searches; the same transpose applies to the five
+walk services (600–2 000 facilities each, all past the 20× guard, and walking
+is symmetric — no one-way streets), which the workflow now defaults on. A
+complete r5 city is therefore roughly the R5 network build plus minutes of
+routing — **~30 min, comparable to a friction run**, where §5.9 measured
+8–12 h forward. Two consequences, in order:
+
+1. **Run E.1 on a second city now** (koeln has a config; ~30 min end to end)
+   to settle §5.10's open question — whether the −30 % `gini_emergency` offset
+   is a stable engine bias or city-specific.
+2. **If the second city confirms the offset is not stable, promote r5 to the
+   Tier-1 primary engine** rather than carrying an uncorrectable caveat
+   through the whole programme. At ~30 min/city the 48-city sample is ~24 h of
+   runner time, parallelisable by the existing batch matrix; friction remains
+   as the sensitivity variant instead of the baseline — which also un-blocks
+   the walk+car everyday axis (degenerate on friction, evaluable on r5) and
+   retires the zero-floor artefact (68.9 % of population at t_eff = 0) at the
+   source. The decision needs the second-city evidence, not this paragraph.
+
+### 5.12 Why run 30476375657 hung: four settings defects, not a slow pipeline
+
+Dispatched after merging PR #16 and still inside step 11, "Ensure the baseline
+surfaces exist", after 1 h 10 — never reaching the cross-check it was for.
+The step timings tell the story: the shared raw cache restored in 6 s (hit),
+while **both per-city caches returned in 0 s (miss)**. So the job was not
+cross-checking anything; it was rebuilding a city's entire baseline from
+scratch, and doing it on the slowest possible path.
+
+**(1) The baseline-rebuild step had neither of the two guards the cross-check
+step has.** `DEPACC_ROUTING_BUDGET_MIN` and `timeout-minutes` were both set
+only on "Cross-check against r5". Step 11 runs plain `depacc run --stage
+deprivation`, so its routing budget was unlimited and nothing could stop it
+before the **job** timeout — which *cancels*, and a cancelled job skips the
+`if: always()` cache saves, discarding every matrix built. That is exactly the
+run-30164334307 failure §5.9 diagnosed; the fix was applied to one step and not
+the other. Fixed: the baseline step now carries the budget and a 165-min
+timeout, and a budget stop (exit 2) is treated as forward progress — caches
+save, the cross-check is skipped, a re-dispatch resumes.
+
+**(2) The step timeouts could not fit inside the job timeout.** 320 min for the
+cross-check plus an unbounded baseline, inside a 355-min job. The arithmetic
+never worked; it was simply never exercised until a cache missed. Now 165 + 165
+= 330, leaving ~25 min for setup, cache saves and upload, with `budget_min`
+(default lowered 240 → 150) documented as **per step**.
+
+**(3) `config/cities/koeln.yaml` never declared `routing.engine`, so it
+inherited `r5` from the defaults** — and its `modes` included `transit`. Hamburg
+states `engine: "friction"` explicitly; Köln's omission meant the *baseline*
+being rebuilt was a full forward-R5 three-mode Tier-2 routing, the ~47-h path
+of §5.9, with no budget. Tier 2 is about the data sources, not the engine.
+Fixed: Köln now mirrors Hamburg (`friction`, `["walk", "car"]`), and
+`test_every_city_declares_its_routing_engine` fails any city config that omits
+the engine or pairs friction with transit.
+
+**(4) The run could not have answered anything even if it had finished.** With
+Köln inheriting `r5`, an `--engine r5` cross-check compares r5 against **itself**:
+every delta is zero by construction, and the job pays for a second full routing
+to prove it. `run_engine_check` printed a NOTE and continued — a warning at
+minute zero of a multi-hour job is not a guard. It now **raises**, naming the
+fix, unless `--self-test` is passed.
+
+One more gap closed while here: the baseline rebuild ignored reverse routing
+entirely, because `--reverse-modes` is an `engine-check` flag and the baseline
+goes through `depacc run`. `routing.reverse_direction` now falls back to
+`DEPACC_REVERSE_MODES`, which the workflow sets on both steps.
+
+**What this run cost, and what to do.** Nothing is recoverable from it: it will
+either be cancelled at the job timeout or stopped by hand, and in both cases the
+saves are skipped. Cancel it. Then, with these fixes on main, re-dispatch for
+`koeln` — the baseline is friction (minutes), the r5 shadow reverses both car
+and walk, and the whole cross-check is one dispatch. That is the second-city
+run §5.10 asked for, and it is what decides whether the −30 % `gini_emergency`
+offset is a stable engine bias or city-specific.

@@ -85,7 +85,7 @@ def test_same_engine_check_is_a_perfect_null(demo_baseline, tmp_path_factory):
     cfg, root = demo_baseline
     table = run_engine_check(cfg, "demo", root,
                              engine=cfg["routing"].get("engine", "r5"),
-                             reuse=False)
+                             reuse=False, self_test=True)
 
     assert not table.empty
     assert (table["delta"].abs() < 1e-9).all(), \
@@ -98,6 +98,18 @@ def test_same_engine_check_is_a_perfect_null(demo_baseline, tmp_path_factory):
 
     val = root / cfg["output"]["root"] / "validation"
     assert (val / "demo_engine_check.csv").exists()
+
+
+def test_same_engine_check_is_refused_without_the_self_test_flag(demo_baseline):
+    """A cross-check of an engine against itself returns zeros by construction
+    AND pays for a second full routing to get them. Run 30476375657 dispatched
+    exactly that — Köln's config omitted `routing.engine`, inherited r5 from the
+    defaults, and the "friction vs r5" check became r5 vs r5 — so this must
+    fail fast rather than warn and proceed."""
+    cfg, root = demo_baseline
+    with pytest.raises(ValueError, match="against itself"):
+        run_engine_check(cfg, "demo", root,
+                         engine=cfg["routing"].get("engine", "r5"))
 
 
 def test_check_reports_the_rank_disagreement_that_matters(tmp_path):
@@ -184,6 +196,39 @@ def test_travel_times_are_compared_on_the_cells_both_engines_reach(tmp_path):
     cov = tab.loc["everyday_reachable_pop_share"]
     assert cov["base"] == pytest.approx(1.0)
     assert cov["alt"] == pytest.approx(0.5)
+
+
+def test_uncapped_rank_agreement_strips_the_fill_agreement(tmp_path):
+    """Run 30275890587's everyday ρ = 0.867 was substantially the two engines
+    agreeing on WHO IS CUT OFF (both filled at 120), not on travel time.
+    `spearman_uncapped` removes every fill-capped cell from both engines: here
+    half the city is capped under both (perfect agreement on the cutoff) while
+    the routable half is rank-REVERSED, so the capped ρ is pulled up by the
+    fill block and the uncapped ρ tells the truth."""
+    n = 100
+    pop = np.ones(n)
+    lower = np.arange(1.0, n // 2 + 1.0)          # 1..50
+    base_t = np.concatenate([lower, np.full(n // 2, 120.0)])
+    alt_t = np.concatenate([lower[::-1], np.full(n // 2, 120.0)])
+
+    def _write(dirpath, t):
+        dirpath.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame({"population": pop, "t_regime_gp": t}) \
+            .to_parquet(dirpath / "surfaces.parquet")
+
+    _write(tmp_path / "base", base_t)
+    _write(tmp_path / "alt", alt_t)
+    cfg = {"routing": {"engine": "friction", "max_time_min": 120},
+           "unreachable": {"finite_fill_min": None}, "city": {"name": "T"}}
+    tab = compare_engines(tmp_path / "base", tmp_path / "alt", cfg, "t", "alt") \
+        .set_index("item")
+
+    row = tab.loc["gp_median_min"]
+    assert row["n_uncapped"] == n // 2
+    assert row["spearman_uncapped"] == pytest.approx(-1.0, abs=1e-6)
+    # The fill block drags the headline ρ far above the truth on the
+    # routable half.
+    assert row["spearman"] > row["spearman_uncapped"] + 0.5
 
 
 def test_an_interrupted_check_leaves_a_progress_manifest(tmp_path):

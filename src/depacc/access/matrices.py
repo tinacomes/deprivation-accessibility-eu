@@ -55,6 +55,13 @@ _SENS_MODE_ALIAS = {
 #: rather than editing a city config.
 BUDGET_ENV = "DEPACC_ROUTING_BUDGET_MIN"
 
+#: Env var equivalent of ``routing.reverse_direction``. The engine-check
+#: workflow rebuilds a missing BASELINE with plain ``depacc run``, which takes
+#: no ``--reverse-modes`` flag, so without this the baseline is routed forward
+#: even when the cross-check that follows is reversed — the expensive half of
+#: run 30476375657.
+REVERSE_ENV = "DEPACC_REVERSE_MODES"
+
 
 class RoutingBudgetExhausted(RuntimeError):
     """The wall-clock routing budget ran out before every matrix was built.
@@ -159,11 +166,19 @@ def _reverse_modes(cfg: dict) -> set[str]:
     restrictions make car time direction-dependent. So this is OFF by default
     and, when on, :func:`asymmetry_report` measures the error against whatever
     forward-routed origin chunks are on disk rather than assuming it away.
+    Hamburg's measured car error (run 30275890587, 234 788 pairs): median |Δ|
+    1.0 min on an 11-min median, mean signed +0.22 — partly R5's whole-minute
+    quantisation. WALK is safer still: pedestrians ignore one-way streets and
+    turn restrictions, so walking is symmetric up to door-to-door detail, and
+    reversing the 600-2 000-facility everyday services turns hours of forward
+    routing into minutes per service.
 
     For ``ambulance_station`` the reversed direction is arguably the meaningful
     one anyway — emergency response time is station-to-patient.
     """
     raw = (cfg.get("routing") or {}).get("reverse_direction") or []
+    if not raw:
+        raw = os.environ.get(REVERSE_ENV, "").replace(",", " ").split()
     if isinstance(raw, str):
         raw = [raw]
     return {str(m) for m in raw}

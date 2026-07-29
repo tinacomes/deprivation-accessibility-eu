@@ -24,12 +24,22 @@ name: engine cross-check (E.1)
 # Forwards, the emergency leg alone is ~47 h — far past the 6 h hard cap on a
 # GitHub-hosted job. Two mechanisms make this tractable:
 #
-# 1. `reverse_modes: car` routes the emergency matrices FACILITIES -> CELLS and
+# 1. `reverse_modes: car walk` routes the matrices FACILITIES -> CELLS and
 #    transposes them back. R5 costs one street search per ORIGIN, so 27
 #    emergency departments cost 27 searches rather than 176 137 — minutes, not
 #    a day. Exact only for a symmetric network, so the run MEASURES the
 #    direction asymmetry against any forward-routed chunks on disk and writes
-#    it to validation/<city>_engine_reverse_asymmetry.csv.
+#    it to validation/<city>_engine_reverse_asymmetry.csv. Hamburg's measured
+#    car asymmetry (run 30275890587, 234 788 pairs): median |Δ| 1.0 min on an
+#    11-min median, mean signed +0.22 — and R5 reports whole minutes, so part
+#    of that is quantisation. WALK is reversed too since walking is not
+#    subject to one-way streets or turn restrictions: 600-2 000 facility
+#    searches replace 176 137 cell searches per service, which turns the
+#    ~2 h walk leg into minutes and makes a SECOND-CITY cross-check (the open
+#    question from §5.10: is the -30 % gini_emergency offset stable across
+#    cities?) an ~30-min dispatch instead of a day. The per-facility ratio
+#    guard in access/matrices.py declines the transpose for any service with
+#    too few cells per facility for it to pay.
 # 2. `budget_min` stops the access stage cleanly while the job is still alive.
 #    A job that hits its own timeout is CANCELLED, and a cancelled job skips
 #    actions/cache's save step — that is how run 30164334307 threw away 2 h 20
@@ -73,13 +83,13 @@ on:
         required: false
         default: "true"
       budget_min:
-        description: "Wall-clock minutes the routing may use before stopping cleanly and caching its progress (must stay below the job timeout)"
+        description: "Wall-clock minutes routing may use PER STEP before stopping cleanly and caching its progress. Applies to the baseline rebuild and the cross-check separately, so keep it under each step's 165-min timeout."
         required: false
-        default: "240"
+        default: "150"
       reverse_modes:
-        description: "Modes routed facilities->cells and transposed back (blank = none). 'car' turns the ~24 h/service emergency leg into minutes; the run reports the measured direction asymmetry."
+        description: "Modes routed facilities->cells and transposed back (blank = none). 'car walk' turns the ~24 h/service emergency leg AND the ~2 h walk leg into minutes; the run reports the measured direction asymmetry."
         required: false
-        default: "car"
+        default: "car walk"
 
 # Two dispatches for the same city must never run at once: they would restore
 # the same derived cache, route overlapping work, and the later save would
@@ -186,16 +196,45 @@ jobs:
           ls -1 "data/derived/${{ inputs.city }}/engine_${{ inputs.engine }}"/od_*.parquet 2>/dev/null | sed 's/^/  /' || echo "  (none — this is the first routing dispatch)"
 
       # The check compares against the city's existing baseline surfaces. If the
-      # derived cache was evicted, rebuild them first — the comparison is
-      # meaningless without a baseline to compare to.
+      # derived cache was evicted — or the city has never been run — rebuild
+      # them first; the comparison is meaningless without a baseline.
+      #
+      # This step needs the SAME two guards as the cross-check below, and for
+      # the same reason. It had neither, and run 30476375657 spent over an hour
+      # here: a cache miss sent it into a full rebuild whose routing had no
+      # budget (`DEPACC_ROUTING_BUDGET_MIN` was set only on the cross-check
+      # step) and no step timeout, so nothing could stop it before the JOB
+      # timeout — which cancels, and a cancelled job skips the `if: always()`
+      # cache saves below, discarding every matrix it had built. That is the
+      # exact failure §5.9 diagnosed and fixed for the other step only.
+      #
+      # A budget stop here exits 2. That is forward progress, not a failure:
+      # the partial routing is cached by the save steps below and a re-dispatch
+      # resumes. The cross-check is skipped in that case, because surfaces
+      # built on a half-routed city would mark every unrouted cell deprived.
       - name: Ensure the baseline surfaces exist
+        id: baseline
+        timeout-minutes: 165
+        env:
+          DEPACC_ROUTING_BUDGET_MIN: ${{ inputs.budget_min }}
+          DEPACC_REVERSE_MODES: ${{ inputs.reverse_modes }}
         run: |
           if [ -f "data/derived/${{ inputs.city }}/surfaces.parquet" ]; then
             echo "baseline surfaces present; reusing them"
-          else
-            echo "no cached baseline — running ingest/access/deprivation first"
-            depacc run --city "${{ inputs.city }}" --stage deprivation
+            echo "rc=0" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          echo "::warning::No cached baseline for '${{ inputs.city }}': the derived cache missed, so ingest+access+deprivation must run first. This is the slow path and the cross-check has not started yet."
+          set +e
+          depacc run --city "${{ inputs.city }}" --stage deprivation
+          rc=$?
+          set -e
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          if [ "$rc" = "2" ]; then
+            echo "::notice::Baseline routing stopped on its budget with progress cached. Re-dispatch to resume; the cross-check is skipped until the baseline is complete."
+            exit 0
+          fi
+          exit $rc
 
       # Step-level timeout, deliberately BELOW the job timeout. A step that
       # times out FAILS, and later `if: always()` steps — including the cache
@@ -203,9 +242,20 @@ jobs:
       # it runs at all. The budget inside depacc should stop first and more
       # gracefully; this is the guard for the case where one origin chunk
       # itself overruns.
+      #
+      # 165 + 165 for the two routing steps + ~15 min of setup, caching and
+      # upload sits under the job's 355. It used to be 320 here with NO timeout
+      # on the baseline step, so a job that had to rebuild a baseline could not
+      # fit its own steps inside its own timeout — the arithmetic never worked,
+      # it was simply never exercised until a cache missed.
+      #
+      # Skipped when the baseline stopped on its budget: surfaces built on a
+      # half-routed city would mark every unrouted cell service-deprived, so
+      # there is nothing meaningful to compare against yet.
       - name: Cross-check against ${{ inputs.engine }}
         id: check
-        timeout-minutes: 320
+        if: steps.baseline.outputs.rc == '0'
+        timeout-minutes: 165
         continue-on-error: true
         env:
           DEPACC_ROUTING_BUDGET_MIN: ${{ inputs.budget_min }}
@@ -248,6 +298,7 @@ jobs:
             echo "modes:      ${{ inputs.modes }}"
             echo "budget_min: ${{ inputs.budget_min }}"
             echo "reverse:    ${{ inputs.reverse_modes }}"
+            echo "baseline:   rc=${{ steps.baseline.outputs.rc }} (2 = stopped on budget, cross-check skipped)"
             echo "exit_code:  ${{ steps.check.outputs.rc }}"
             echo
             echo "OD matrices in the shadow derived dir:"
@@ -303,7 +354,15 @@ jobs:
       - name: Fail on a real error (not a budget stop)
         if: always()
         run: |
+          base_rc="${{ steps.baseline.outputs.rc }}"
           rc="${{ steps.check.outputs.rc }}"
+          # A baseline that stopped on budget skips the cross-check, so `rc` is
+          # empty. That is forward progress with the routing cached, NOT the
+          # "step killed" case, and must not fail the run.
+          if [ "$base_rc" = "2" ]; then
+            echo "::notice::The BASELINE for '${{ inputs.city }}' is still being routed; it stopped on its ${{ inputs.budget_min }} min budget with progress cached. Re-dispatch to continue — the cross-check starts once the baseline is complete."
+            exit 0
+          fi
           if [ "$rc" = "0" ]; then
             echo "cross-check complete"
           elif [ "$rc" = "2" ]; then

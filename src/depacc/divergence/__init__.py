@@ -8,6 +8,7 @@ from depacc.divergence.typology import (  # noqa: F401
     classify,
 )
 from depacc.divergence.colocation import (  # noqa: F401
+    compounding_intensity,
     compounding_pop_share,
     jaccard_high,
     weighted_spearman,

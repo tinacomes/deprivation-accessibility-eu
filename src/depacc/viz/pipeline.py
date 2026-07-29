@@ -235,8 +235,18 @@ def run_viz(cfg: dict, city: str, root: Path) -> None:
         ax.scatter(plane.gini_everyday, plane.gini_emergency,
                    s=20 + 40 * np.log10(plane.population.clip(lower=1) + 1),
                    c="#3b4994", alpha=0.85, linewidths=0, zorder=3)
+        n_rho = 0
         for _, r in plane.iterrows():
             label = r["name"] + (" (synthetic)" if r.get("synthetic") else "")
+            # Coupling ρ with its accessibility envelope (Layer-3, non-
+            # degenerate variants), when the sweep has run: the point estimate
+            # alone overstates the accessibility model's precision (on Hamburg
+            # the congestion exponent alone spans ρ 0.39-0.56 around 0.43).
+            renv = _rho_envelope(root, cfg, str(r.city))
+            if renv and "spearman_rho" in plane.columns and np.isfinite(r.spearman_rho):
+                label += (f"\nρ={r.spearman_rho:.2f} "
+                          f"[{renv['lo']:.2f}, {renv['hi']:.2f}]")
+                n_rho += 1
             ax.annotate(label, (r.gini_everyday, r.gini_emergency),
                         textcoords="offset points", xytext=(6, 4), fontsize=8,
                         color="0.25")
@@ -244,6 +254,8 @@ def run_viz(cfg: dict, city: str, root: Path) -> None:
         ax.set_ylabel("Gini of emergency deprivation")
         env_note = ("\nbars = min-max Gini across curvature variants"
                     if n_env else "")
+        if n_rho:
+            env_note += "; ρ bands = min-max across accessibility variants"
         ax.set_title("Cities in the everyday-vs-emergency inequity plane\n"
                      "(cross-sectional; size ~ log population)" + env_note,
                      fontsize=10)
@@ -346,6 +358,24 @@ def _curvature_envelope(root, cfg, city):
         "ev_lo": float(cur.gini_everyday.min()), "ev_hi": float(cur.gini_everyday.max()),
         "em_lo": float(cur.gini_emergency.min()), "em_hi": float(cur.gini_emergency.max()),
     }
+
+
+def _rho_envelope(root, cfg, city):
+    """Min-max coupling ρ across the NON-DEGENERATE Layer-3 accessibility
+    variants for one city, from its access-sensitivity table. Returns
+    {lo, hi} or None if the sweep has not been run (mirrors
+    :func:`depacc.sensitivity.access.rho_envelope`)."""
+    p = root / cfg["output"]["root"] / "sensitivity" / f"{city}_access_sensitivity.csv"
+    if not p.exists():
+        return None
+    tbl = pd.read_csv(p)
+    ok = tbl[tbl.axis != "threshold"]
+    if "degenerate" in ok.columns:
+        ok = ok[~ok["degenerate"].fillna(False).astype(bool)]
+    rho = pd.to_numeric(ok.get("spearman_rho"), errors="coerce").dropna()
+    if rho.empty:
+        return None
+    return {"lo": float(rho.min()), "hi": float(rho.max())}
 
 
 def _sensitivity_figure(cfg, city, root, name, figdir, plt):

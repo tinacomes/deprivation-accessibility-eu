@@ -69,4 +69,5 @@ def run_divergence(cfg: dict, city: str, root: Path) -> None:
     print(f"cityplane.csv: {len(table)} cities; {city}: "
           f"gini_ev={row['gini_everyday']:.3f} gini_em={row['gini_emergency']:.3f} "
           f"rho={row['spearman_rho']:.3f} "
-          f"HH@50={row['compounding_pop_share_50']:.1%}")
+          f"HH@50={row['compounding_pop_share_50']:.1%} "
+          f"intensity={row['compounding_intensity']:.3f}")
