@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from depacc.divergence.colocation import (
+    compounding_intensity,
     compounding_pop_share,
     jaccard_high,
     weighted_spearman,
@@ -58,6 +59,34 @@ def test_spearman_scale_invariant():
     m2 = _pct(em * 1000.0, regime="emergency")   # scaled emergency
     assert weighted_spearman(e, m1) == pytest.approx(weighted_spearman(e, m2))
     assert weighted_spearman(e, m1) == pytest.approx(1.0, abs=1e-9)  # perfect rank match
+
+
+def test_compounding_intensity_anchors():
+    """Pop-weighted mean of min(ev_pct, em_pct): 1/2 comonotone, ~1/4
+    countermonotone, ~1/3 independent — the documented anchors."""
+    n = 4000
+    rng = np.random.default_rng(1)
+    base = rng.uniform(size=n)
+    e = _pct(base, regime="everyday")
+    same = _pct(base * 3.0, regime="emergency")          # comonotone (scaled)
+    opposite = _pct(-base, regime="emergency")           # countermonotone
+    indep = _pct(rng.uniform(size=n), regime="emergency")
+    assert compounding_intensity(e, same) == pytest.approx(0.5, abs=0.01)
+    assert compounding_intensity(e, opposite) == pytest.approx(0.25, abs=0.01)
+    assert compounding_intensity(e, indep) == pytest.approx(1 / 3, abs=0.02)
+
+
+def test_compounding_intensity_comonotone_anchor_is_weight_robust():
+    """Identical surfaces hit the 0.5 anchor EXACTLY, whatever the weights:
+    with mid-rank percentiles the pop-weighted mean percentile is 1/2 by
+    construction, so the comonotone anchor cannot drift with the population
+    distribution."""
+    vals = np.array([1.0, 2.0, 3.0, 4.0])
+    for pop in (None, np.array([100.0, 1.0, 1.0, 1.0]),
+                np.array([1.0, 1.0, 1.0, 50.0])):
+        e = _pct(vals, pop=pop, regime="everyday")
+        m = _pct(vals, pop=pop, regime="emergency")
+        assert compounding_intensity(e, m) == pytest.approx(0.5, abs=1e-12)
 
 
 def test_jaccard_high_bounds():

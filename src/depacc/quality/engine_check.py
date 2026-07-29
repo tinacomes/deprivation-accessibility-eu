@@ -258,7 +258,8 @@ def _weighted_median(v: np.ndarray, w: np.ndarray) -> float:
     return float(np.interp(0.5 * ww.sum(), cum, vv))
 
 
-def _row(scope: str, item: str, base, alt, *, spearman=np.nan, n=np.nan) -> dict:
+def _row(scope: str, item: str, base, alt, *, spearman=np.nan, n=np.nan,
+         spearman_uncapped=np.nan, n_uncapped=np.nan) -> dict:
     base_f, alt_f = float(base), float(alt)
     delta = alt_f - base_f
     return {
@@ -267,7 +268,46 @@ def _row(scope: str, item: str, base, alt, *, spearman=np.nan, n=np.nan) -> dict
         "rel_delta": delta / base_f if base_f not in (0.0,) and np.isfinite(base_f)
         else np.nan,
         "spearman": spearman, "n": n,
+        "spearman_uncapped": spearman_uncapped, "n_uncapped": n_uncapped,
     }
+
+
+def _finite_fill_min(cfg: dict) -> float:
+    """The constant a reachable-but-service-deprived cell's time is filled
+    with (mirrors depacc.deprivation.pipeline). +inf when the config carries
+    no fill at all — then no cell is treated as capped."""
+    fill = ((cfg.get("unreachable") or {}).get("finite_fill_min")
+            or (cfg.get("routing") or {}).get("max_time_min"))
+    return float(fill) if fill else float("inf")
+
+
+def _capped_mask(frame: pd.DataFrame, item: str, cfg: dict,
+                 fill: float) -> np.ndarray:
+    """Cells whose ``t_regime_<item>`` CONTAINS the finite fill.
+
+    Run 30275890587 showed why this matters: every everyday p90 row read
+    ``120.0 -> 120.0, delta 0`` (the fill, not agreement), the everyday scatter
+    was a lattice at multiples of fill/5, and the everyday ρ = 0.867 was
+    substantially a measure of the two engines agreeing on HOW MANY services
+    are out of reach rather than on travel time. For a per-service item a cell
+    is capped when its own time is the fill; for a regime composite (a weighted
+    mean over its services' times) when ANY component service is capped, since
+    one filled component already shifts the composite by ~fill/n_services.
+    """
+    if item in ("everyday", "emergency"):
+        services = list(cfg.get(f"{item}_services", {}) or {})
+        cols = [f"t_regime_{s}" for s in services
+                if f"t_regime_{s}" in frame.columns]
+        if not cols:
+            return np.zeros(len(frame), dtype=bool)
+        vals = frame[cols].to_numpy(float)
+        with np.errstate(invalid="ignore"):
+            return np.any(vals >= fill - 1e-9, axis=1)
+    col = f"t_regime_{item}"
+    if col not in frame.columns:
+        return np.zeros(len(frame), dtype=bool)
+    with np.errstate(invalid="ignore"):
+        return frame[col].to_numpy(float) >= fill - 1e-9
 
 
 def compare_engines(base_out: Path, alt_out: Path, cfg: dict, city: str,
@@ -314,14 +354,26 @@ def compare_engines(base_out: Path, alt_out: Path, cfg: dict, city: str,
         # property of the cell-level series, not of the summary statistic, and a
         # blank on the p90 row reads as "not computed" rather than "same number".
         rho = _weighted_rank_agreement(a, b, pop)
+        # ...and once more with every fill-capped cell removed FROM BOTH
+        # engines: `spearman` on a capped series partly measures agreement on
+        # who is cut off, `spearman_uncapped` measures agreement on travel time
+        # where both engines actually route. Read them together — a large gap
+        # says the headline ρ leans on the cap.
+        fill = _finite_fill_min(cfg)
+        uncapped = both & ~_capped_mask(base, item, cfg, fill) \
+            & ~_capped_mask(alt, item, cfg, fill)
+        rho_unc = _weighted_rank_agreement(
+            np.where(uncapped, a, np.nan), np.where(uncapped, b, np.nan), pop)
         rows.append(_row("travel_time", f"{item}_median_min",
                          _weighted_median(a[both], pop[both]),
                          _weighted_median(b[both], pop[both]),
-                         spearman=rho, n=int(both.sum())))
+                         spearman=rho, n=int(both.sum()),
+                         spearman_uncapped=rho_unc, n_uncapped=int(uncapped.sum())))
         rows.append(_row("travel_time", f"{item}_p90_min",
                          np.nanpercentile(a[both], 90) if both.any() else np.nan,
                          np.nanpercentile(b[both], 90) if both.any() else np.nan,
-                         spearman=rho, n=int(both.sum())))
+                         spearman=rho, n=int(both.sum()),
+                         spearman_uncapped=rho_unc, n_uncapped=int(uncapped.sum())))
         # Who each engine can reach at all, before the pairing throws the
         # disagreement away. A large gap here means the paired rows above speak
         # for a shrinking slice of the city and must be read with that in mind.

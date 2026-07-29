@@ -31,6 +31,8 @@ DEFAULT_OUTCOMES = (
     "mean_everyday", "mean_emergency",
     "gini_everyday", "gini_emergency",
     "compounding_pop_share_50",
+    # threshold-free counterpart of the HH share (see divergence/colocation.py)
+    "compounding_intensity",
 )
 
 

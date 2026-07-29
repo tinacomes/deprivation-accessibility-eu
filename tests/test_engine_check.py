@@ -186,6 +186,39 @@ def test_travel_times_are_compared_on_the_cells_both_engines_reach(tmp_path):
     assert cov["alt"] == pytest.approx(0.5)
 
 
+def test_uncapped_rank_agreement_strips_the_fill_agreement(tmp_path):
+    """Run 30275890587's everyday ρ = 0.867 was substantially the two engines
+    agreeing on WHO IS CUT OFF (both filled at 120), not on travel time.
+    `spearman_uncapped` removes every fill-capped cell from both engines: here
+    half the city is capped under both (perfect agreement on the cutoff) while
+    the routable half is rank-REVERSED, so the capped ρ is pulled up by the
+    fill block and the uncapped ρ tells the truth."""
+    n = 100
+    pop = np.ones(n)
+    lower = np.arange(1.0, n // 2 + 1.0)          # 1..50
+    base_t = np.concatenate([lower, np.full(n // 2, 120.0)])
+    alt_t = np.concatenate([lower[::-1], np.full(n // 2, 120.0)])
+
+    def _write(dirpath, t):
+        dirpath.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame({"population": pop, "t_regime_gp": t}) \
+            .to_parquet(dirpath / "surfaces.parquet")
+
+    _write(tmp_path / "base", base_t)
+    _write(tmp_path / "alt", alt_t)
+    cfg = {"routing": {"engine": "friction", "max_time_min": 120},
+           "unreachable": {"finite_fill_min": None}, "city": {"name": "T"}}
+    tab = compare_engines(tmp_path / "base", tmp_path / "alt", cfg, "t", "alt") \
+        .set_index("item")
+
+    row = tab.loc["gp_median_min"]
+    assert row["n_uncapped"] == n // 2
+    assert row["spearman_uncapped"] == pytest.approx(-1.0, abs=1e-6)
+    # The fill block drags the headline ρ far above the truth on the
+    # routable half.
+    assert row["spearman"] > row["spearman_uncapped"] + 0.5
+
+
 def test_an_interrupted_check_leaves_a_progress_manifest(tmp_path):
     """Run 30164334307 timed out and uploaded nothing at all — the artefact
     step reported "No files were found". A stop must be legible as an artefact,

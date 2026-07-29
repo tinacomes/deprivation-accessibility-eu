@@ -24,12 +24,22 @@ name: engine cross-check (E.1)
 # Forwards, the emergency leg alone is ~47 h — far past the 6 h hard cap on a
 # GitHub-hosted job. Two mechanisms make this tractable:
 #
-# 1. `reverse_modes: car` routes the emergency matrices FACILITIES -> CELLS and
+# 1. `reverse_modes: car walk` routes the matrices FACILITIES -> CELLS and
 #    transposes them back. R5 costs one street search per ORIGIN, so 27
 #    emergency departments cost 27 searches rather than 176 137 — minutes, not
 #    a day. Exact only for a symmetric network, so the run MEASURES the
 #    direction asymmetry against any forward-routed chunks on disk and writes
-#    it to validation/<city>_engine_reverse_asymmetry.csv.
+#    it to validation/<city>_engine_reverse_asymmetry.csv. Hamburg's measured
+#    car asymmetry (run 30275890587, 234 788 pairs): median |Δ| 1.0 min on an
+#    11-min median, mean signed +0.22 — and R5 reports whole minutes, so part
+#    of that is quantisation. WALK is reversed too since walking is not
+#    subject to one-way streets or turn restrictions: 600-2 000 facility
+#    searches replace 176 137 cell searches per service, which turns the
+#    ~2 h walk leg into minutes and makes a SECOND-CITY cross-check (the open
+#    question from §5.10: is the -30 % gini_emergency offset stable across
+#    cities?) an ~30-min dispatch instead of a day. The per-facility ratio
+#    guard in access/matrices.py declines the transpose for any service with
+#    too few cells per facility for it to pay.
 # 2. `budget_min` stops the access stage cleanly while the job is still alive.
 #    A job that hits its own timeout is CANCELLED, and a cancelled job skips
 #    actions/cache's save step — that is how run 30164334307 threw away 2 h 20
@@ -77,9 +87,9 @@ on:
         required: false
         default: "240"
       reverse_modes:
-        description: "Modes routed facilities->cells and transposed back (blank = none). 'car' turns the ~24 h/service emergency leg into minutes; the run reports the measured direction asymmetry."
+        description: "Modes routed facilities->cells and transposed back (blank = none). 'car walk' turns the ~24 h/service emergency leg AND the ~2 h walk leg into minutes; the run reports the measured direction asymmetry."
         required: false
-        default: "car"
+        default: "car walk"
 
 # Two dispatches for the same city must never run at once: they would restore
 # the same derived cache, route overlapping work, and the later save would

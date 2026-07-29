@@ -35,7 +35,7 @@ FEATURE_GROUPS = {
     "level": [],  # filled dynamically from config thresholds
     "equity": ["gini_everyday", "gini_emergency", "p90_p50_ratio_emergency",
                "gini_t_everyday", "gini_t_emergency"],
-    "coupling": ["spearman_rho", "divergence_gap"],
+    "coupling": ["spearman_rho", "divergence_gap", "compounding_intensity"],
     "gradient": ["slope_density_everyday", "slope_density_emergency",
                  "slope_ses_everyday", "slope_ses_emergency"],
 }

@@ -347,6 +347,32 @@ def _weighted_row_mean(vals: np.ndarray, w: np.ndarray) -> np.ndarray:
     return np.where(denom > 0, out, np.nan)
 
 
+def _everyday_level_shares(t: np.ndarray, pop: np.ndarray, cfg: dict) -> dict:
+    """The everyday LEVEL features (``pop_share_beyond_everyday_<thr>``) for one
+    variant's composite time — same definition as
+    :func:`depacc.cityvector.features.level_features`.
+
+    These are the deprivation-function-free cross-city comparables, and they are
+    built from the composite TIME, which contains the ``finite_fill_min``
+    constant whenever a cell misses one or more services. The deprivation
+    targets turned out fill-invariant (the DLF saturates well before 60 min),
+    but that says nothing about these columns — reporting them per variant is
+    what closes that gap (plan §5.5 point 3)."""
+    from depacc.cityvector.features import LEVEL_PREFIX
+
+    thresholds = ((cfg.get("cityvector", {}) or {})
+                  .get("access_thresholds_min", {}) or {}).get("everyday", [])
+    t = np.asarray(t, float)
+    mask = np.isfinite(t) & np.isfinite(pop) & (pop > 0)
+    denom = float(pop[mask].sum())
+    out = {}
+    for thr_min in thresholds:
+        share = (float(pop[mask & (t > float(thr_min))].sum()) / denom
+                 if denom > 0 else float("nan"))
+        out[f"{LEVEL_PREFIX}_everyday_{int(thr_min)}"] = share
+    return out
+
+
 # --------------------------------------------------------------------------- #
 # Targets                                                                      #
 # --------------------------------------------------------------------------- #
@@ -430,7 +456,7 @@ def city_access_sensitivity(cfg: dict, city: str, root: Path, grid: dict,
         if ev is None:
             print(f"  {city}: variant '{v.name}' has no everyday OD; skipped")
             continue
-        dep_ev, _t_ev, zero_share = ev
+        dep_ev, t_ev, zero_share = ev
         tgt = access_variant_targets(dep_ev, dep_em, pop, city, threshold)
         labels = tgt.pop("labels")
         degenerate = bool(tgt["max_tie_everyday"] > _DEGENERATE_TIE_SHARE)
@@ -458,6 +484,9 @@ def city_access_sensitivity(cfg: dict, city: str, root: Path, grid: dict,
                                    "max_tie_everyday")},
             "zero_floor_pop_share": zero_share,
             "degenerate": degenerate,
+            # Level features per variant: composite-TIME-based, so unlike the
+            # deprivation targets they carry the finite fill and must be swept.
+            **_everyday_level_shares(t_ev, pop, cfg),
         })
 
     if base_labels is None:
@@ -500,6 +529,12 @@ def city_access_sensitivity(cfg: dict, city: str, root: Path, grid: dict,
     sens_dir.mkdir(parents=True, exist_ok=True)
     table.to_csv(sens_dir / f"{city}_access_sensitivity.csv", index=False)
 
+    env = rho_envelope(table)
+    if env is not None:
+        print(f"  {city}: coupling ρ = {rho_base:.3f}, accessibility envelope "
+              f"[{env[0]:.3f}, {env[1]:.3f}] over the non-degenerate variants — "
+              f"quote the band, not the point")
+
     # Union flip-cell map: cells that flip class under ANY NON-DEGENERATE variant
     # vs baseline. A degenerate variant relabels half the city by construction,
     # so including it would paint the map red and say nothing.
@@ -515,6 +550,25 @@ def city_access_sensitivity(cfg: dict, city: str, root: Path, grid: dict,
 # --------------------------------------------------------------------------- #
 # Acceptance table                                                            #
 # --------------------------------------------------------------------------- #
+def rho_envelope(table: pd.DataFrame) -> tuple[float, float] | None:
+    """[min, max] of the coupling ρ across the NON-DEGENERATE accessibility
+    variants (baseline included).
+
+    This is the envelope the point estimate should be quoted with: on Hamburg
+    the congestion exponent alone moves ρ from 0.39 (γ=1) to 0.56 (γ=0) around
+    a baseline 0.43, so "moderate positive coupling ρ = 0.43" without the band
+    overstates the precision of the accessibility model. Threshold-axis rows
+    are excluded (their ρ is the baseline's by construction), as are degenerate
+    variants (their surfaces cannot support a percentile coupling at all)."""
+    ok = table[table.axis != "threshold"]
+    if "degenerate" in ok.columns:
+        ok = ok[~ok["degenerate"].fillna(False).astype(bool)]
+    rho = pd.to_numeric(ok["spearman_rho"], errors="coerce").dropna()
+    if rho.empty:
+        return None
+    return float(rho.min()), float(rho.max())
+
+
 def acceptance_table(table: pd.DataFrame) -> pd.DataFrame:
     """Which Layer-3 knobs move the HH share by MORE than the threshold axis
     does. Each knob's range spans its variants together with the baseline (so
@@ -536,6 +590,11 @@ def acceptance_table(table: pd.DataFrame) -> pd.DataFrame:
     """
     thr = table[table.axis == "threshold"]
     hh_thr = _range(thr["share_HH"])
+    # Level features present in the variant table (composite-TIME-based, so
+    # fill-dependent) get a per-knob range column each. The threshold axis
+    # cannot move them by construction — it acts after the percentile
+    # transform — so its ranges are an exact 0.
+    level_cols = [c for c in table.columns if c.startswith("pop_share_beyond_")]
 
     if "degenerate" in table.columns:
         ok = table[~table["degenerate"].fillna(False).astype(bool)]
@@ -555,12 +614,15 @@ def acceptance_table(table: pd.DataFrame) -> pd.DataFrame:
             "knob": knob,
             "hh_share_range": hh_rng,
             "rho_range": _range(block["spearman_rho"]) if n_ok else float("nan"),
+            **{f"{c}_range": (_range(block[c]) if n_ok else float("nan"))
+               for c in level_cols},
             "hh_exceeds_threshold": bool(hh_rng > hh_thr) if n_ok else False,
             "n_variants": n_all,
             "n_degenerate": n_all - n_ok,
         })
     knob_rows.append({
         "knob": "threshold_axis", "hh_share_range": hh_thr, "rho_range": 0.0,
+        **{f"{c}_range": 0.0 for c in level_cols},
         "hh_exceeds_threshold": False, "n_variants": int(len(thr)),
         "n_degenerate": 0,
     })

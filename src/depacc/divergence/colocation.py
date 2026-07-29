@@ -55,3 +55,26 @@ def compounding_pop_share(everyday: RegimeSurface, emergency: RegimeSurface,
     hh = mask & (ev >= threshold) & (em >= threshold)
     total = float(w[mask].sum())
     return float(w[hh].sum()) / total if total > 0 else float("nan")
+
+
+def compounding_intensity(everyday: RegimeSurface,
+                          emergency: RegimeSurface) -> float:
+    """THRESHOLD-FREE compounding: population-weighted mean of
+    ``min(everyday_pct, emergency_pct)``.
+
+    The corrected Layer-3 acceptance table showed the "how high is high"
+    threshold moves the HH share ~6x more than the strongest accessibility
+    assumption, so a headline that depends on the cut is a headline about the
+    cut. This is its continuous counterpart: how deep into BOTH percentile
+    distributions the typical person sits. Fixed anchors, because both
+    marginals are population-weighted-uniform on [0, 1] by construction:
+    1/3 under independence, 1/2 under perfect coupling (comonotone), 1/4 under
+    perfect divergence (countermonotone). Scale-free, threshold-free.
+    """
+    require_same_standardised(everyday, emergency)
+    ev, em, w = everyday.values, emergency.values, everyday.population
+    mask = np.isfinite(ev) & np.isfinite(em) & (w > 0)
+    total = float(w[mask].sum())
+    if total <= 0:
+        return float("nan")
+    return float(np.sum(w[mask] * np.minimum(ev[mask], em[mask])) / total)
