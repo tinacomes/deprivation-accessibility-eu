@@ -1662,3 +1662,62 @@ Remediation sequence (after this lands on main):
    reproduce.
 3. Then delete `debug-od-compare.yml` and read the corrected table against
    §5.10 for the engine decision.
+
+**Step 1 done — run 30544657489 (7.4 min, and this time the speed is real).**
+The guard fired on all seven matrices ("existing matrix has provenance
+UNKNOWN … re-routing") and friction re-routed everything in 2.4 min of
+routing — friction raster cost-distance over a 114×207-pixel window is
+genuinely that cheap; the poisoned run's 7.3 min was indistinguishable by wall
+time alone, which is why provenance had to live in the data. Köln's corrected
+friction row, now on `depacc-results`:
+
+| | contaminated (§5.13) | corrected | Hamburg |
+|---|---|---|---|
+| gini_everyday | 0.559 | **0.618** | 0.657 |
+| gini_emergency | 0.531 | 0.531 (unchanged, was clean) | 0.621 |
+| spearman ρ | 0.448 | **0.520** | 0.428 |
+| HH @ p50 | 0.324 | **0.336** | 0.315 |
+| compounding_intensity | 0.381 | 0.390 | (stale row — still missing) |
+
+The contamination had pulled `gini_everyday` toward r5's 0.543 and understated
+ρ by 0.07 — §5.13's "Köln notably less unequal on the everyday axis" was
+mostly artifact; the corrected value sits near Hamburg's. The sweep
+conclusions survive on clean data (curvature gini_ev range 0.230 ≈ Hamburg's
+0.233; `gamma` again the top Layer-3 knob at HH range 0.031 vs threshold-axis
+0.308; one degenerate variant excluded). Steps 2 (Köln engine-check re-run,
+~90 min) and the stale-Hamburg re-run remain — the cross-city scaler still
+drops `compounding_intensity` because only Köln carries it.
+
+**Step 2 done in one minute — run 30546596359, and the shortcut is sound.**
+The re-dispatch restored the corrected baseline's cache, `reuse: true` reused
+the shadow's cached r5 surfaces (proven genuine by the OD diagnostic) without
+touching `run_access`, and only the comparison recomputed. The ~90-min
+estimate assumed the provenance guard would force a shadow re-route; the reuse
+path short-circuits before routing ever comes up. The anomaly is gone —
+per-service ρ is 0.73–0.89, Hamburg's range — and the **clean Köln E.1
+table** is:
+
+| indicator | friction | r5 | Δ | Hamburg |
+|---|---|---|---|---|
+| gini_emergency | 0.531 | 0.433 | **−18.5 %** | −30 % |
+| gini_everyday | 0.618 | 0.543 | **−12.2 %** | −17 % |
+| spearman ρ | 0.520 | 0.461 | −11.4 % | −6 % |
+| class shares Δ | | | ≤ 0.7 pp | ≤ 0.5 pp |
+| flip_pop_share_50 | | | 25.5 % | 23.7 % |
+
+**E.1 is closed. The engine decision it feeds:** the friction-vs-r5 offset is
+not stable across cities on either Gini axis, so per §5.11 the caveat is not
+correctable and **r5 should be promoted to the Tier-1 primary engine**, with
+friction demoted to a sensitivity variant. The sharpest supporting fact: under
+r5 the two cities are nearly identical on both Ginis (em 0.437/0.433, ev
+0.545/0.543) while friction spreads them by 0.09/0.04 — on two cities this is
+suggestive, not proven, but it says the friction plane's cross-city geometry
+is substantially engine noise. What survives friction: aggregate class shares
+(≤ 0.7 pp) and rank orderings; what does not: per-cell class assignment
+(~24–25 % flip in both cities), absolute times, and Gini levels.
+
+Done with the diagnostic: `debug-od-compare.yml` is deleted. Still open:
+re-run Hamburg (stale cross row, missing `compounding_intensity`; its
+sidecar-less matrices will re-route under the guard — minutes on friction),
+then the r5-promotion implementation (defaults, workflows, methods.md §7.1)
+as its own change, and F.1 (`config/fua_population.csv`) unchanged.
