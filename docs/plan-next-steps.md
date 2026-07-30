@@ -1687,3 +1687,37 @@ conclusions survive on clean data (curvature gini_ev range 0.230 ≈ Hamburg's
 0.308; one degenerate variant excluded). Steps 2 (Köln engine-check re-run,
 ~90 min) and the stale-Hamburg re-run remain — the cross-city scaler still
 drops `compounding_intensity` because only Köln carries it.
+
+**Step 2 done in one minute — run 30546596359, and the shortcut is sound.**
+The re-dispatch restored the corrected baseline's cache, `reuse: true` reused
+the shadow's cached r5 surfaces (proven genuine by the OD diagnostic) without
+touching `run_access`, and only the comparison recomputed. The ~90-min
+estimate assumed the provenance guard would force a shadow re-route; the reuse
+path short-circuits before routing ever comes up. The anomaly is gone —
+per-service ρ is 0.73–0.89, Hamburg's range — and the **clean Köln E.1
+table** is:
+
+| indicator | friction | r5 | Δ | Hamburg |
+|---|---|---|---|---|
+| gini_emergency | 0.531 | 0.433 | **−18.5 %** | −30 % |
+| gini_everyday | 0.618 | 0.543 | **−12.2 %** | −17 % |
+| spearman ρ | 0.520 | 0.461 | −11.4 % | −6 % |
+| class shares Δ | | | ≤ 0.7 pp | ≤ 0.5 pp |
+| flip_pop_share_50 | | | 25.5 % | 23.7 % |
+
+**E.1 is closed. The engine decision it feeds:** the friction-vs-r5 offset is
+not stable across cities on either Gini axis, so per §5.11 the caveat is not
+correctable and **r5 should be promoted to the Tier-1 primary engine**, with
+friction demoted to a sensitivity variant. The sharpest supporting fact: under
+r5 the two cities are nearly identical on both Ginis (em 0.437/0.433, ev
+0.545/0.543) while friction spreads them by 0.09/0.04 — on two cities this is
+suggestive, not proven, but it says the friction plane's cross-city geometry
+is substantially engine noise. What survives friction: aggregate class shares
+(≤ 0.7 pp) and rank orderings; what does not: per-cell class assignment
+(~24–25 % flip in both cities), absolute times, and Gini levels.
+
+Done with the diagnostic: `debug-od-compare.yml` is deleted. Still open:
+re-run Hamburg (stale cross row, missing `compounding_intensity`; its
+sidecar-less matrices will re-route under the guard — minutes on friction),
+then the r5-promotion implementation (defaults, workflows, methods.md §7.1)
+as its own change, and F.1 (`config/fua_population.csv`) unchanged.
