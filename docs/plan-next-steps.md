@@ -1597,3 +1597,68 @@ probably sound** — reversed car was validated on Hamburg with a measured
 asymmetry check and behaves consistently here — but the everyday rows of the
 Köln table (`gini_everyday` −2.8 %, part of the 19.2 % flip share) and any
 "friction is fine for walk" reading must not be quoted.
+
+#### Resolved (run 30542855163): the contamination is in the BASELINE, and the reuse-by-existence rule is the hole
+
+The OD-level diagnostic settled it in one column: the **friction baseline's**
+`od_gp_walk` / `od_pharmacy_walk` / `od_supermarket_walk` / `od_school_*_walk`
+are **100 % integer-valued** — r5's whole-minute signature — and 99.4 %
+pair-identical to the r5 shadow, while the baseline's `od_green_space_*_walk`
+(12.6 % integer) and both car matrices (0.3 %) are genuine continuous friction
+data. The shadow is clean r5 throughout. The comparison's everyday side was r5
+vs (mostly) r5.
+
+The chain that put r5 matrices inside a "friction" baseline:
+
+1. **Run 30476375657** (the §5.12 hang) was rebuilding the Köln BASELINE under
+   forward r5 — into `data/derived/koeln/` proper, not the nested shadow dir.
+   In ~70 min it finished exactly the four cheapest walk matrices before being
+   cancelled.
+2. **§5.12's "nothing is recoverable, the saves are skipped" was wrong** for
+   the post-§5.9 workflow: the whole point of the restore/save split was that
+   explicit `if: always()` save steps DO run when a job is cancelled (it is
+   the *post*-steps of `actions/cache@v4` that cancellation skips). The
+   cancelled run therefore saved a derived cache carrying four forward-r5 OD
+   matrices.
+3. **Run 30484261519** ("run one city", friction) restored that cache, and
+   `run_access` reuses any `od_*.parquet` that exists — `matrices.py`
+   `od_path.exists()` — with no record of what routed it. It re-routed only
+   the missing green-space and car matrices under friction and published the
+   hybrid as the Köln friction baseline. Its 7.3-min wall time, celebrated in
+   §5.13 as cache efficiency, was actually the tell.
+
+Blast radius: every everyday-side Köln number derived from that baseline —
+`cityplane_row` (gini_everyday 0.559, ρ 0.448, HH, compounding_intensity), the
+Layer-3 sweep tables, equity/vulnerability everyday columns, §5.13's
+Hamburg-vs-Köln everyday comparison, and the cross-table row on
+`depacc-results`. Köln's **emergency** columns are clean (both car matrices
+are real friction), so the §5.15 face-value answer stands on its own data:
+**−18.5 % vs Hamburg's −30 %, offset not stable, r5's cross-city Ginis nearly
+identical (0.433/0.437) where friction's differ by 0.09**. Hamburg is
+unaffected throughout (its baseline predates reverse/shadow machinery and its
+shadow was always nested).
+
+Fix (landed with `test_foreign_engine_matrix_is_never_reused`): every OD
+matrix now carries a provenance sidecar `od_<service>_<mode>.meta.json`
+recording engine / mode / cutoff / k_nearest, written on route and on alias.
+`run_access` reuses a matrix only when the sidecar matches what this run would
+route; a missing sidecar (every pre-provenance cache, and any file of unknown
+origin) means re-route. Reverse direction is deliberately NOT part of the
+identity — a transposed matrix is the same data, and the asymmetry report
+prices that claim. `_classify_tail` applies the same rule so a foreign matrix
+in the tail counts as work owed, not work done.
+
+Remediation sequence (after this lands on main):
+
+1. **Re-dispatch "run one city" for `koeln`.** The provenance guard re-routes
+   the four poisoned walk matrices under friction (the sidecar-less friction
+   green/cars also re-route — the price of safe-by-default), rebuilds the
+   surfaces, and re-persists every Köln table to `depacc-results`, overwriting
+   the contaminated rows. ~15–30 min.
+2. **Re-dispatch "engine cross-check (E.1)" for `koeln`.** The r5 shadow also
+   re-routes (its matrices are valid but sidecar-less — ~90 min with the warm
+   raw cache) and the comparison is then friction-vs-r5 for real. Expect the
+   everyday rows to move toward Hamburg's pattern; the emergency rows should
+   reproduce.
+3. Then delete `debug-od-compare.yml` and read the corrected table against
+   §5.10 for the engine decision.

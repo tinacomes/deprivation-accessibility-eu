@@ -9,6 +9,7 @@ everything it finished — whole matrices and, inside a matrix, whole origin
 chunks — is on disk and reused on the next run.
 """
 
+import json
 import sys
 import types
 
@@ -214,6 +215,53 @@ def test_finished_origin_chunks_are_checkpointed_and_reused(tmp_path, monkeypatc
                     part_dir=part_dir, deadline=None)
     assert calls == [["c8", "c9"]]
     assert sorted(od.origin.unique()) == [f"c{i}" for i in range(10)]
+
+
+def test_foreign_engine_matrix_is_never_reused(tmp_path):
+    """The Köln 'friction' baseline was silently built over four r5 walk
+    matrices left in the derived cache by a cancelled forward-r5 run
+    (30476375657 -> 30484261519 -> the ρ=0.9997 anomaly of run 30535437441).
+    An OD file may be reused only when its provenance sidecar matches what the
+    current run would route; no sidecar means no reuse."""
+    from depacc.cli import main
+
+    root = tmp_path / "prov"
+    for stage in ("ingest", "access"):
+        assert main(["run", "--city", "demo", "--stage", stage,
+                     "--project-root", str(root)]) == 0
+    out = next((root / "data" / "derived").glob("*"))
+    od_files = sorted(out.glob("od_*.parquet"))
+    assert od_files, "demo access stage produced no matrices"
+    for od in od_files:
+        meta = json.loads(od.with_suffix(".meta.json").read_text())
+        assert meta["engine"] == "synthetic"
+
+    # Same engine, same provenance: a re-run reuses every matrix untouched.
+    victim = od_files[0]
+    poison = pd.DataFrame({"origin": ["nope"], "dest": ["nope"], "time": [1.0]})
+    before = victim.stat().st_mtime_ns
+    assert main(["run", "--city", "demo", "--stage", "access",
+                 "--project-root", str(root)]) == 0
+    assert victim.stat().st_mtime_ns == before
+
+    # Foreign provenance: the matrix is re-routed, not trusted.
+    poison.to_parquet(victim)
+    victim.with_suffix(".meta.json").write_text(json.dumps(
+        {**json.loads(victim.with_suffix(".meta.json").read_text()),
+         "engine": "r5"}))
+    assert main(["run", "--city", "demo", "--stage", "access",
+                 "--project-root", str(root)]) == 0
+    rebuilt = pd.read_parquet(victim)
+    assert "nope" not in set(rebuilt.origin)
+    assert json.loads(victim.with_suffix(".meta.json").read_text())["engine"] \
+        == "synthetic"
+
+    # No sidecar at all (every pre-provenance cache): also re-routed.
+    poison.to_parquet(victim)
+    victim.with_suffix(".meta.json").unlink()
+    assert main(["run", "--city", "demo", "--stage", "access",
+                 "--project-root", str(root)]) == 0
+    assert "nope" not in set(pd.read_parquet(victim).origin)
 
 
 def test_reverse_chunks_are_capped_by_pair_budget(monkeypatch):

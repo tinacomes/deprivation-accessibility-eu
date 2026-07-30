@@ -368,9 +368,21 @@ def run_access(cfg: dict, city: str, root: Path) -> AccessProgress:
             continue
 
         od_path = out / f"od_{service}_{mode}.parquet"
+        expected = _od_provenance(cfg, mode, synthetic)
         if od_path.exists():
-            progress.done.append(label)
-            continue
+            if _od_reusable(od_path, expected):
+                progress.done.append(label)
+                continue
+            # A matrix routed under a DIFFERENT engine/cutoff must never be
+            # silently reused: the Köln "friction" baseline was built over four
+            # r5 walk matrices left in the derived cache by a cancelled
+            # forward-r5 run (30476375657 -> 30484261519), and nothing
+            # downstream could tell. A file with no provenance sidecar is
+            # treated the same way — re-routing once is the cost of knowing.
+            print(f"od[{label}]: existing matrix has provenance "
+                  f"{_od_meta(od_path) or 'UNKNOWN'}, this run needs "
+                  f"{expected} — re-routing", flush=True)
+            od_path.unlink()
 
         # Alias sub-types reuse the parent's OD matrices (same facilities) — no
         # re-routing. The parent is listed first, so its OD already exists.
@@ -379,6 +391,7 @@ def run_access(cfg: dict, city: str, root: Path) -> AccessProgress:
             src = out / f"od_{parent}_{mode}.parquet"
             if src.exists():
                 pd.read_parquet(src).to_parquet(od_path)
+                _write_od_meta(od_path, expected)
                 print(f"od[{label}]: aliased from '{parent}'", flush=True)
                 progress.done.append(label)
             else:
@@ -400,7 +413,7 @@ def run_access(cfg: dict, city: str, root: Path) -> AccessProgress:
         # inside _r5_matrix: a 60-minute-cutoff car matrix over 176k origins is
         # itself multi-hour, so whole-matrix granularity would not be enough.
         if deadline.expired():
-            _classify_tail(out, plan[i:], progress)
+            _classify_tail(out, plan[i:], progress, cfg, synthetic)
             break
 
         started = time.monotonic()
@@ -448,10 +461,11 @@ def run_access(cfg: dict, city: str, root: Path) -> AccessProgress:
             print(f"od[{label}]: budget expired at {stop.done_chunks}/"
                   f"{stop.n_chunks} origin chunks — checkpointed, will resume",
                   flush=True)
-            _classify_tail(out, plan[i:], progress)
+            _classify_tail(out, plan[i:], progress, cfg, synthetic)
             break
 
         od.to_parquet(od_path)
+        _write_od_meta(od_path, expected)
         _clear_partials(od_path)
         reach = od.origin.nunique()
         print(f"od[{label}]: {len(od)} pairs, "
@@ -469,22 +483,69 @@ def run_access(cfg: dict, city: str, root: Path) -> AccessProgress:
     return progress
 
 
-def _classify_tail(out: Path, tasks: list[dict], progress: AccessProgress) -> None:
+def _classify_tail(out: Path, tasks: list[dict], progress: AccessProgress,
+                   cfg: dict | None = None, synthetic: bool = False) -> None:
     """Account for the work the run never reached.
 
-    A task in the tail is only PENDING if its matrix is not already on disk —
-    a resumed run stops with most of the plan behind it, and reporting those
-    as outstanding would make "N left" grow every dispatch instead of shrink.
+    A task in the tail is only PENDING if its matrix is not already on disk
+    with matching provenance — a resumed run stops with most of the plan
+    behind it, and reporting those as outstanding would make "N left" grow
+    every dispatch instead of shrink; but a foreign-engine matrix in the tail
+    is work still owed, not work done.
     """
     for task in tasks:
         if task["kind"] == "skip" or task["mode"] is None:
             progress.skipped.append(task["service"])
             continue
         label = f"{task['service']},{task['mode']}"
-        if (out / f"od_{task['service']}_{task['mode']}.parquet").exists():
-            progress.done.append(label)
-        else:
-            progress.pending.append(label)
+        od_path = out / f"od_{task['service']}_{task['mode']}.parquet"
+        ok = od_path.exists() and (
+            cfg is None
+            or _od_reusable(od_path, _od_provenance(cfg, task["mode"], synthetic)))
+        (progress.done if ok else progress.pending).append(label)
+
+
+#: Everything that changes the CONTENT of an OD matrix. Reverse routing is
+#: deliberately absent: a transposed matrix is the same data (the measured
+#: asymmetry is the price of that statement), so forward and reversed runs may
+#: reuse each other's output.
+def _od_provenance(cfg: dict, mode: str, synthetic: bool) -> dict:
+    return {
+        "engine": "synthetic" if synthetic else str(cfg["routing"].get("engine", "r5")),
+        "mode": mode,
+        "max_time_min": _mode_cutoff_min(cfg, mode),
+        "k_nearest": int(cfg["routing"].get("k_nearest", 30)),
+    }
+
+
+def _od_meta_path(od_path: Path) -> Path:
+    return od_path.with_suffix(".meta.json")
+
+
+def _od_meta(od_path: Path) -> dict | None:
+    import json
+
+    p = _od_meta_path(od_path)
+    if not p.exists():
+        return None
+    try:
+        return json.loads(p.read_text())
+    except (ValueError, OSError):
+        return None
+
+
+def _write_od_meta(od_path: Path, provenance: dict) -> None:
+    import json
+
+    _od_meta_path(od_path).write_text(json.dumps(provenance, sort_keys=True))
+
+
+def _od_reusable(od_path: Path, expected: dict) -> bool:
+    """An existing matrix may be reused only when its recorded provenance
+    matches what this run would route. No sidecar (pre-provenance caches, or
+    a file that arrived by any other path) means NOT reusable."""
+    meta = _od_meta(od_path)
+    return meta is not None and all(meta.get(k) == v for k, v in expected.items())
 
 
 def _partial_dir(od_path: Path, reverse: bool = False) -> Path:
