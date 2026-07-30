@@ -1662,3 +1662,28 @@ Remediation sequence (after this lands on main):
    reproduce.
 3. Then delete `debug-od-compare.yml` and read the corrected table against
    §5.10 for the engine decision.
+
+**Step 1 done — run 30544657489 (7.4 min, and this time the speed is real).**
+The guard fired on all seven matrices ("existing matrix has provenance
+UNKNOWN … re-routing") and friction re-routed everything in 2.4 min of
+routing — friction raster cost-distance over a 114×207-pixel window is
+genuinely that cheap; the poisoned run's 7.3 min was indistinguishable by wall
+time alone, which is why provenance had to live in the data. Köln's corrected
+friction row, now on `depacc-results`:
+
+| | contaminated (§5.13) | corrected | Hamburg |
+|---|---|---|---|
+| gini_everyday | 0.559 | **0.618** | 0.657 |
+| gini_emergency | 0.531 | 0.531 (unchanged, was clean) | 0.621 |
+| spearman ρ | 0.448 | **0.520** | 0.428 |
+| HH @ p50 | 0.324 | **0.336** | 0.315 |
+| compounding_intensity | 0.381 | 0.390 | (stale row — still missing) |
+
+The contamination had pulled `gini_everyday` toward r5's 0.543 and understated
+ρ by 0.07 — §5.13's "Köln notably less unequal on the everyday axis" was
+mostly artifact; the corrected value sits near Hamburg's. The sweep
+conclusions survive on clean data (curvature gini_ev range 0.230 ≈ Hamburg's
+0.233; `gamma` again the top Layer-3 knob at HH range 0.031 vs threshold-axis
+0.308; one degenerate variant excluded). Steps 2 (Köln engine-check re-run,
+~90 min) and the stale-Hamburg re-run remain — the cross-city scaler still
+drops `compounding_intensity` because only Köln carries it.
