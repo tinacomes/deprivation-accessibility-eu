@@ -1405,3 +1405,142 @@ saves are skipped. Cancel it. Then, with these fixes on main, re-dispatch for
 and walk, and the whole cross-check is one dispatch. That is the second-city
 run §5.10 asked for, and it is what decides whether the −30 % `gini_emergency`
 offset is a stable engine bias or city-specific.
+
+### 5.13 Cross-check of run 30484261519 — the Köln baseline lands; E.1's second city is now a warm dispatch
+
+Run facts: "run one city", `koeln`, dispatched from `main` at `ea3b038` (the
+§5.12 fixes, merged as PR #17), **7.3 min wall, success**, results accumulated
+to `depacc-results` at `6fbddcf`. This is the friction baseline the §5.12
+postmortem called for: `koeln.yaml` now pins `engine: friction`, and the run
+wrote the per-city caches whose absence sent run 30476375657 into a forward-R5
+baseline rebuild. To be explicit about what it is *not*: the engine cross-check
+for Köln has **not** been dispatched since the fixes — this run is the setup
+for it, not the answer to it.
+
+#### What the second city row says
+
+| indicator | Hamburg | Köln |
+|---|---|---|
+| gini_everyday / gini_emergency | 0.657 / 0.621 | 0.559 / 0.531 |
+| spearman ρ | 0.428 | 0.448 |
+| HH @ p50 | 0.3154 | 0.3237 |
+| compounding_intensity | **(empty — see below)** | 0.381 |
+| divergence_gap | −0.035 | −0.028 |
+| pop beyond 30-min everyday | 0.134 | 0.139 |
+
+Köln is less unequal in both regimes and slightly more coupled; the class
+shares and the capped periphery mass are nearly identical. Both cities are
+German friction runs, so nothing about the plane's geometry should be read yet —
+`rank_agreement.csv` is still all-NaN (needs ≥ 3 cities, by design).
+
+**Workstream C's answer replicates on city 2.** `koeln_access_acceptance.csv`:
+threshold_axis HH range **0.304** (Hamburg 0.303) dominates every accessibility
+knob; `gamma` is again the strongest accessibility mover (ρ range 0.164 vs
+Hamburg 0.169); one κ variant degenerate, flagged and excluded. And the
+per-variant level features added in §5.11 item 2 earn their keep on their first
+outing: the `unreachable` axis moves the deprivation targets by ~2e-6 (§5.5
+point 3 again) but moves `pop_share_beyond_everyday_30` by **0.100** — the
+fill-dependence of the level features is now measured rather than asserted, and
+it is material. That column must carry its fill caveat wherever it is used as a
+cross-city comparable.
+
+**SES behaves exactly as §5.7 predicted for a second German city.**
+`ses_census_employment_share`: 88 cells, 1 distinct value — gated, dead in DE
+again. Foreign-born and both age shares: 94.5 % coverage. `cross/cityvector.csv`
+has no `slope_ses_*` column (strict mode; both cities are in the EMP gap), and
+clustering ran on two cities without imputation.
+
+#### Two gaps the run exposes
+
+1. **Hamburg's cross-table row is stale.** `compounding_intensity` is empty for
+   Hamburg in `cross/cityplane.csv` and `cityvector.csv`: the feature landed
+   (§5.11) after Hamburg's last run (30160444058), and the cross tables carry
+   whatever each city's last run produced. Any newly added feature silently
+   NaNs for cities not re-run since — the general hazard behind this instance.
+   A ~6-min cached Hamburg re-dispatch refreshes the row (and gives Hamburg its
+   per-variant level features and ρ envelope too).
+2. **Köln ran Tier-2 without its national SES layer.** `koeln.yaml` declares the
+   Zensus provider and layers but no `sources.ses.urls`, so the URL-gated fetch
+   (D.2, by design) skipped it: only the census-harmonised strata exist for
+   Köln. Hamburg's six theme URLs point at *national* files already in the
+   shared per-country cache, so giving Köln the same URLs is nearly free — and
+   given that fix 5 flipped the sign of Hamburg's Tier-2 vulnerability reading,
+   Köln should have the national strata before any Tier-2 narrative is written.
+
+#### Next steps, in order
+
+1. **Dispatch "engine cross-check (E.1)"** for `koeln`, engine `r5`, from
+   `main` (cache scoping — the workflow header says why). The baseline restores
+   from this run's cache; reverse routing covers both modes; ~30 min. This
+   settles §5.10's open question — stable −30 % `gini_emergency` offset
+   (correctable caveat) vs city-specific (promote r5 to Tier-1 primary,
+   §5.11) — which gates the pilot's engine choice.
+2. **Re-dispatch "run one city" for `hamburg`** (~6 min from cache) to de-stale
+   the cross tables.
+3. **F.1** (`config/fua_population.csv`) in parallel — still pure data
+   assembly, still open.
+4. **Add the Zensus URLs to `koeln.yaml`** (small config change, next code
+   pass).
+5. **F.5 pilot** after the engine decision, with the DE/FR EMP country-mix
+   concern (§5.7) applied to the draw.
+
+### 5.14 Why the Köln cross-check died at 80 min with no log: reverse routing's dense side was unchunked
+
+Run 30526795903 (Köln, r5) failed at 09:48 after 80 minutes with the one
+annotation GitHub gives a dead runner: *"The hosted runner lost communication
+with the server."* The forensics identify the failure class before any log is
+read: step 12 is stuck `in_progress` with no conclusion, every later step —
+including the `if: always()` cache saves — is `pending`, the job log archive
+404s, and the check-run output is empty. A script failure records a step
+conclusion and still runs the always() saves; a step timeout does too; a job
+cancellation says `cancelled`. A failure with *no* step forensics means the
+runner process itself was killed — resource exhaustion, and on this job's
+profile, memory. Everything the run built (NRW download, clip, R5 network,
+finished matrices) went with it, because a dead runner saves no caches: the
+§5.9 resumability machinery protects against *time* overruns, not against
+runner death. The fix must prevent the death, not resume after it.
+
+**The mechanism, found in `_r5_matrix`.** Two compounding facts:
+
+1. Chunking batches the side R5 searches FROM (`origin_chunk: 5000`). Forward,
+   a chunk's dense result is 5000 × ~2k facilities ≈ 10 M pairs — fine.
+   Reversed, the dense side is the *other* one: a walk service with 600–2 000
+   facilities fits in ONE chunk, and r5py materialises a dense
+   facilities × cells frame — up to ~2 000 × ~98k ≈ 200 M pairs, with both id
+   columns as Python-object strings — before the NaN drop. Multi-GB in one
+   allocation.
+2. The k-nearest trim ran per chunk only in the FORWARD branch; reverse parts
+   were accumulated untrimmed and trimmed once after the final concat (the old
+   comment argued per-chunk trimming would keep k per facility-batch — wrong:
+   the chunk frame is already transposed to origin=cell, so a per-chunk trim
+   keeps k per *cell*, a strict superset of the global k nearest that the
+   final cross-chunk trim reduces exactly). So even with smaller chunks, held
+   memory grew toward the full dense product.
+
+On top of that, r5py's default JVM heap is 80 % of physical RAM (~12.8 GB of
+the standard runner's 16), so Python held those frames in what little the JVM
+left. Hamburg never hit this: its successful cross-check (30275890587) reversed
+only the two emergency car services (27 + 124 facilities), and its walk
+matrices came forward-routed from cache. Köln was the first city to actually
+exercise reverse *walk* — §5.11's "~30 min/city" premise — at scale.
+
+**Fixes (all landed, `test_reverse_chunks_are_capped_by_pair_budget` and
+`test_reverse_resume_across_a_chunk_size_change_does_not_duplicate`):**
+
+1. `routing.reverse_pair_budget` (default 12 M) caps the reverse chunk by
+   *pairs*, i.e. chunk ≈ budget / n_cells (~120 facilities per chunk for a
+   ~100k-cell FUA), bounding each dense allocation.
+2. The k-nearest trim now runs per chunk in both directions, and reverse
+   parts fold as they accumulate (held memory ~k × n_cells), with a
+   `drop_duplicates` guard so a resumed run whose checkpoints were written
+   under a different chunk size cannot double-count tied pairs.
+3. The workflow writes `max-memory: 8G` to `~/.config/r5py.yml` before
+   routing: if memory pressure recurs anyway, it surfaces as a Java
+   `OutOfMemoryError` inside the step — a real log line, a failed step whose
+   always() cache saves still run — instead of a dead runner.
+
+**Cost model correction.** Reverse walk is now ~n_facilities/120 chunks per
+service instead of one, each a bounded search + transpose; the ~30-min/city
+estimate for a complete r5 city survives, but the first Köln dispatch also
+re-pays the NRW download/clip/build that died with the runner. Re-dispatch is
+the whole remedy: same inputs (`city: koeln`, `engine: r5`, from `main`).

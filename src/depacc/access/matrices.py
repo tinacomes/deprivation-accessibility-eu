@@ -665,14 +665,36 @@ def _r5_matrix(network, cells: pd.DataFrame, facilities: pd.DataFrame,
     # so whole-matrix granularity would throw away hours of routing every time a
     # run is cut short.
     from_frame = facilities if reverse else cells
+    if reverse:
+        # The memory driver in reverse mode is the OTHER side: r5py returns a
+        # dense frame of chunk_size x len(cells) pairs, so a facility-count
+        # chunk that is fine forward (5000 x ~2k facilities) is a multi-GB
+        # allocation reversed (5000 x ~100k cells) — large enough to starve the
+        # CI runner agent and kill the job with no log (run 30526795903, Köln).
+        # Cap the chunk so one dense result stays within a fixed pair budget.
+        pair_budget = int(cfg["routing"].get("reverse_pair_budget", 12_000_000))
+        chunk = max(1, min(chunk, pair_budget // max(len(destinations), 1)))
     starts = list(range(0, len(from_frame), chunk))
     if part_dir is not None:
         part_dir.mkdir(parents=True, exist_ok=True)
     parts, restored = [], 0
+
+    def _fold(ps: list) -> list:
+        # Reverse mode folds as it goes so held memory stays ~k x n_cells, not
+        # n_chunks of it. drop_duplicates guards a resumed run whose
+        # checkpoints were written under a different chunk size (pairs would
+        # repeat, and both copies would survive a tie in the k-nearest trim).
+        if not reverse or len(ps) < 2:
+            return ps
+        return [keep_k_nearest(
+            pd.concat(ps, ignore_index=True)
+              .drop_duplicates(["origin", "dest"]), k)]
+
     for i, start in enumerate(starts):
         cp = None if part_dir is None else part_dir / f"chunk_{i:05d}.parquet"
         if cp is not None and cp.exists():
             parts.append(pd.read_parquet(cp))
+            parts = _fold(parts)
             restored += 1
             continue
         if deadline is not None and deadline.expired():
@@ -689,19 +711,21 @@ def _r5_matrix(network, cells: pd.DataFrame, facilities: pd.DataFrame,
                 geometry=gpd.points_from_xy(sub.lon, sub.lat), crs="EPSG:4326",
             )
         part = _compute(origins)
-        # Forward: one chunk holds whole origins, so trimming to the k nearest
-        # is safe here and bounds memory. Reverse: a chunk holds ALL cells for a
-        # FEW facilities, so per-chunk trimming would keep k per facility-batch
-        # instead of k per cell — trim once, after the concat.
-        if not reverse:
-            part = keep_k_nearest(part, k)
+        # Trimming to the k nearest per origin is safe in BOTH directions.
+        # Forward: one chunk holds whole origins. Reverse: `part` is already
+        # transposed to origin=cell, so the trim keeps k per CELL within this
+        # facility batch — a superset of the global k nearest per cell, which
+        # the cross-chunk trim below reduces exactly. Without it, the untrimmed
+        # parts accumulate to the full dense facilities x cells product.
+        part = keep_k_nearest(part, k)
         if cp is not None:
             part.to_parquet(cp)
         parts.append(part)
+        parts = _fold(parts)
     if not parts:
         return pd.DataFrame(columns=["origin", "dest", "time"])
     od = pd.concat(parts, ignore_index=True)
-    return keep_k_nearest(od, k) if reverse else od
+    return keep_k_nearest(od.drop_duplicates(["origin", "dest"]), k) if reverse else od
 
 
 def _next_weekday(weekday: str, hhmm: str):

@@ -162,6 +162,12 @@ routing:
   # sensitivity-testable and apply to every routing engine.
   origin_chunk: 5000
   k_nearest: 30
+  # Reverse-mode chunks are additionally capped so one dense r5py result stays
+  # within this many origin x destination pairs. In reverse mode the dense
+  # side is the CELLS (~100k), so `origin_chunk` alone would allow a
+  # 5000 x 100k = 500M-pair allocation — the multi-GB frame that starved the
+  # Köln cross-check runner to death (run 30526795903).
+  reverse_pair_budget: 12000000
   # Modes routed FACILITIES -> CELLS and transposed back. R5 costs one street
   # search per ORIGIN, so for a service with few facilities (27 emergency
   # departments vs 176 137 Hamburg cells) searching from the facilities is

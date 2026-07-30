@@ -145,6 +145,19 @@ jobs:
       - name: Install depacc (full stack)
         run: pip install -e ".[full,dev]"
 
+      # r5py's default JVM heap is 80 % of physical RAM — ~12.8 GB of the
+      # standard runner's 16. That leaves too little for Python holding the
+      # dense reverse-mode result frames: run 30526795903 (Köln) starved the
+      # runner agent and died at 80 min with NO step conclusion, NO cache
+      # saves and NO logs ("the hosted runner lost communication"). Capped,
+      # memory pressure surfaces as a Java OutOfMemoryError inside the step —
+      # a real log line, a failed step, and the always() cache saves still run.
+      - name: Cap the R5 JVM heap so OOM fails the step, not the runner
+        run: |
+          mkdir -p ~/.config
+          echo "max-memory: 8G" > ~/.config/r5py.yml
+          cat ~/.config/r5py.yml
+
       # ------------------------------------------------------------------
       # Caches are RESTORE-only here, with explicit `if: always()` saves after
       # the routing step. This is not a style choice — actions/cache@v4
