@@ -216,6 +216,82 @@ def test_finished_origin_chunks_are_checkpointed_and_reused(tmp_path, monkeypatc
     assert sorted(od.origin.unique()) == [f"c{i}" for i in range(10)]
 
 
+def test_reverse_chunks_are_capped_by_pair_budget(monkeypatch):
+    """Reverse mode's dense side is the CELLS, so the facility-count chunk that
+    is fine forward becomes a chunk x n_cells allocation reversed — the frame
+    that starved the Köln cross-check runner to death (run 30526795903). The
+    pair budget must shrink the chunk, and the per-chunk trim + fold must still
+    yield exactly the k nearest facilities per cell."""
+    pytest.importorskip("geopandas")
+    calls: list = []
+    _install_stub_r5py(monkeypatch, calls)
+    n_cells, n_fac = 50, 8
+    cells = pd.DataFrame({
+        "cell_id": [f"c{i}" for i in range(n_cells)],
+        "lon": np.linspace(10.0, 10.1, n_cells),
+        "lat": np.linspace(53.5, 53.6, n_cells),
+    })
+    facilities = pd.DataFrame({
+        "dest_id": [f"f{i}" for i in range(n_fac)],
+        "lon": np.linspace(10.02, 10.08, n_fac),
+        "lat": np.linspace(53.52, 53.58, n_fac),
+    })
+    cfg = {"routing": {
+        "departure": {"weekday": "tuesday", "time_window_start": "08:00",
+                      "time_window_minutes": 60},
+        "max_time_min": 60, "walk_speed_kmh": 4.8,
+        "origin_chunk": 5000, "k_nearest": 2,
+        # 100 pairs / 50 cells -> at most 2 facilities searched per chunk.
+        "reverse_pair_budget": 100,
+    }}
+    od = _r5_matrix(None, cells, facilities, "car", cfg, reverse=True)
+    assert [len(c) for c in calls] == [2, 2, 2, 2]
+    assert set(od.origin) == set(cells.cell_id)
+    assert od.groupby("origin").size().max() <= 2
+    assert not od.duplicated(["origin", "dest"]).any()
+
+
+def test_reverse_resume_across_a_chunk_size_change_does_not_duplicate(
+        tmp_path, monkeypatch):
+    """A checkpoint written under an older (larger) chunking can cover pairs
+    the new chunking routes again; both copies tie on time, so without the
+    dedupe the k-nearest trim would keep duplicates."""
+    pytest.importorskip("geopandas")
+    calls: list = []
+    _install_stub_r5py(monkeypatch, calls)
+    n_cells, n_fac = 50, 8
+    cells = pd.DataFrame({
+        "cell_id": [f"c{i}" for i in range(n_cells)],
+        "lon": np.linspace(10.0, 10.1, n_cells),
+        "lat": np.linspace(53.5, 53.6, n_cells),
+    })
+    facilities = pd.DataFrame({
+        "dest_id": [f"f{i}" for i in range(n_fac)],
+        "lon": np.linspace(10.02, 10.08, n_fac),
+        "lat": np.linspace(53.52, 53.58, n_fac),
+    })
+    cfg = {"routing": {
+        "departure": {"weekday": "tuesday", "time_window_start": "08:00",
+                      "time_window_minutes": 60},
+        "max_time_min": 60, "walk_speed_kmh": 4.8,
+        "origin_chunk": 5000, "k_nearest": 2,
+        "reverse_pair_budget": 100,
+    }}
+    part_dir = _partial_dir(tmp_path / "od_gp_car.parquet", reverse=True)
+    part_dir.mkdir(parents=True)
+    # Stale chunk 0: the WHOLE matrix, as a single-chunk run would have written.
+    stale = pd.DataFrame({
+        "origin": np.tile([f"c{i}" for i in range(n_cells)], n_fac),
+        "dest": np.repeat([f"f{i}" for i in range(n_fac)], n_cells),
+        "time": np.repeat(np.arange(1.0, n_fac + 1.0), n_cells),
+    })
+    stale.to_parquet(part_dir / "chunk_00000.parquet")
+    od = _r5_matrix(None, cells, facilities, "car", cfg,
+                    part_dir=part_dir, reverse=True)
+    assert not od.duplicated(["origin", "dest"]).any()
+    assert od.groupby("origin").size().max() <= 2
+
+
 def test_repeated_dispatches_converge_without_repeating_work(tmp_path, monkeypatch):
     """The operating procedure is "dispatch until it finishes", so the property
     that matters is not just that a stop is clean but that the dispatches

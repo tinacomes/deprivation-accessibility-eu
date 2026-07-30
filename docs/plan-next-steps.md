@@ -1483,3 +1483,64 @@ clustering ran on two cities without imputation.
    pass).
 5. **F.5 pilot** after the engine decision, with the DE/FR EMP country-mix
    concern (§5.7) applied to the draw.
+
+### 5.14 Why the Köln cross-check died at 80 min with no log: reverse routing's dense side was unchunked
+
+Run 30526795903 (Köln, r5) failed at 09:48 after 80 minutes with the one
+annotation GitHub gives a dead runner: *"The hosted runner lost communication
+with the server."* The forensics identify the failure class before any log is
+read: step 12 is stuck `in_progress` with no conclusion, every later step —
+including the `if: always()` cache saves — is `pending`, the job log archive
+404s, and the check-run output is empty. A script failure records a step
+conclusion and still runs the always() saves; a step timeout does too; a job
+cancellation says `cancelled`. A failure with *no* step forensics means the
+runner process itself was killed — resource exhaustion, and on this job's
+profile, memory. Everything the run built (NRW download, clip, R5 network,
+finished matrices) went with it, because a dead runner saves no caches: the
+§5.9 resumability machinery protects against *time* overruns, not against
+runner death. The fix must prevent the death, not resume after it.
+
+**The mechanism, found in `_r5_matrix`.** Two compounding facts:
+
+1. Chunking batches the side R5 searches FROM (`origin_chunk: 5000`). Forward,
+   a chunk's dense result is 5000 × ~2k facilities ≈ 10 M pairs — fine.
+   Reversed, the dense side is the *other* one: a walk service with 600–2 000
+   facilities fits in ONE chunk, and r5py materialises a dense
+   facilities × cells frame — up to ~2 000 × ~98k ≈ 200 M pairs, with both id
+   columns as Python-object strings — before the NaN drop. Multi-GB in one
+   allocation.
+2. The k-nearest trim ran per chunk only in the FORWARD branch; reverse parts
+   were accumulated untrimmed and trimmed once after the final concat (the old
+   comment argued per-chunk trimming would keep k per facility-batch — wrong:
+   the chunk frame is already transposed to origin=cell, so a per-chunk trim
+   keeps k per *cell*, a strict superset of the global k nearest that the
+   final cross-chunk trim reduces exactly). So even with smaller chunks, held
+   memory grew toward the full dense product.
+
+On top of that, r5py's default JVM heap is 80 % of physical RAM (~12.8 GB of
+the standard runner's 16), so Python held those frames in what little the JVM
+left. Hamburg never hit this: its successful cross-check (30275890587) reversed
+only the two emergency car services (27 + 124 facilities), and its walk
+matrices came forward-routed from cache. Köln was the first city to actually
+exercise reverse *walk* — §5.11's "~30 min/city" premise — at scale.
+
+**Fixes (all landed, `test_reverse_chunks_are_capped_by_pair_budget` and
+`test_reverse_resume_across_a_chunk_size_change_does_not_duplicate`):**
+
+1. `routing.reverse_pair_budget` (default 12 M) caps the reverse chunk by
+   *pairs*, i.e. chunk ≈ budget / n_cells (~120 facilities per chunk for a
+   ~100k-cell FUA), bounding each dense allocation.
+2. The k-nearest trim now runs per chunk in both directions, and reverse
+   parts fold as they accumulate (held memory ~k × n_cells), with a
+   `drop_duplicates` guard so a resumed run whose checkpoints were written
+   under a different chunk size cannot double-count tied pairs.
+3. The workflow writes `max-memory: 8G` to `~/.config/r5py.yml` before
+   routing: if memory pressure recurs anyway, it surfaces as a Java
+   `OutOfMemoryError` inside the step — a real log line, a failed step whose
+   always() cache saves still run — instead of a dead runner.
+
+**Cost model correction.** Reverse walk is now ~n_facilities/120 chunks per
+service instead of one, each a bounded search + transpose; the ~30-min/city
+estimate for a complete r5 city survives, but the first Köln dispatch also
+re-pays the NRW download/clip/build that died with the runner. Re-dispatch is
+the whole remedy: same inputs (`city: koeln`, `engine: r5`, from `main`).
