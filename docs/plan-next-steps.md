@@ -1544,3 +1544,56 @@ service instead of one, each a bounded search + transpose; the ~30-min/city
 estimate for a complete r5 city survives, but the first Köln dispatch also
 re-pays the NRW download/clip/build that died with the runner. Re-dispatch is
 the whole remedy: same inputs (`city: koeln`, `engine: r5`, from `main`).
+
+### 5.15 Köln E.1 run 30535437441: completed — headline says "offset not stable", but the everyday side is under a validity hold
+
+The re-dispatch with the §5.14 fixes **completed**: 93 min in the routing step
+(NRW fetch/clip + R5 build + all seven matrices), caches saved, artifact
+uploaded, and the JVM cap + pair-budget chunking held — the memory-death mode
+did not recur. `koeln_engine_check.csv`, face value:
+
+| indicator | friction | r5 | Δ | Hamburg (§5.10) |
+|---|---|---|---|---|
+| gini_emergency | 0.531 | 0.433 | **−18.5 %** | −30 % |
+| gini_everyday | 0.559 | 0.543 | −2.8 % | −17 % |
+| spearman ρ | 0.448 | 0.461 | +2.9 % | −6 % |
+| class shares Δ | | | ≤ 0.64 pp | ≤ 0.5 pp |
+| flip_pop_share_50 | | | 19.2 % | 23.7 % |
+| emergency median | 2.59 | 8.0 | +208 % | +187 % |
+
+Taken at face value this answers §5.10's question: the `gini_emergency` offset
+is **not** a stable engine bias (−30 % vs −18.5 %; the r5 Ginis are nearly
+identical across cities — 0.437/0.433 — while the friction Ginis differ by
+0.09, i.e. most of the FRICTION cross-city spread on that axis is engine
+artifact). Per §5.11 that finding, if it survives, argues for promoting r5 to
+the Tier-1 primary engine.
+
+**But the run also carries an anomaly that puts the everyday side on hold.**
+The four REVERSE-routed walk services agree with the friction baseline far too
+well: gp ρ = 0.9997 (uncapped 0.9999 on 68 557 cells), median deltas of
+0.001–0.011 min; the shadow's own summary reproduces friction's per-service
+medians to hundredths (gp 5.200 vs 5.181, school 2.330 vs 2.307). A 1 km
+friction raster cannot rank 100 m cells against a street network at ρ = 0.9997
+— Hamburg's forward-routed walk gave ρ 0.73–0.87 and +34–81 % levels. The
+control group behaves: `green_space` (forward-routed under r5 — the 20× guard
+declined the transpose at 17.6×) disagrees with friction exactly as expected
+(3.79 vs 0.0 median, ρ 0.85), and both reversed CAR services match Hamburg's
+sane pattern (+197–207 %, ρ 0.78–0.89). The anomaly isolates precisely to
+{reverse × walk}, the one path that had never run before today. Code reading
+so far rules out: OD inheritance (`_INHERITED` copies only cells/boundary/
+network-paths/facilities), shadow-dir cache pollution (the restored derived
+cache predates any engine_r5 dir), and same-file comparison (car rows differ).
+
+**Decisive test, ready to dispatch.** `debug-od-compare.yml` (branch
+`claude/engine-cross-check-status-gqavae`, temporary) restores the run's
+derived cache and compares base vs shadow OD parquets pair by pair, printing
+to the job log. The sharpest tell costs one column: **r5py returns whole
+minutes**, so if the shadow's reversed-walk `time` values are non-integer
+floats, they are friction data wearing an r5 filename; if they are integers,
+they are genuinely r5 and the agreement needs a different explanation.
+
+Until that verdict: the **emergency-side numbers (the actual E.1 question) are
+probably sound** — reversed car was validated on Hamburg with a measured
+asymmetry check and behaves consistently here — but the everyday rows of the
+Köln table (`gini_everyday` −2.8 %, part of the 19.2 % flip share) and any
+"friction is fine for walk" reading must not be quoted.
