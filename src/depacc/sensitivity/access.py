@@ -292,6 +292,21 @@ def od_mode_status(out: Path, cfg: dict, services: list[str]) -> dict[str, str]:
                     status.setdefault(mode, "ok")
                 else:
                     status[mode] = "foreign"
+    # A mode is only fully usable when EVERY service that has any OD at all
+    # carries it. A budget-stopped run leaves some services' extra-mode
+    # matrices unrouted, and the variant's elementwise-min across modes would
+    # then silently read walk-only times for exactly those services — a
+    # partial walk+car variant that looks complete. Reported as
+    # "partial:<missing services>" and treated like foreign provenance.
+    services_with_any = {s for s in services
+                         if any(out.glob(f"od_{s}_*.parquet"))}
+    for mode, s in list(status.items()):
+        if s != "ok":
+            continue
+        missing = sorted(svc for svc in services_with_any
+                         if not (out / f"od_{svc}_{mode}.parquet").exists())
+        if missing:
+            status[mode] = "partial:" + ",".join(missing)
     return status
 
 
@@ -524,15 +539,16 @@ def city_access_sensitivity(cfg: dict, city: str, root: Path, grid: dict,
     # evaluating it would repeat the Köln contamination on the read side. A
     # variant whose modes were never routed at all is skipped as before.
     mode_status = od_mode_status(out, cfg, services)
-    foreign_modes = {m for m, s in mode_status.items() if s == "foreign"}
-    baseline_foreign = sorted(
-        set(cfg["regimes"]["everyday"]["modes"]) & foreign_modes)
-    if baseline_foreign:
+    unusable_modes = {m: s for m, s in mode_status.items() if s != "ok"}
+    baseline_bad = sorted(
+        set(cfg["regimes"]["everyday"]["modes"]) & set(unusable_modes))
+    if baseline_bad:
         print(f"  {city}: everyday OD matrices for baseline mode(s) "
-              f"{baseline_foreign} carry foreign or missing provenance "
-              f"sidecars — this cache was not routed by this config "
-              f"(engine/cutoff/k mismatch). Re-run the access stage; "
-              f"sweep skipped.")
+              f"{baseline_bad} are not usable "
+              f"({ {m: unusable_modes[m] for m in baseline_bad} }) — foreign "
+              f"provenance means the cache was not routed by this config; "
+              f"partial coverage means routing stopped mid-way. Re-run the "
+              f"access stage; sweep skipped.")
         return None
     variants = expand_access_variants(cfg, grid, available_modes=set(mode_status))
 
@@ -544,12 +560,23 @@ def city_access_sensitivity(cfg: dict, city: str, root: Path, grid: dict,
     var_degenerate: list[bool] = []
     base_dep_ev = None
     for v in variants:
-        needs_foreign = sorted(set(v.params["modes"]) & foreign_modes)
-        if needs_foreign:
-            reason = (f"od matrices for mode(s) {', '.join(needs_foreign)} have "
-                      f"foreign or missing provenance — routed under a different "
-                      f"engine/cutoff/k than this config; re-route them (e.g. "
-                      f"routing.route_sensitivity_modes: true) to evaluate")
+        needs_bad = sorted(set(v.params["modes"]) & set(unusable_modes))
+        if needs_bad:
+            parts = []
+            for m in needs_bad:
+                s = unusable_modes[m]
+                if s.startswith("partial:"):
+                    parts.append(
+                        f"mode '{m}' covers only part of the everyday services "
+                        f"(missing: {s.split(':', 1)[1]}) — routing stopped "
+                        f"mid-way; re-dispatch to finish before evaluating")
+                else:
+                    parts.append(
+                        f"mode '{m}' has foreign or missing provenance — "
+                        f"routed under a different engine/cutoff/k than this "
+                        f"config; re-route it (e.g. "
+                        f"routing.route_sensitivity_modes: true)")
+            reason = "od matrices not usable: " + "; ".join(parts)
             print(f"  {city}: variant '{v.name}' NOT EVALUABLE — {reason}")
             p = v.params
             rows.append({

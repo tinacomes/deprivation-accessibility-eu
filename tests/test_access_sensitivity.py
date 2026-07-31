@@ -469,3 +469,25 @@ def test_cli_grid_governs_the_access_sweep(demo_cache, tmp_path):
                         / "demo_access_sensitivity.csv")
     var = table[table.axis != "threshold"]
     assert set(var.variant) == {"baseline", "gamma_0.9"}
+
+
+def test_partial_mode_coverage_marks_variant_not_evaluable(demo_cache, tmp_path):
+    """A budget-stopped run leaves some services' extra-mode matrices
+    unrouted; the walk+car variant must not silently read walk-only times for
+    exactly those services."""
+    from depacc.sensitivity.access import city_access_sensitivity, od_mode_status
+
+    cfg, root2, out = _copy_cache(demo_cache, tmp_path)
+    (out / "od_gp_car.parquet").unlink()
+    (out / "od_gp_car.meta.json").unlink()
+
+    services = list(cfg.get("everyday_services", {}))
+    status = od_mode_status(out, cfg, services)
+    assert status["walk"] == "ok"
+    assert status["car"].startswith("partial:") and "gp" in status["car"]
+
+    table = city_access_sensitivity(cfg, "demo", root2, BASE_GRID, threshold=0.5)
+    row = table[table.variant == "everyday_modes_walk+car"].iloc[0]
+    assert not bool(row["evaluable"])
+    assert "routing stopped mid-way" in row["not_evaluable_reason"]
+    assert bool(table[table.variant == "gamma_0.0"]["evaluable"].iloc[0])
