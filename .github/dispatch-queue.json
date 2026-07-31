@@ -1,9 +1,20 @@
 [
   {
-    "workflow": "tier1-batch.yml",
+    "workflow": "run-city.yml",
     "ref": "main",
     "inputs": {
-      "cities": "[\"madrid\"]"
+      "city": "hamburg",
+      "stage": "all",
+      "route_sensitivity_modes": "true"
+    }
+  },
+  {
+    "workflow": "run-city.yml",
+    "ref": "main",
+    "inputs": {
+      "city": "koeln",
+      "stage": "all",
+      "route_sensitivity_modes": "true"
     }
   }
 ]
