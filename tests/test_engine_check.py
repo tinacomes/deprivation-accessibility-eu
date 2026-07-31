@@ -249,3 +249,34 @@ def test_an_interrupted_check_leaves_a_progress_manifest(tmp_path):
     assert table.loc[table.status == "pending", "matrix"].tolist() == \
         ["emergency_dept_hospital,car"]
     assert (table["alt_engine"] == "r5").all()
+
+
+def test_qq_table_reads_a_constant_shift_and_excludes_capped_cells():
+    """E.4: the QQ curves compare travel-time DISTRIBUTIONS, so a constant
+    +5-min engine offset must appear as exactly +5 at every quantile, and
+    fill-capped cells (the §7.1 lattice) must not enter the curves at all."""
+    from depacc.quality.engine_check import qq_table
+
+    cfg = load_config("demo")
+    rng = np.random.default_rng(0)
+    n = 500
+    t = rng.uniform(1.0, 30.0, n)
+    base = pd.DataFrame({"population": np.ones(n), "t_regime_everyday": t})
+    alt = pd.DataFrame({"population": np.ones(n), "t_regime_everyday": t + 5.0})
+    tab = qq_table(base, alt, cfg)
+    ev = tab[tab.regime == "everyday"]
+    assert len(ev) == 99
+    assert np.allclose(ev.alt_min - ev.base_min, 5.0, atol=1e-9)
+
+    # Mark 50 cells fill-capped via a per-service column and give them absurd
+    # composite times: the curves must not move past the uncapped range.
+    fill = float(cfg["routing"]["max_time_min"])
+    service = next(iter(cfg["everyday_services"]))
+    for frame in (base, alt):
+        frame[f"t_regime_{service}"] = 0.0
+        frame.loc[:49, f"t_regime_{service}"] = fill
+        frame.loc[:49, "t_regime_everyday"] = 999.0
+    tab2 = qq_table(base, alt, cfg)
+    ev2 = tab2[tab2.regime == "everyday"]
+    assert ev2.base_min.max() <= 30.0 + 1e-9
+    assert ev2.alt_min.max() <= 35.0 + 1e-9

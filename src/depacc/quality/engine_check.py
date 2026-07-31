@@ -474,6 +474,91 @@ def _scatter(base_out: Path, alt_out: Path, cfg: dict, city: str,
     plt.close(fig)
 
 
+def qq_table(base: pd.DataFrame, alt: pd.DataFrame, cfg: dict,
+             quantiles: np.ndarray | None = None) -> pd.DataFrame:
+    """E.4 — the resolution sanity check as paired population-weighted
+    quantiles of ``t_regime_*`` per regime, uncapped cells only.
+
+    The plan asked for ~200 random cells' friction-vs-network walk times in a
+    quantile-quantile plot; the full population-weighted quantile curves are
+    the same check without the sampling noise. Fill-capped cells are excluded
+    on BOTH engines (via :func:`_capped_mask`) so the curves compare travel
+    times, not the finite-fill constant — the §7.1 capped-lattice caveat.
+    """
+    if quantiles is None:
+        quantiles = np.arange(1, 100) / 100.0
+    fill = _finite_fill_min(cfg)
+    pop = base["population"].to_numpy(float)
+    rows = []
+    for regime in ("everyday", "emergency"):
+        col = f"t_regime_{regime}"
+        if col not in base.columns or col not in alt.columns:
+            continue
+        a = base[col].to_numpy(float)
+        b = alt[col].to_numpy(float)
+        capped = _capped_mask(base, regime, cfg, fill) | _capped_mask(alt, regime, cfg, fill)
+        m = np.isfinite(a) & np.isfinite(b) & np.isfinite(pop) & (pop > 0) & ~capped
+        if not m.any():
+            continue
+        for q in quantiles:
+            rows.append({
+                "regime": regime, "quantile": float(q),
+                "base_min": _weighted_quantile(a[m], pop[m], q),
+                "alt_min": _weighted_quantile(b[m], pop[m], q),
+            })
+    return pd.DataFrame(rows, columns=["regime", "quantile", "base_min", "alt_min"])
+
+
+def _weighted_quantile(v: np.ndarray, w: np.ndarray, q: float) -> float:
+    order = np.argsort(v)
+    v, w = v[order], w[order]
+    cum = np.cumsum(w)
+    return float(v[np.searchsorted(cum, q * cum[-1])])
+
+
+def _qq_plot(base_out: Path, alt_out: Path, cfg: dict, city: str,
+             alt_engine: str, out_png: Path) -> pd.DataFrame | None:
+    """Write the E.4 QQ table + figure (``<city>_engine_qq.csv/.png``)."""
+    base = pd.read_parquet(base_out / "surfaces.parquet")
+    alt = pd.read_parquet(alt_out / "surfaces.parquet").reindex(base.index)
+    table = qq_table(base, alt, cfg)
+    if table.empty:
+        return None
+    table.insert(0, "city", city)
+    table.to_csv(out_png.with_suffix(".csv"), index=False)
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except Exception:  # pragma: no cover - viz extra not installed
+        print("  matplotlib not installed; skipping engine QQ figure")
+        return table
+    from depacc.viz.pipeline import _watermark
+
+    base_engine = cfg["routing"].get("engine", "r5")
+    name = cfg["city"].get("name", city)
+    regimes = list(table.regime.unique())
+    fig, axes = plt.subplots(1, len(regimes), figsize=(5.2 * len(regimes), 5.0),
+                             squeeze=False)
+    for ax, regime in zip(axes[0], regimes):
+        block = table[table.regime == regime]
+        hi = float(max(block.base_min.max(), block.alt_min.max())) or 1.0
+        ax.plot([0, hi], [0, hi], color="#d1495b", lw=1.2, ls="--", label="1:1")
+        ax.plot(block.base_min, block.alt_min, color="#1d3557", lw=1.6,
+                marker=".", ms=3, label="pop-weighted quantiles 1–99")
+        ax.set_xlabel(f"{base_engine} t_regime quantile (min)")
+        ax.set_ylabel(f"{alt_engine} t_regime quantile (min)")
+        ax.set_title(f"{regime} (uncapped cells)", fontsize=10)
+        ax.legend(frameon=False, fontsize=8, loc="lower right")
+    fig.suptitle(f"{name}: E.4 resolution QQ — {base_engine} vs {alt_engine}",
+                 fontsize=12)
+    _watermark(fig, cfg)
+    fig.tight_layout()
+    fig.savefig(out_png, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+    return table
+
+
 # --------------------------------------------------------------------------- #
 # Driver                                                                       #
 # --------------------------------------------------------------------------- #
@@ -530,6 +615,8 @@ def run_engine_check(cfg: dict, city: str, root: Path, engine: str = "r5",
     table.to_csv(val_dir / f"{city}_engine_check.csv", index=False)
     _scatter(base_out, alt_out, cfg, city, engine, table,
              val_dir / f"{city}_engine_scatter.png")
+    _qq_plot(base_out, alt_out, cfg, city, engine,
+             val_dir / f"{city}_engine_qq.png")
 
     tt = table[table.scope == "travel_time"].dropna(subset=["spearman"])
     if not tt.empty:

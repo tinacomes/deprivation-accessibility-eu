@@ -549,10 +549,19 @@ naming the scale of every reported level.
 
 OSM facility completeness characterised **per country** by benchmarking OSM
 hospital/pharmacy counts against national registries (or OSM intrinsic
-quality metrics); completeness table produced by `quality/`; the Tier-1
-sample can be restricted to cities above `quality.completeness_threshold`.
+quality metrics): `depacc completeness --country CC` counts the benchmark
+services country-wide via Overpass (`quality.benchmark_osm` — deliberately
+*all* hospitals, no `emergency=yes` filter, because registries count all
+hospitals) and joins the hand-compiled, source-attributed counts in
+`config/registry_counts.csv` (`quality/completeness.py`; results and status
+in `docs/validation.md`). The Tier-1 sample can be restricted to cities above
+`quality.completeness_threshold`.
 For Tier 2 we test whether adding transit changes city *rankings* and
-clustering, not just levels.
+clustering, not just levels. The E.4 resolution sanity check ships with the
+engine cross-check: `validation/<city>_engine_qq.csv/.png`, population-
+weighted 1–99 % quantile curves of the regime times under both engines on
+uncapped cells only. Face validation (E.5) is per anchor city in
+`docs/face-validation-<city>.md`.
 
 ### 7.1 Routing-engine cross-check (E.1)
 
