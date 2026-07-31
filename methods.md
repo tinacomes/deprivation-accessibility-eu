@@ -705,17 +705,29 @@ all seven matrices) and minutes warm. Against Hamburg:
 | flip_pop_share_50 | 23.7 % | 25.5 % |
 
 The engine bias differs by city on both Gini axes, so it cannot be removed by
-a correction factor — and under r5 the two cities are nearly identical on both
-Ginis (emergency 0.437/0.433, everyday 0.545/0.543) where friction spreads
-them by 0.09/0.04, i.e. a substantial part of friction's *cross-city* spread
-on those axes is engine artifact. Hence the promotion recorded in §5: r5 is
-the primary engine for every tier, friction the sensitivity variant. What the
-two-city check licenses either way: aggregate typology class shares and the
-divergence ρ are engine-robust (≤ 0.7 pp, ≤ 11 %); per-cell typology class,
-absolute travel times and Gini *levels* are not. One structural consequence:
-the Layer-3 `everyday_mode` (walk+car) variant, degenerate under friction
-because the 1 km car raster zero-floors nearly every cell (§7a), becomes
-evaluable under the r5 primary.
+a correction factor. Hence the promotion recorded in §5: r5 is the primary
+engine for every tier, friction the sensitivity variant. What the two-city
+check licenses either way: aggregate typology class shares and the divergence
+ρ are engine-robust (≤ 0.7 pp, ≤ 11 %); per-cell typology class, absolute
+travel times and Gini *levels* are not.
+
+**A caution the first r5-primary baselines added (runs 30614554456 /
+30619284021): the emergency deprivation Gini is fragile to how ~0.1 % of
+cells are handled.** Hamburg's r5-primary baseline reproduced its E.1 shadow
+on everything (gini_everyday Δ 0.001, ρ Δ 0.003, identical emergency OD pair
+counts) *except* `gini_emergency`: 0.437 → 0.492. The cause is not routing
+but the **routability mask**: forward-routed walk (the shadow) left 218 cells
+with no pairs in any matrix — masked NaN — while reverse routing links those
+same cells as destinations, so the baseline masks 0 and finite-fills their
+emergency times at 120 min instead. Passing ~0.1 % of the population between
+"excluded" and "included at the fill" moves the unbounded convex DCF's Gini
+by +0.055; the bounded everyday DLF barely notices. Consequently the earlier
+observation that the two cities' r5 Ginis "nearly coincide" (0.437/0.433) was
+partly a mask artifact — the r5-primary values are 0.492/0.433. Read
+`gini_emergency` alongside the deprivation-function-free travel-time Gini
+`gini_t_emergency` (0.282/0.265, insensitive to the tail treatment), and
+treat the off-network-cell policy as an explicit sensitivity axis rather than
+an implementation detail.
 
 **Every OD matrix carries engine provenance, and reuse requires a match.**
 Found the hard way: a cancelled forward-r5 run left four r5 walk matrices in
@@ -823,8 +835,15 @@ zero-minute pair. Between them they had produced the headline "κ moves the HH
 share most" — both reporting the identical range because both returned the same
 degenerate split. The walk+car degeneracy is a friction artifact, not a fact
 about the mode set: under the r5 primary engine (§5) the car times are
-street-resolved and the `everyday_mode` axis becomes evaluable — expect it in
-the acceptance table from the first r5-primary runs onward. The per-variant table carries `max_tie_everyday`,
+street-resolved and the `everyday_mode` axis becomes evaluable in principle.
+Not yet in practice: the sweep reads *saved* everyday-car ODs, which are only
+routed when `route_sensitivity_modes` is on, and the first r5-primary runs
+showed the sweep happily consuming the friction-era everyday-car matrices
+left in the derived cache (identical degenerate split to the friction runs) —
+the sweep does not yet honour the OD provenance sidecars that `run_access`
+does. Until it checks them and the everyday-car ODs are re-routed under r5,
+the walk+car variant's rows measure a friction artifact and must not be
+read. The per-variant table carries `max_tie_everyday`,
 `zero_floor_pop_share` and `degenerate` so this is visible rather than inferred.
 Only the HH share carries an "exceeds the threshold axis" verdict: ρ is computed
 after the percentile transform, which the typology threshold does not touch, so

@@ -1788,3 +1788,52 @@ E.1 is answered, A′–D are landed and verified, and the two-city state on
    weakest-link emergency) scheduled with it.
 4. **E.2–E.5** (completeness, external benchmarks, resolution QQ, face
    validation) once the pilot exists.
+
+### 5.17 First r5-primary baselines (runs 30614554456 hamburg, 30619284021 koeln)
+
+Both succeeded on the merged promotion (`68e676f`): the provenance guard
+re-routed every matrix (`friction` sidecars refused), the network came from
+cache, no budget stops (Hamburg 74 min, Köln 96 min cold). **Köln reproduces
+its E.1 r5 shadow to 16 digits** on all four indicators — the strongest
+possible validation that the promotion's baseline path and the cross-check's
+shadow path compute the same thing. The r5-primary city plane
+(`depacc-results` @ `924778b`):
+
+| | gini_ev | gini_em | ρ [envelope] | HH@50 | intensity | gini_t_ev | gini_t_em |
+|---|---|---|---|---|---|---|---|
+| hamburg | 0.544 | 0.492 | 0.404 [0.300, 0.593] | 31.9 % | 0.378 | 0.657 | 0.282 |
+| koeln | 0.543 | 0.433 | 0.461 [0.390, 0.575] | 33.0 % | 0.383 | 0.649 | 0.265 |
+
+Two findings, one of them a to-do:
+
+1. **Hamburg's gini_emergency (0.492) vs its E.1 shadow (0.437) — explained,
+   and instructive.** Same r5py (1.1.7), same network file, identical
+   emergency OD pair counts (4 072 310 / 5 264 515 — two independent routings,
+   deterministic). The difference is the routability mask: forward-routed walk
+   (shadow era) left **218** cells with no pairs anywhere → NaN-masked;
+   reverse routing links those cells as destinations → **0** masked, their
+   emergency times finite-filled at 120 min. ~0.1 % of the population moving
+   between "excluded" and "included at the fill" moves the unbounded convex
+   DCF's Gini by +0.055 (the bounded DLF: 0.001). So §5.15's "under r5 the
+   two cities' Ginis nearly coincide" was partly mask artifact; methods §7.1
+   now says so, recommends co-reporting `gini_t_emergency` (0.282/0.265 —
+   stable), and flags the off-network-cell policy as a sensitivity axis to
+   implement.
+2. **The Layer-3 sweep bypasses the provenance guard.** Hamburg's
+   `everyday_modes_walk+car` variant reported the *bit-identical* degenerate
+   split (87.9 % tie, 99.0 % zero-floor) as the friction era — because the
+   sweep reads saved everyday-car ODs directly, and the friction-era
+   `od_*_car.parquet` for everyday services are still in the cache
+   (`run_access` never re-routes them while `route_sensitivity_modes` is
+   off). Same bug class as §5.15, smaller blast radius (one flagged-degenerate
+   sensitivity variant, no published indicator). Fix: the sweep must check
+   the OD sidecars and mark a variant "not evaluable" on foreign provenance;
+   then one `route_sensitivity_modes: true` dispatch per city routes the
+   everyday-car ODs under r5 and finally makes the walk+car axis readable —
+   Workstream C's last open knob.
+
+Next, in order: (1) the sweep-provenance fix above (small); (2) F.1
+`config/fua_population.csv`; (3) the F.5 pilot via tier1-batch under r5
+(shared caches warm; §5.7 country-mix constraint); (4) E.2–E.5 with the
+pilot. The off-network policy axis rides with (1) or the pilot's first
+sweep review.
