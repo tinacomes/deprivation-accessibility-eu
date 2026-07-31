@@ -104,3 +104,22 @@ def test_facility_source_does_not_follow_the_engine(tmp_path, monkeypatch):
     run_ingest(cfg, "testcity", tmp_path)
     assert (tmp_path / "data" / "derived" / "testcity"
             / "facilities_gp.parquet").exists()
+
+
+def test_stale_network_marker_is_not_trusted(tmp_path):
+    """The marker rides in the derived cache; the merged .pbf it points to may
+    not exist on a fresh runner (run 30648450890 crashed with
+    FileNotFoundError in its first minute). Missing marker, unreadable marker
+    and stale target all mean "regenerate"; only marker+target means valid."""
+    from depacc.ingest.pipeline import network_marker_valid
+
+    marker = tmp_path / "network_pbf_path.txt"
+    assert not network_marker_valid(marker)          # no marker at all
+
+    marker.write_text(str(tmp_path / "gone.osm.pbf"))
+    assert not network_marker_valid(marker)          # marker -> missing file
+
+    pbf = tmp_path / "city_merged.osm.pbf"
+    pbf.write_bytes(b"pbf")
+    marker.write_text(str(pbf))
+    assert network_marker_valid(marker)              # marker -> real file

@@ -243,6 +243,18 @@ jobs:
                       shutil.copytree(item, derived / item.name, dirs_exist_ok=True)
       - name: Persist to depacc-results, run cross over the union, push
         run: bash tools/persist_and_push.sh
+      # Rank agreement (Layers 1/2) is inherently CROSS-city, but each city
+      # job's sweep only ever sees its own derived dir, so
+      # sensitivity/rank_agreement.csv stayed all-NaN even with ten cities
+      # persisted. This is the one place the staged surfaces of every batch
+      # city coexist with the union cityplane.csv (written by the persist
+      # step above), so the sweep runs here; cities persisted in earlier
+      # runs without staged surfaces are skipped by the harness. The second
+      # persist call exports the fresh tables (idempotent, rebase-retry).
+      - name: Cross-city sensitivity rank agreement over the staged union
+        run: |
+          depacc sensitivity --layer deprivation
+          bash tools/persist_and_push.sh
       - name: Upload combined cross-city results
         uses: actions/upload-artifact@v4
         with:
