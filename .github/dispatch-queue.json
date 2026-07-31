@@ -16,5 +16,12 @@
       "stage": "all",
       "route_sensitivity_modes": "true"
     }
+  },
+  {
+    "workflow": "tier1-batch.yml",
+    "ref": "main",
+    "inputs": {
+      "cities": "[\"stockholm\",\"aarhus\",\"amsterdam\",\"antwerpen\",\"madrid\",\"palermo\",\"warszawa\",\"brno\"]"
+    }
   }
 ]
