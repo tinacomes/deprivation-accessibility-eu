@@ -18,11 +18,21 @@ all hospitals) and all pharmacies) and reports OSM/registry ratios against
 | hospital | 1 893 (2022) | Statistisches Bundesamt, Grunddaten der Krankenhäuser 2022 — **verify against the current Krankenhausverzeichnis before publication** |
 | pharmacy | 17 571 (2023) | ABDA, öffentliche Apotheken, Stand 31.12.2023 — **verify against the current ABDA release** |
 
-Results: [`completeness_DE.csv`](validation/completeness_DE.csv) (written by
-the "OSM completeness benchmark (E.2)" workflow; the table also reports the
-intrinsic `facilities_per_100k` density and, once several countries are
-benchmarked, each country's density relative to the sample median — the
-fallback score for countries without a compiled registry row).
+Results ([`completeness_DE.csv`](validation/completeness_DE.csv), Overpass
+counts of 2026-07-31):
+
+| service | OSM count | registry | ratio | reading |
+|---|---|---|---|---|
+| pharmacy | 17 156 | 17 571 (2023) | **0.976** | near-complete; part of the residual is real closures since the 2023 registry date |
+| hospital | 2 345 | 1 893 (2022) | **1.239** | over-count in the expected direction — OSM maps sites/campuses/clinics where the registry counts institutions |
+
+Reading for the pilot: German OSM shows no under-representation on either
+benchmark service, consistent with treating DE as the reference country. The
+table also reports the intrinsic `facilities_per_100k` density; once several
+countries are benchmarked, each country's density relative to the sample
+median becomes the fallback score for countries without a compiled registry
+row — that multi-country pass is what should set the
+`completeness_threshold` before the full F.2 sample.
 
 Interpretation rule: the ratio can exceed 1 (OSM counts campuses/sites where
 a registry counts institutions) — the gate `quality.completeness_threshold`
