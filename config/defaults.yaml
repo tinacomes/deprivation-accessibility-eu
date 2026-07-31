@@ -15,6 +15,11 @@ city_definition:
   # Eurostat-OECD Functional Urban Areas (GISCO URAU), cross-checked against
   # JRC GHS Urban Centre Database / Degree of Urbanisation.
   source: "eurostat_oecd_fua"
+  # F.1: FUA populations (fua_code, population) compiled from Eurostat
+  # urb_lpop1 by `depacc build-fua-population` (workflow "build FUA population
+  # table (F.1)"), cross-checked against the URAU FUA layer. list-fuas joins
+  # it when present and degrades with a NOTE when not.
+  fua_population_csv: "config/fua_population.csv"
   # Tier-1 inclusion threshold on FUA population.
   fua_size_threshold: 100000
   # "stratified": size-stratified sample within a few countries (fast first

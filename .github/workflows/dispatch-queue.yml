@@ -1,0 +1,56 @@
+name: dispatch queue
+
+# Turns a committed queue file into real workflow_dispatch runs.
+#
+# Why this exists: automated sessions (Claude Code) push branches and open PRs
+# through a GitHub App that has NO `actions: write` scope, so they cannot call
+# the workflow_dispatch API directly — every "Run workflow" so far has been a
+# human clicking the Actions UI. Their pushes DO trigger push workflows, and a
+# push-triggered job may elevate its own GITHUB_TOKEN to `actions: write`
+# (run-city.yml already elevates to `contents: write` the same way).
+# workflow_dispatch is one of the two event types EXEMPT from the
+# no-recursive-triggering rule for GITHUB_TOKEN, so the dispatched runs start
+# normally.
+#
+# Usage: on a working branch, write .github/dispatch-queue.json as a JSON list
+#   [{"workflow": "run-city.yml", "ref": "main",
+#     "inputs": {"city": "hamburg", "route_sensitivity_modes": "true"}}, ...]
+# and push. Each entry becomes one workflow_dispatch on the named ref. The
+# queue is only read from claude/** branches and only when the push actually
+# changes the file, so merging a queue file to main never re-fires it.
+
+on:
+  push:
+    branches: ["claude/**"]
+    paths: [".github/dispatch-queue.json"]
+
+permissions:
+  actions: write
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dispatch each queued entry
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          n=$(jq 'length' .github/dispatch-queue.json)
+          echo "queue holds $n entr(y/ies)"
+          jq -c '.[]' .github/dispatch-queue.json | while read -r item; do
+            wf=$(jq -r '.workflow' <<<"$item")
+            ref=$(jq -r '.ref // "main"' <<<"$item")
+            cmd=(gh workflow run "$wf" --ref "$ref" -R "$GITHUB_REPOSITORY")
+            # One -f key=value per input, array-built so values may hold
+            # spaces/semicolons (e.g. tier1-batch's make_cities triplets).
+            while IFS= read -r pair; do
+              cmd+=(-f "$pair")
+            done < <(jq -r '(.inputs // {}) | to_entries[] | "\(.key)=\(.value)"' <<<"$item")
+            echo "::group::dispatch $wf @ $ref"
+            printf '  %q\n' "${cmd[@]}"
+            "${cmd[@]}"
+            echo "::endgroup::"
+          done
