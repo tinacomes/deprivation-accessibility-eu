@@ -548,6 +548,20 @@ def _od_reusable(od_path: Path, expected: dict) -> bool:
     return meta is not None and all(meta.get(k) == v for k, v in expected.items())
 
 
+def od_matrix_trusted(od_path: Path, cfg: dict, mode: str) -> bool:
+    """READ-side provenance check: True iff the saved matrix's sidecar matches
+    what THIS config would route for ``mode`` (engine, per-mode cutoff,
+    k_nearest). A missing or unreadable sidecar is NOT trusted.
+
+    This is the counterpart of the write-side guard in :func:`run_access` for
+    consumers that only read cached matrices (the Layer-3 sweep): the Köln
+    contamination showed a matrix of unknown origin must never be *reused*;
+    the same file must also never be silently *evaluated*.
+    """
+    synthetic = bool((cfg.get("city") or {}).get("synthetic"))
+    return _od_reusable(od_path, _od_provenance(cfg, mode, synthetic))
+
+
 def _partial_dir(od_path: Path, reverse: bool = False) -> Path:
     """Where an in-flight matrix's finished chunks live. A sibling directory
     rather than a suffix on the parquet, so a half-built matrix can never be

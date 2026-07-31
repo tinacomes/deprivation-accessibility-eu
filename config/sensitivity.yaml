@@ -44,13 +44,27 @@ sensitivity:
     bandwidth_min: [10, 15, 20]            # walk catchment bandwidth (minutes)
     k_nearest: [10, 30]                    # facilities kept per cell (subset saved k=30)
     nearest_only: true                     # add the hard-min (kappa->inf) variant
-    unreachable: [cap_at_max_time, exclude]  # unreachable-cell policy (or a numeric cap in minutes)
+    # Finite fill (minutes) for REACHABLE-but-service-deprived cells — the knob
+    # that sets the deprivation of the population with no walkable service
+    # (plan §5.2 defect 3). A string entry is still read as an unroutable-cell
+    # policy override for an unroutable-heavy city.
+    unreachable: [60, 90, 180]
+    # OFF-NETWORK-cell policy: what to do with cells the router cannot reach at
+    # all. The pipeline MASKS them (the baseline — they enter no statistic);
+    # `cap` keeps them in every statistic, in BOTH regimes, at the capped
+    # deprivation g(routing.max_time_min). Immaterial for a friction city
+    # (~0 such cells); real under r5, where a cell that fails to snap to the
+    # street network is genuinely off-network.
+    off_network: [cap]
     everyday_modes: [[walk], [walk, car]]  # everyday mode set (min travel time across modes)
     # NOTE: the extra non-regime modes here (e.g. car for walk+car) are only
     # ROUTED when routing.route_sensitivity_modes is true (or the env var
-    # DEPACC_ROUTE_SENSITIVITY_MODES=1) — off by default, since everyday×car
-    # ~doubles a friction city's access time (Workstream A.2). When off, the
-    # sweep skips the walk+car variant; the other knobs above still run cheaply.
+    # DEPACC_ROUTE_SENSITIVITY_MODES=1) — off by default: those matrices are
+    # only consumed by this sweep's mode variants, so the many-city batch never
+    # pays for them. When off, the sweep skips the walk+car variant; the other
+    # knobs above still run cheaply. The sweep also honours the OD provenance
+    # sidecars: a variant whose matrices were routed under a different
+    # engine/cutoff/k is reported NOT EVALUABLE rather than silently evaluated.
     # EXPENSIVE variants (per-variant RE-ROUTING) are DEFERRED until the pilot
     # sample exists and are NOT run by --layer access:
     #   friction vs r5 engine  — Workstream E does this for Hamburg.

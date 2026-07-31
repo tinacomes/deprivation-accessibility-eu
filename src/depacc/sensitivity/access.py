@@ -17,8 +17,17 @@ config baseline and recomputes the everyday effective-time surface:
     catchment.bandwidth  {10, 15, 20} (walk, min)   catchment kernel bandwidth
     routing.k_nearest    {10, 30}                   subset the saved k = 30 OD
     nearest_only                                    hard-min (κ → ∞), no bonus
-    unreachable          cap value / exclude        unreachable-cell treatment
+    unreachable          finite fill (minutes)      service-deprived-cell fill
+    off_network          mask vs cap                off-network-cell policy
     everyday mode set    walk vs walk+car           min travel time across modes
+
+Because the sweep only READS cached matrices, it honours the OD provenance
+sidecars (``od_<service>_<mode>.meta.json``): a variant whose mode set needs a
+matrix that is missing its sidecar or was routed under a different
+engine/cutoff/k is reported as NOT EVALUABLE instead of silently evaluated
+against foreign data — the read-side counterpart of ``run_access``'s
+never-reuse guard. If the BASELINE modes themselves are foreign, the whole
+sweep refuses: it would be anchored on a cache that is not this config's.
 
 The emergency regime is nearest-facility of a fixed mode and is untouched by
 the everyday accessibility axis, so ``t_regime_emergency`` is read once from the
@@ -83,6 +92,14 @@ _DEFAULT_GRID = {
     # reachable-but-service-deprived cells. A string entry is still read as a
     # policy override, so an unroutable-heavy city can test both.
     "unreachable": [60, 90, 180],
+    # The `off_network` axis is the POLICY for cells the router cannot reach at
+    # all (no network path). The pipeline MASKS them — they enter no statistic;
+    # `cap` keeps them in every statistic, in BOTH regimes, at the capped
+    # deprivation g(routing.max_time_min). Under friction this governs ~0 cells
+    # (the raster reaches everything); under r5 a cell that fails to snap to
+    # the street network is genuinely off-network, so the masking choice is an
+    # assumption worth pricing (`off_network_pop_share` is reported per row).
+    "off_network": ["cap"],
     "everyday_modes": [["walk"], ["walk", "car"]],
 }
 
@@ -119,6 +136,10 @@ def baseline_params(cfg: dict) -> dict:
         "cap_min": float(cfg["routing"]["max_time_min"]),
         "finite_fill": float(cfg["unreachable"].get("finite_fill_min")
                              or cfg["routing"]["max_time_min"]),
+        # The pipeline ALWAYS masks the composite for off-network (no-path)
+        # cells, whatever `unreachable.policy` says about the per-service
+        # columns — so "mask" is the sweep's fixed point, not the config policy.
+        "off_network": "mask",
         "modes": ev_modes,
         "nearest_only": False,
     }
@@ -185,6 +206,13 @@ def expand_access_variants(cfg: dict, grid: dict | None,
             variants.append(AccessVariant(
                 f"unreachable_{pol}", "unreachable", {**base, "policy": str(pol)}))
 
+    for pol in _get("off_network"):
+        if str(pol) == base["off_network"]:
+            continue
+        variants.append(AccessVariant(
+            f"off_network_{pol}", "off_network",
+            {**base, "off_network": str(pol)}))
+
     for modes in _get("everyday_modes"):
         modes = list(modes)
         if modes == base["modes"]:
@@ -240,6 +268,33 @@ def available_od_modes(out: Path, services: list[str]) -> set[str]:
     return modes
 
 
+def od_mode_status(out: Path, cfg: dict, services: list[str]) -> dict[str, str]:
+    """Provenance state of the saved everyday OD matrices, per routing mode.
+
+    ``"ok"`` — every saved matrix for the mode carries a sidecar matching what
+    this config would route (engine, per-mode cutoff, k_nearest); ``"foreign"``
+    — at least one matrix has a missing or mismatched sidecar. Modes with no
+    matrix at all are absent from the result (their variants are *skipped*, as
+    before; foreign modes instead mark their variants NOT EVALUABLE, so the
+    difference between "never routed" and "routed by something else" is
+    visible in the output table).
+    """
+    from depacc.access.matrices import od_matrix_trusted
+
+    status: dict[str, str] = {}
+    for p in out.glob("od_*.parquet"):
+        stem = p.stem  # od_<service>_<mode>
+        for s in services:
+            prefix = f"od_{s}_"
+            if stem.startswith(prefix):
+                mode = stem[len(prefix):]
+                if od_matrix_trusted(p, cfg, mode):
+                    status.setdefault(mode, "ok")
+                else:
+                    status[mode] = "foreign"
+    return status
+
+
 def routable_mask(out: Path, cells: pd.DataFrame) -> pd.Series:
     """Shared, service- and mode-independent routability probe (methods.md §2),
     reproduced from the SAVED OD: a cell has a network path iff it reaches at
@@ -277,7 +332,11 @@ def everyday_regime(cfg: dict, out: Path, cells: pd.DataFrame, params: dict,
 
     Reachability semantics match the deprivation stage: reachable-but-service-
     deprived cells get ``finite_fill`` (they stay on the map), genuinely
-    unroutable cells are NaN-masked with the shared no-path mask.
+    unroutable cells are NaN-masked with the shared no-path mask — unless the
+    variant's ``off_network`` policy is ``"cap"``, in which case those cells
+    stay in the surface at the capped deprivation ``g(cap_min)`` and travel
+    time ``cap_min`` (the caller applies the matching fill to the emergency
+    side, so the typology sees the cells in both regimes or in neither).
 
     ``zero_floor_pop_share`` is the population share whose effective time hit the
     physical zero floor in at least one service — the diagnostic behind a
@@ -289,6 +348,13 @@ def everyday_regime(cfg: dict, out: Path, cells: pd.DataFrame, params: dict,
         deprivation_spec(cfg, "everyday"), context="everyday deprivation")
     kappa = _NEAREST_ONLY_KAPPA if params["nearest_only"] else params["kappa"]
     kernel = {"type": params["kernel_type"], "bandwidth": params["bandwidth"]}
+    off_network = str(params.get("off_network", "mask"))
+    if off_network not in ("mask", "cap"):
+        raise ValueError(f"Unknown off_network policy '{off_network}' "
+                         f"(expected 'mask' or 'cap')")
+    # Under "cap" the per-service surfaces must carry the capped value for
+    # no-path cells (not NaN), whatever the config's per-service policy says.
+    policy = "cap_at_max_time" if off_network == "cap" else params["policy"]
     weights = cfg["regimes"]["everyday"].get("composite_weights") or {}
     if routable is None:
         routable = routable_mask(out, cells)
@@ -311,7 +377,7 @@ def everyday_regime(cfg: dict, out: Path, cells: pd.DataFrame, params: dict,
             od, cells, supply, g_ev,
             kappa=kappa, kernel=kernel, gamma=params["gamma"],
             reference=params["reference"], factor_clip=params["factor_clip"],
-            policy=params["policy"], max_time_min=params["cap_min"],
+            policy=policy, max_time_min=params["cap_min"],
             routable=routable, finite_fill_min=finite_fill,
         )
         t_eff = surf["t_eff"].to_numpy(float)
@@ -331,6 +397,10 @@ def everyday_regime(cfg: dict, out: Path, cells: pd.DataFrame, params: dict,
     total = float(pop[valid].sum())
     zero_share = (float(pop[valid & floored & ~no_path].sum()) / total
                   if total > 0 else float("nan"))
+    if off_network == "cap":
+        # Off-network cells stay in the surface at the capped deprivation the
+        # per-service policy already assigned them — that is the whole variant.
+        return dep, t, zero_share
     return (np.where(no_path, np.nan, dep),
             np.where(no_path, np.nan, t),
             zero_share)
@@ -442,22 +512,76 @@ def city_access_sensitivity(cfg: dict, city: str, root: Path, grid: dict,
     # Shared no-path mask, computed once and reused by every variant so the
     # recomputed everyday surface matches the deprivation stage.
     routable = routable_mask(out, cells)
+    no_path_arr = ~routable.reindex(cells.index).fillna(False).to_numpy(bool)
+    valid_pop = np.isfinite(pop) & (pop > 0)
+    total_pop = float(pop[valid_pop].sum())
+    off_network_share = (float(pop[valid_pop & no_path_arr].sum()) / total_pop
+                         if total_pop > 0 else float("nan"))
 
     services = list(cfg.get("everyday_services", {}))
-    avail = available_od_modes(out, services)
-    variants = expand_access_variants(cfg, grid, available_modes=avail)
+    # Provenance per mode: a variant that needs a FOREIGN matrix (sidecar
+    # missing or routed under a different engine/cutoff/k) is not evaluable —
+    # evaluating it would repeat the Köln contamination on the read side. A
+    # variant whose modes were never routed at all is skipped as before.
+    mode_status = od_mode_status(out, cfg, services)
+    foreign_modes = {m for m, s in mode_status.items() if s == "foreign"}
+    baseline_foreign = sorted(
+        set(cfg["regimes"]["everyday"]["modes"]) & foreign_modes)
+    if baseline_foreign:
+        print(f"  {city}: everyday OD matrices for baseline mode(s) "
+              f"{baseline_foreign} carry foreign or missing provenance "
+              f"sidecars — this cache was not routed by this config "
+              f"(engine/cutoff/k mismatch). Re-run the access stage; "
+              f"sweep skipped.")
+        return None
+    variants = expand_access_variants(cfg, grid, available_modes=set(mode_status))
+
+    # Lazily evaluated: the emergency deprivation assigned to off-network cells
+    # under the `cap` policy, so the typology sees them in BOTH regimes.
+    em_cap_value: float | None = None
 
     rows, base_labels, var_label_sets = [], None, []
     var_degenerate: list[bool] = []
     base_dep_ev = None
     for v in variants:
+        needs_foreign = sorted(set(v.params["modes"]) & foreign_modes)
+        if needs_foreign:
+            reason = (f"od matrices for mode(s) {', '.join(needs_foreign)} have "
+                      f"foreign or missing provenance — routed under a different "
+                      f"engine/cutoff/k than this config; re-route them (e.g. "
+                      f"routing.route_sensitivity_modes: true) to evaluate")
+            print(f"  {city}: variant '{v.name}' NOT EVALUABLE — {reason}")
+            p = v.params
+            rows.append({
+                "city": city, "axis": v.knob, "variant": v.name,
+                "kappa": (np.inf if p["nearest_only"] else p["kappa"]),
+                "gamma": p["gamma"], "bandwidth": p["bandwidth"],
+                "k_nearest": p["k"], "policy": p["policy"],
+                "cap_min": p["cap_min"], "finite_fill_min": p["finite_fill"],
+                "off_network": p["off_network"], "modes": "+".join(p["modes"]),
+                "threshold": threshold, "degenerate": False,
+                "evaluable": False, "not_evaluable_reason": reason,
+                "off_network_pop_share": off_network_share,
+                "flip_pop_share": np.nan,
+            })
+            continue
         ev = everyday_regime(cfg, out, cells, v.params, routable=routable,
                              finite_fill=v.params["finite_fill"])
         if ev is None:
             print(f"  {city}: variant '{v.name}' has no everyday OD; skipped")
             continue
         dep_ev, t_ev, zero_share = ev
-        tgt = access_variant_targets(dep_ev, dep_em, pop, city, threshold)
+        if v.params.get("off_network", "mask") == "cap":
+            if em_cap_value is None:
+                g_em = DeprivationFunction.from_spec(
+                    deprivation_spec(cfg, "emergency"),
+                    context="emergency deprivation")
+                em_cap_value = float(np.asarray(
+                    g_em(np.array([float(cfg["routing"]["max_time_min"])])))[0])
+            dep_em_v = np.where(no_path_arr, em_cap_value, dep_em)
+        else:
+            dep_em_v = dep_em
+        tgt = access_variant_targets(dep_ev, dep_em_v, pop, city, threshold)
         labels = tgt.pop("labels")
         degenerate = bool(tgt["max_tie_everyday"] > _DEGENERATE_TIE_SHARE)
         if degenerate:
@@ -477,13 +601,16 @@ def city_access_sensitivity(cfg: dict, city: str, root: Path, grid: dict,
             "gamma": p["gamma"], "bandwidth": p["bandwidth"], "k_nearest": p["k"],
             "policy": p["policy"], "cap_min": p["cap_min"],
             "finite_fill_min": p["finite_fill"],
+            "off_network": p["off_network"],
             "modes": "+".join(p["modes"]), "threshold": threshold,
             **{k: tgt[k] for k in ("gini_everyday", "gini_emergency",
                                    "divergence_gap", "spearman_rho",
                                    "share_LL", "share_LH", "share_HL", "share_HH",
                                    "max_tie_everyday")},
             "zero_floor_pop_share": zero_share,
+            "off_network_pop_share": off_network_share,
             "degenerate": degenerate,
+            "evaluable": True, "not_evaluable_reason": "",
             # Level features per variant: composite-TIME-based, so unlike the
             # deprivation targets they carry the finite fill and must be swept.
             **_everyday_level_shares(t_ev, pop, cfg),
@@ -494,11 +621,14 @@ def city_access_sensitivity(cfg: dict, city: str, root: Path, grid: dict,
         return None
 
     # Per-variant flip share vs baseline (pop share of cells changing class).
+    # Not-evaluable rows already carry flip_pop_share = NaN and have no label
+    # set, so they are excluded from the zip.
     for row in rows:
         if row["variant"] == "baseline":
             row["flip_pop_share"] = 0.0
             continue
-    for row, labels in zip([r for r in rows if r["variant"] != "baseline"],
+    for row, labels in zip([r for r in rows if r["variant"] != "baseline"
+                            and r.get("evaluable", True)],
                            var_label_sets):
         fc = flip_cells(base_labels, [labels], pop)
         row["flip_pop_share"] = fc["sensitive_pop_share"]
@@ -516,12 +646,14 @@ def city_access_sensitivity(cfg: dict, city: str, root: Path, grid: dict,
             "city": city, "axis": "threshold", "variant": f"threshold_{thr}",
             "kappa": np.nan, "gamma": np.nan, "bandwidth": np.nan,
             "k_nearest": np.nan, "policy": "", "cap_min": np.nan,
-            "finite_fill_min": np.nan, "modes": "",
+            "finite_fill_min": np.nan, "off_network": "", "modes": "",
             "threshold": thr, "gini_everyday": np.nan, "gini_emergency": np.nan,
             "divergence_gap": np.nan, "spearman_rho": rho_base,
             **{f"share_{c}": shares.get(c, np.nan) for c in ("LL", "LH", "HL", "HH")},
             "max_tie_everyday": np.nan, "zero_floor_pop_share": np.nan,
-            "degenerate": False, "flip_pop_share": np.nan,
+            "off_network_pop_share": np.nan,
+            "degenerate": False, "evaluable": True, "not_evaluable_reason": "",
+            "flip_pop_share": np.nan,
         })
 
     table = pd.DataFrame(rows)
@@ -587,6 +719,10 @@ def acceptance_table(table: pd.DataFrame) -> pd.DataFrame:
     threshold does not touch, so the threshold axis's ρ range is 0 by
     construction and ANY knob with a nonzero range "exceeded" it. ``rho_range``
     is still reported as a magnitude to read on its own.
+
+    Not-evaluable variants (their OD matrices carry foreign provenance — see
+    :func:`od_mode_status`) are likewise excluded from every range and counted
+    in ``n_not_evaluable``: they have no targets at all, only a recorded reason.
     """
     thr = table[table.axis == "threshold"]
     hh_thr = _range(thr["share_HH"])
@@ -594,17 +730,22 @@ def acceptance_table(table: pd.DataFrame) -> pd.DataFrame:
     # fill-dependent) get a per-knob range column each. The threshold axis
     # cannot move them by construction — it acts after the percentile
     # transform — so its ranges are an exact 0.
-    level_cols = [c for c in table.columns if c.startswith("pop_share_beyond_")]
+    level_cols = [c for c in table.columns if c.startswith("pop_share_beyond_")
+                  and not c.endswith("_range")]
 
-    if "degenerate" in table.columns:
-        ok = table[~table["degenerate"].fillna(False).astype(bool)]
-    else:
-        ok = table
+    deg_mask = (table["degenerate"].fillna(False).astype(bool)
+                if "degenerate" in table.columns
+                else pd.Series(False, index=table.index))
+    eval_mask = (table["evaluable"].fillna(True).astype(bool)
+                 if "evaluable" in table.columns
+                 else pd.Series(True, index=table.index))
+    ok = table[eval_mask & ~deg_mask]
     baseline = ok[ok.variant == "baseline"]
     knob_rows = []
     for knob in ("kappa", "gamma", "bandwidth", "k_nearest", "nearest_only",
-                 "unreachable", "everyday_mode"):
-        n_all = int((table.axis == knob).sum())
+                 "unreachable", "off_network", "everyday_mode"):
+        axis_mask = table.axis == knob
+        n_all = int(axis_mask.sum())
         if not n_all:
             continue
         block = pd.concat([ok[ok.axis == knob], baseline])
@@ -618,13 +759,14 @@ def acceptance_table(table: pd.DataFrame) -> pd.DataFrame:
                for c in level_cols},
             "hh_exceeds_threshold": bool(hh_rng > hh_thr) if n_ok else False,
             "n_variants": n_all,
-            "n_degenerate": n_all - n_ok,
+            "n_degenerate": int((axis_mask & deg_mask).sum()),
+            "n_not_evaluable": int((axis_mask & ~eval_mask).sum()),
         })
     knob_rows.append({
         "knob": "threshold_axis", "hh_share_range": hh_thr, "rho_range": 0.0,
         **{f"{c}_range": 0.0 for c in level_cols},
         "hh_exceeds_threshold": False, "n_variants": int(len(thr)),
-        "n_degenerate": 0,
+        "n_degenerate": 0, "n_not_evaluable": 0,
     })
     acc = pd.DataFrame(knob_rows)
     return acc.sort_values("hh_share_range", ascending=False,
@@ -669,7 +811,8 @@ def _flip_cell_map(surfaces: pd.DataFrame, flip_mask: np.ndarray, cfg: dict,
               frameon=False, fontsize=8, title="Layer-3 accessibility sensitivity",
               title_fontsize=8)
     ax.set_title(f"{name}: cells whose co-location class flips under the\n"
-                 f"Layer-3 accessibility sweep (κ/γ/bandwidth/k/mode/unreachable)",
+                 f"Layer-3 accessibility sweep "
+                 f"(κ/γ/bandwidth/k/mode/unreachable/off-network)",
                  fontsize=11)
     _watermark(fig, cfg)
     fig.tight_layout()
@@ -713,18 +856,26 @@ def run_access_sensitivity(cfg: dict, grid: dict, root: Path,
     for c in cities:
         city_cfg = load_config(c)
         print(f"[{c}] Layer-3 accessibility variants:")
-        table = city_access_sensitivity(city_cfg, c, root, grid, threshold)
+        # Pass the ACCESSIBILITY block, not the whole sensitivity grid: the
+        # variant expansion reads axis keys (kappa/gamma/...) directly, so
+        # handing it the full grid silently fell back to the built-in defaults
+        # and config/sensitivity.yaml's accessibility axes were never honoured.
+        table = city_access_sensitivity(city_cfg, c, root, access_grid, threshold)
         if table is None:
             continue
         var = table[~table.axis.isin(["threshold"])]
         n_deg = int(var["degenerate"].fillna(False).astype(bool).sum())
+        n_ne = (int((~var["evaluable"].fillna(True).astype(bool)).sum())
+                if "evaluable" in var.columns else 0)
         var = var[~var["degenerate"].fillna(False).astype(bool)]
         hh_rng = _range(var["share_HH"])
         rho_rng = _range(var["spearman_rho"])
         print(f"  {c}: across Layer-3 variants — HH-share range {hh_rng:.4f}, "
               f"ρ range {rho_rng:.4f} "
               f"(vs threshold-axis HH range {_range(table[table.axis=='threshold']['share_HH']):.4f})"
-              + (f"; {n_deg} degenerate variant(s) excluded" if n_deg else ""))
+              + (f"; {n_deg} degenerate variant(s) excluded" if n_deg else "")
+              + (f"; {n_ne} variant(s) not evaluable (foreign OD provenance)"
+                 if n_ne else ""))
         # Acceptance table (written for every city; the Hamburg one is the
         # acceptance artefact called for in the task).
         acc = acceptance_table(table)
