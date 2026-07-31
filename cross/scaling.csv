@@ -1,0 +1,7 @@
+outcome,spec,gradient_per_ln_pop,se,p,n_cities,r2,inference
+mean_everyday,log-log (elasticity),-0.19505734352270462,0.0406113040768641,1.5628184970720081e-06,9,0.6758125669307591,cross-sectional space-for-time
+mean_emergency,log-log (elasticity),-0.34511592805220354,0.26733658196939736,0.1967239117647972,9,0.13648090872880125,cross-sectional space-for-time
+gini_everyday,log-log (elasticity),0.12076890964237885,0.07232312975772547,0.0949486853652218,9,0.29414868045418674,cross-sectional space-for-time
+gini_emergency,log-log (elasticity),0.09832383568488451,0.1067529035989261,0.35702885244720295,9,0.09729461860947786,cross-sectional space-for-time
+compounding_pop_share_50,log-log (elasticity),0.019609803402043376,0.05024869830133234,0.6963480298181578,9,0.017149358819106397,cross-sectional space-for-time
+compounding_intensity,log-log (elasticity),0.0064002019825522005,0.023363037235352352,0.7841264037680893,9,0.00816320232818879,cross-sectional space-for-time
