@@ -381,6 +381,23 @@ quality:
   # null disables the filter.
   completeness_threshold: null
   benchmark_services: ["hospital", "pharmacy"]
+  # E.2 — OSM tag rules counted per benchmark service (country-wide Overpass
+  # `out count`). Deliberately BROADER than the pipeline's per-city extraction
+  # where the registry is broader: national registries count ALL hospitals, so
+  # the benchmark counts amenity=hospital without the emergency=yes filter.
+  benchmark_osm:
+    hospital:
+      - { key: "amenity", value: "hospital" }
+    pharmacy:
+      - { key: "amenity", value: "pharmacy" }
+  # National registry counts (columns: country, service, registry_count,
+  # source, year[, note]) compiled by hand from the named sources — each row
+  # is auditable via `source`. DE first (E.2); extend per country as the
+  # sample grows.
+  registry_counts_csv: "config/registry_counts.csv"
+  # Country population for the intrinsic facilities-per-100k metric.
+  country_population:
+    DE: 84669326   # Destatis, 31.12.2023 — VERIFY before publication
 
 output:
   root: "data/derived"

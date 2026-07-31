@@ -1,0 +1,3 @@
+country,service,registry_count,source,year,note
+DE,hospital,1893,"Statistisches Bundesamt, Grunddaten der Krankenhäuser 2022 (Fachserie 12 Reihe 6.1.1); same universe as the federal Krankenhausverzeichnis",2022,"VERIFY against the current Krankenhausverzeichnis release before publication"
+DE,pharmacy,17571,"ABDA — Die Apotheke: Zahlen Daten Fakten (öffentliche Apotheken, Stand 31.12.2023)",2023,"VERIFY against the current ABDA release before publication"

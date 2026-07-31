@@ -174,6 +174,19 @@ def main(argv: list[str] | None = None) -> int:
     pre.add_argument("--project-root", type=Path,
                      default=Path(__file__).resolve().parents[2])
 
+    comp = sub.add_parser(
+        "completeness",
+        help="E.2: OSM facility completeness per country — country-wide "
+             "Overpass counts of the benchmark services vs national registry "
+             "counts (quality.registry_counts_csv); writes "
+             "quality/completeness_<CC>.csv")
+    comp.add_argument("--country", action="append", required=True,
+                      help="two-letter code; repeatable (e.g. --country DE)")
+    comp.add_argument("--out-dir", type=Path, default=None,
+                      help="output directory (default: data/derived/quality)")
+    comp.add_argument("--project-root", type=Path,
+                      default=Path(__file__).resolve().parents[2])
+
     fp = sub.add_parser(
         "build-fua-population",
         help="F.1: compile the FUA population table (fua_code, population) "
@@ -203,6 +216,14 @@ def main(argv: list[str] | None = None) -> int:
         print(f"prefetching shared sources for {len(cities)} city config(s): "
               f"{cities}", flush=True)
         prefetch_shared(cities, args.project_root)
+        return 0
+
+    if args.command == "completeness":
+        from depacc.quality.completeness import run_completeness
+
+        run_completeness(load_config(), args.project_root,
+                         [c.upper() for c in args.country],
+                         out_dir=args.out_dir)
         return 0
 
     if args.command == "build-fua-population":

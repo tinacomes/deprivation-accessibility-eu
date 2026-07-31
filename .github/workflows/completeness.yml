@@ -1,0 +1,70 @@
+name: OSM completeness benchmark (E.2)
+
+# Counts the benchmark services (quality.benchmark_osm — all hospitals, all
+# pharmacies) country-wide via Overpass and reports the OSM/registry ratios
+# against the hand-compiled counts in config/registry_counts.csv. The session
+# environment cannot reach the Overpass endpoints, so — like the F.1 build —
+# this runs on GitHub's runners and, on claude/** branches, commits the
+# resulting table to docs/validation/ on the triggering branch (GITHUB_TOKEN
+# pushes trigger no workflows, so it cannot loop).
+
+on:
+  workflow_dispatch:
+    inputs:
+      countries:
+        description: 'Space-separated two-letter codes (e.g. "DE NL PL")'
+        required: false
+        default: "DE"
+  push:
+    branches: ["claude/**"]
+    paths:
+      - ".github/workflows/completeness.yml"
+      - "src/depacc/quality/completeness.py"
+      - "config/registry_counts.csv"
+
+env:
+  PYTHONUNBUFFERED: "1"
+
+permissions:
+  contents: write
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: Install package (core is enough — counts come over HTTP)
+        run: pip install -e .
+      - name: Run the benchmark
+        run: |
+          ARGS=""
+          for cc in ${{ inputs.countries || 'DE' }}; do ARGS="$ARGS --country $cc"; done
+          depacc completeness $ARGS --out-dir docs/validation
+      - name: Show the tables
+        run: for f in docs/validation/completeness_*.csv; do echo "== $f"; cat "$f"; done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: completeness
+          path: docs/validation/completeness_*.csv
+          if-no-files-found: error
+      - name: Commit the tables back to the triggering branch (claude/** only)
+        if: startsWith(github.ref, 'refs/heads/claude/')
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/validation/completeness_*.csv
+          if git diff --cached --quiet; then
+            echo "tables unchanged — nothing to commit"
+            exit 0
+          fi
+          git commit -m "E.2: OSM completeness tables from completeness.yml"
+          for i in 1 2 3; do
+            git push && exit 0
+            git pull --rebase
+          done
+          git push

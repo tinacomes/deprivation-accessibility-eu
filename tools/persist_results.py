@@ -60,6 +60,13 @@ SUMMARY_FILES = (
 SUMMARY_GLOBS = (
     "typology_summary_*.csv",
 )
+# E.5 face-validation evidence: the headline maps the validation pages
+# annotate (percentile surfaces + the co-location map), NOT the whole
+# figures/ directory — depacc-results stays a summaries branch.
+FIGURE_GLOBS = (
+    "figures/percentile_*.png",
+    "figures/compounding_map_*.png",
+)
 CROSS_FILES = (
     "cityplane.csv",
     "cityvector.csv",
@@ -80,6 +87,8 @@ SENSITIVITY_FILES = (
 VALIDATION_GLOBS = (
     "*_engine_check.csv",
     "*_engine_scatter.png",
+    "*_engine_qq.csv",
+    "*_engine_qq.png",
 )
 SENSITIVITY_GLOBS = (
     "*_deprivation_sensitivity.csv",
@@ -192,6 +201,10 @@ def cmd_export(results: Path, derived: Path) -> None:
         for pattern in SUMMARY_GLOBS:
             for src in sorted(cdir.glob(pattern)):
                 shutil.copy2(src, dest / src.name)
+        for pattern in FIGURE_GLOBS:
+            for src in sorted(cdir.glob(pattern)):
+                (dest / "figures").mkdir(exist_ok=True)
+                shutil.copy2(src, dest / "figures" / src.name)
         exported += 1
     _export_sensitivity(results, derived)
     _export_validation(results, derived)
