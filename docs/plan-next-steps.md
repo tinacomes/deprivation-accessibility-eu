@@ -1721,3 +1721,34 @@ re-run Hamburg (stale cross row, missing `compounding_intensity`; its
 sidecar-less matrices will re-route under the guard — minutes on friction),
 then the r5-promotion implementation (defaults, workflows, methods.md §7.1)
 as its own change, and F.1 (`config/fua_population.csv`) unchanged.
+
+**Hamburg re-run 30553531270 closes the episode.** The guard re-routed every
+Hamburg matrix (~2.3 min of friction routing) and the rebuilt baseline
+reproduces the published row exactly — gini_ev 0.657, gini_em 0.621, ρ 0.428,
+HH@50 31.5 % — confirming Hamburg was never contaminated and that a
+guard-forced re-route is faithful. `compounding_intensity` (0.380) now joins
+the cross tables for both cities, the ρ envelope prints per §5.11
+("0.428 [0.389, 0.558]"), the Layer-3 acceptance replicates, and
+`depacc-results` @ `36b8b0d` carries the fully clean two-city state. One small
+watch item for the pilot: with two cities the robust cross-city scaler reports
+zero spread on several features (harmless while clustering is skipped at
+n < 5, but worth a guard before F.5 clusters for real).
+
+### 5.16 Where this leaves the programme
+
+E.1 is answered, A′–D are landed and verified, and the two-city state on
+`depacc-results` is clean end to end. The order of work, replacing §5.13's:
+
+1. **Promote r5 to the Tier-1 primary engine** (the E.1 decision, §5.15):
+   `routing.engine` default and city configs, run-city/tier1-batch workflows
+   gain the network fetch + JVM cap + reverse/budget guards engine-check
+   already has, friction becomes the declared sensitivity variant, methods.md
+   §2/§7.1 updated. One code iteration; the provenance guard makes the switch
+   safe against every cached matrix.
+2. **F.1** — `config/fua_population.csv` (pure data assembly, parallel).
+3. **F.5 pilot (~10 cities) under r5** at ~30 min/city, with the §5.7
+   country-mix constraint (DE/FR EMP gap) applied to the draw; §4(c)
+   aggregation sweeps (leave-one-service-out, weight perturbation,
+   weakest-link emergency) scheduled with it.
+4. **E.2–E.5** (completeness, external benchmarks, resolution QQ, face
+   validation) once the pilot exists.
