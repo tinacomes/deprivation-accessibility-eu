@@ -1,0 +1,3 @@
+country,service,osm_count,facilities_per_100k,registry_count,source,year,note,completeness_ratio,density_vs_sample_median
+DE,hospital,2345,2.7695980478219466,1893,"Statistisches Bundesamt, Grunddaten der Krankenhäuser 2022 (Fachserie 12 Reihe 6.1.1); same universe as the federal Krankenhausverzeichnis",2022,VERIFY against the current Krankenhausverzeichnis release before publication,1.2387744321183307,1.0
+DE,pharmacy,17156,20.26235569656005,17571,"ABDA — Die Apotheke: Zahlen Daten Fakten (öffentliche Apotheken, Stand 31.12.2023)",2023,VERIFY against the current ABDA release before publication,0.9763815377610836,1.0
