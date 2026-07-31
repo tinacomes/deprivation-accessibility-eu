@@ -22,6 +22,9 @@ on:
 env:
   PYTHONUNBUFFERED: "1"
 
+permissions:
+  contents: write   # commit the built CSV back to the triggering claude/** branch
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -45,3 +48,23 @@ jobs:
           name: fua-population
           path: config/fua_population.csv
           if-no-files-found: error
+      # The session environment cannot reach the artifact blob storage either,
+      # so on claude/** branches the table is committed straight back to the
+      # branch that triggered the build. GITHUB_TOKEN pushes do not trigger
+      # workflows, so this cannot loop.
+      - name: Commit the table back to the triggering branch (claude/** only)
+        if: startsWith(github.ref, 'refs/heads/claude/')
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add config/fua_population.csv
+          if git diff --cached --quiet; then
+            echo "table unchanged — nothing to commit"
+            exit 0
+          fi
+          git commit -m "F.1: config/fua_population.csv built from Eurostat urb_lpop1 (fua-population.yml)"
+          for i in 1 2 3; do
+            git push && exit 0
+            git pull --rebase
+          done
+          git push
