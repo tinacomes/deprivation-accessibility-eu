@@ -11,6 +11,31 @@ from pathlib import Path
 import pandas as pd
 
 
+def network_marker_valid(marker: Path) -> bool:
+    """True iff the network marker exists AND the .pbf it points to does.
+
+    The marker (``network_pbf_path.txt``) rides in the per-city DERIVED cache,
+    but the merged network file it names can live outside every cache on a
+    fresh runner — run 30648450890 restored a marker pointing at a path under
+    ``~/.cache/r5py`` and the access stage crashed with FileNotFoundError in
+    its first minute instead of re-clipping from the cached raw extracts. A
+    stale marker means "regenerate" (which also rewrites the marker with the
+    fresh path), never "trust": the pointer is not the artifact — the same
+    rule the OD provenance sidecars enforce for matrices.
+    """
+    if not marker.exists():
+        return False
+    try:
+        target = Path(marker.read_text().strip())
+    except OSError:
+        return False
+    if target.exists():
+        return True
+    print(f"street-network marker {marker} points at a missing file "
+          f"({target}) — regenerating from the cached raw extracts")
+    return False
+
+
 def derived_dir(cfg: dict, city: str, root: Path) -> Path:
     d = root / cfg["output"]["root"] / city
     d.mkdir(parents=True, exist_ok=True)
@@ -130,7 +155,7 @@ def run_ingest(cfg: dict, city: str, root: Path) -> None:
                if not (out / f"facilities_{s}.parquet").exists()]
 
     clipped: list[Path] = []
-    if needs_network and not (out / "network_pbf_path.txt").exists():
+    if needs_network and not network_marker_valid(out / "network_pbf_path.txt"):
         from depacc.ingest.osm import clip_pbf
 
         pbfs = fetch_pbfs(cfg, root)

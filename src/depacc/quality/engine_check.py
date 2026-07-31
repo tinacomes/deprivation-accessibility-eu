@@ -134,7 +134,9 @@ def ensure_network(alt_cfg: dict, city: str, root: Path, alt_out: Path) -> None:
     if alt_cfg.get("city", {}).get("synthetic"):
         return   # the demo fixture routes analytically; there is no network
 
-    if not (alt_out / "network_pbf_path.txt").exists():
+    from depacc.ingest.pipeline import network_marker_valid
+
+    if not network_marker_valid(alt_out / "network_pbf_path.txt"):
         import geopandas as gpd
 
         from depacc.ingest.osm import clip_pbf, fetch_pbfs, merge_pbfs
