@@ -1,0 +1,47 @@
+name: build FUA population table (F.1)
+
+# Compiles config/fua_population.csv — one row per URAU 2021 FUA with its
+# Eurostat urb_lpop1 population (latest reported year per FUA) — and uploads
+# it as the `fua-population` artifact. The Claude Code environment cannot
+# reach ec.europa.eu (egress policy), so this data assembly runs on GitHub's
+# runners; the artifact is then committed to config/ by hand (or by the
+# session that dispatched this).
+#
+# Also triggers on pushes that change the builder itself on claude/**
+# branches, so a session that just added or fixed the builder gets the CSV
+# without needing the workflow_dispatch API.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["claude/**"]
+    paths:
+      - ".github/workflows/fua-population.yml"
+      - "src/depacc/ingest/fua_sample.py"
+
+env:
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: Install package (geo extra for the URAU layer read)
+        run: pip install -e ".[geo]"
+      - name: Build the FUA population table
+        run: depacc build-fua-population --out config/fua_population.csv
+      - name: Show the result
+        run: |
+          wc -l config/fua_population.csv
+          head -25 config/fua_population.csv
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fua-population
+          path: config/fua_population.csv
+          if-no-files-found: error

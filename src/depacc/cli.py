@@ -174,6 +174,18 @@ def main(argv: list[str] | None = None) -> int:
     pre.add_argument("--project-root", type=Path,
                      default=Path(__file__).resolve().parents[2])
 
+    fp = sub.add_parser(
+        "build-fua-population",
+        help="F.1: compile the FUA population table (fua_code, population) "
+             "from Eurostat urb_lpop1, cross-checked against the URAU FUA "
+             "layer — the file city_definition.fua_population_csv points at")
+    fp.add_argument("--out", type=Path, default=None,
+                    help="output CSV (default: the configured "
+                         "city_definition.fua_population_csv under the "
+                         "project root)")
+    fp.add_argument("--project-root", type=Path,
+                    default=Path(__file__).resolve().parents[2])
+
     lf = sub.add_parser(
         "list-fuas", help="list Functional Urban Areas (codes + names) from "
                           "the Eurostat URAU layer, for choosing cities")
@@ -191,6 +203,17 @@ def main(argv: list[str] | None = None) -> int:
         print(f"prefetching shared sources for {len(cities)} city config(s): "
               f"{cities}", flush=True)
         prefetch_shared(cities, args.project_root)
+        return 0
+
+    if args.command == "build-fua-population":
+        from depacc.ingest.fua_sample import build_fua_population
+
+        cfg = load_config()
+        out_csv = args.out or (
+            args.project_root
+            / (cfg["city_definition"].get("fua_population_csv")
+               or "config/fua_population.csv"))
+        build_fua_population(cfg, args.project_root, out_csv)
         return 0
 
     if args.command == "list-fuas":
