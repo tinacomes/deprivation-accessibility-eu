@@ -113,23 +113,24 @@ def run_ingest(cfg: dict, city: str, root: Path) -> None:
     services = {**cfg.get("everyday_services", {}), **cfg.get("emergency_services", {})}
     # Alias services reuse a parent's extraction — never extracted directly.
     services = {s: spec for s, spec in services.items() if s not in aliases}
-    facilities_source = (cfg.get("sources", {}).get("facilities")
-                         or ("overpass" if cfg["routing"].get("engine") == "friction"
-                             else "pbf"))
+    # Facility source and street network are SEPARATE decisions. Facilities
+    # default to Overpass regardless of engine so that switching the routing
+    # engine can never silently change the facility set — the engine
+    # cross-check (methods.md §7.1) holds facilities fixed for exactly that
+    # reason, and the r5 promotion swaps the engine while keeping the same
+    # extractions. Set `sources.facilities: pbf` to extract from the network
+    # file instead.
+    facilities_source = cfg.get("sources", {}).get("facilities") or "overpass"
+    # The r5 engine routes over the real street network, so it needs the .pbf
+    # whatever the facility source; friction/synthetic never do (unless the
+    # facilities themselves come from the pbf).
+    needs_network = (cfg["routing"].get("engine") == "r5"
+                     or facilities_source == "pbf")
     missing = [s for s in services
                if not (out / f"facilities_{s}.parquet").exists()]
 
-    if facilities_source == "overpass":
-        # Tier-1 fast path: facilities from small Overpass queries; no .pbf
-        # download at all (the friction engine needs no street network).
-        if missing:
-            from depacc.ingest.overpass import extract_facilities_overpass
-
-            facilities = extract_facilities_overpass(cfg, fua, root, city)
-            for service, fac in facilities.items():
-                fac.to_parquet(out / f"facilities_{service}.parquet")
-                print(f"facilities[{service}] (overpass): {len(fac)}")
-    else:
+    clipped: list[Path] = []
+    if needs_network and not (out / "network_pbf_path.txt").exists():
         from depacc.ingest.osm import clip_pbf
 
         pbfs = fetch_pbfs(cfg, root)
@@ -145,11 +146,39 @@ def run_ingest(cfg: dict, city: str, root: Path) -> None:
             clipped, raw_osm / f"{city}_merged.osm.pbf"
         )
         (out / "network_pbf_path.txt").write_text(str(network_pbf))
+        print(f"street network ready: {network_pbf.name}")
+
+    if facilities_source == "overpass":
         if missing:
+            from depacc.ingest.overpass import extract_facilities_overpass
+
+            facilities = extract_facilities_overpass(cfg, fua, root, city)
+            for service, fac in facilities.items():
+                fac.to_parquet(out / f"facilities_{service}.parquet")
+                print(f"facilities[{service}] (overpass): {len(fac)}")
+    elif facilities_source == "pbf":
+        if missing:
+            if not clipped:
+                # network_pbf_path.txt existed (cache), so the clip loop above
+                # was skipped — re-derive the clip list for extraction only.
+                from depacc.ingest.osm import clip_pbf
+
+                pbfs = fetch_pbfs(cfg, root)
+                pad = 0.1
+                minx, miny, maxx, maxy = fua.to_crs("EPSG:4326").total_bounds
+                bbox = (minx - pad, miny - pad, maxx + pad, maxy + pad)
+                raw_osm = root / cfg["output"]["raw_root"] / "osm"
+                clipped = [
+                    clip_pbf(p, bbox,
+                             raw_osm / f"{p.name.removesuffix('.osm.pbf')}_{city}_clip.osm.pbf")
+                    for p in pbfs
+                ]
             facilities = extract_facilities(clipped, {s: services[s] for s in missing}, cfg, fua)
             for service, fac in facilities.items():
                 fac.to_parquet(out / f"facilities_{service}.parquet")
                 print(f"facilities[{service}]: {len(fac)}")
+    else:
+        raise ValueError(f"Unknown sources.facilities '{facilities_source}'")
 
     _materialise_aliases(cfg, out)
 

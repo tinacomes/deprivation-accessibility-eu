@@ -398,18 +398,36 @@ they are city-level indicators in their own right.
 
 Two engines, selected per city config (`routing.engine`):
 
-- **r5 (reference, Tier 2):** R5 via r5py (JDK 21) for walk + car + transit
-  on OSM (.pbf) and GTFS; street-level resolution; departure window in
-  `routing.departure`.
-- **friction (Tier-1 fast path):** least-cost paths (Dijkstra on the
+- **r5 (PRIMARY, every tier):** R5 via r5py (JDK 21) for walk + car
+  (+ transit in Tier-2 deep-dives) over the real OSM street network (.pbf,
+  clipped to the FUA window) and GTFS; street-level resolution; departure
+  window in `routing.departure`. What makes this affordable at continental
+  scale is **reverse routing** (§7.1): matrices are routed facilities → cells
+  and transposed back, so a complete walk+car city costs roughly the R5
+  network build plus minutes of routing (~30–60 min), not the ~8–12 h of
+  forward routing.
+- **friction (sensitivity variant):** least-cost paths (Dijkstra on the
   8-connected pixel graph, latitude-corrected metric distances) over the
   Weiss et al. (2020) 30-arc-second friction surfaces — motorised for car,
-  walking-only for walk — fetched as per-city WCS windows. Facilities come
-  from Overpass API queries (polygon features reduced to centre points; no
-  min-area filter — immaterial at ~1 km resolution). This scales the
-  continental sample without per-city bulk downloads; it is coarser, so
-  Tier-2 r5 runs cross-check whether ENGINE choice changes city rankings
-  (§7), exactly as the transit-vs-no-transit check does.
+  walking-only for walk — fetched as per-city WCS windows. Run against an
+  r5 baseline via `depacc engine-check --engine friction`.
+
+The ordering is a **measured decision, not a preference**. Friction was the
+planned Tier-1 primary because it needs no per-city bulk downloads; the §7.1
+engine cross-check on two cities then showed its error is *city-specific* —
+`gini_emergency` understated by 30 % in Hamburg but 18.5 % in Köln, per-service
+travel times by 34–314 % — which is not correctable by a constant offset, while
+under r5 the two cities' Ginis nearly coincide where friction spreads them
+apart. An uncorrectable engine artifact on the axes of the central result
+outweighs friction's cost advantage once reverse routing removed that
+advantage's justification.
+
+**The facility set never follows the engine.** Facilities come from Overpass
+API queries under both engines (`sources.facilities`, default `overpass`;
+polygon features reduced to centre points), so switching `routing.engine`
+changes travel times only — the same decoupling the engine cross-check relies
+on (§7.1). The .pbf configured per city is the r5 street network, not a
+facility source.
 
 Origins: centroids of populated GHS-POP 100 m cells within the FUA;
 destinations: OSM facilities per service (`config/services.yaml`, capacity
@@ -538,11 +556,14 @@ clustering, not just levels.
 
 ### 7.1 Routing-engine cross-check (E.1)
 
-Tier-1 routes over the Weiss et al. 1 km friction surfaces. That is what makes a
-48-city sample affordable, and it is an approximation of a street network by a
-raster. `depacc engine-check --city <id> --engine r5` re-runs one city under an
+The friction fast path approximates a street network by a ~1 km raster; this
+check measures what that approximation costs, and its two-city answer is what
+demoted friction from planned Tier-1 primary to sensitivity variant (§5).
+`depacc engine-check --city <id> --engine <alt>` re-runs one city under an
 alternative engine and reports the disagreement
-(`validation/<city>_engine_check.csv`, a hexbin scatter, both persisted).
+(`validation/<city>_engine_check.csv`, a hexbin scatter, both persisted); with
+r5 now the primary, `--engine friction` is the standing sensitivity direction,
+and the check raises if the alternative equals the city's own engine.
 
 The comparison isolates the **routing engine**. The shadow run inherits the
 baseline's `cells.parquet` and its `facilities_*.parquet` verbatim — never
@@ -670,6 +691,44 @@ agreement on who is cut off; `spearman_uncapped` measures agreement on travel
 time where both engines actually route. A large gap between them says the
 headline ρ leans on the cap.
 
+**The second city (Köln, run 30546596359) answered the open question: the
+offset is NOT stable, and r5 was promoted.** With reverse routing extended to
+walk, the Köln cross-check cost ~93 min cold (network fetch/clip + R5 build +
+all seven matrices) and minutes warm. Against Hamburg:
+
+| indicator | Hamburg Δ (friction→r5) | Köln Δ |
+|---|---|---|
+| gini_emergency | −30.0 % | −18.5 % |
+| gini_everyday | −17 % | −12.2 % |
+| divergence ρ | −6 % | −11.4 % |
+| class shares | ≤ 0.5 pp | ≤ 0.7 pp |
+| flip_pop_share_50 | 23.7 % | 25.5 % |
+
+The engine bias differs by city on both Gini axes, so it cannot be removed by
+a correction factor — and under r5 the two cities are nearly identical on both
+Ginis (emergency 0.437/0.433, everyday 0.545/0.543) where friction spreads
+them by 0.09/0.04, i.e. a substantial part of friction's *cross-city* spread
+on those axes is engine artifact. Hence the promotion recorded in §5: r5 is
+the primary engine for every tier, friction the sensitivity variant. What the
+two-city check licenses either way: aggregate typology class shares and the
+divergence ρ are engine-robust (≤ 0.7 pp, ≤ 11 %); per-cell typology class,
+absolute travel times and Gini *levels* are not. One structural consequence:
+the Layer-3 `everyday_mode` (walk+car) variant, degenerate under friction
+because the 1 km car raster zero-floors nearly every cell (§7a), becomes
+evaluable under the r5 primary.
+
+**Every OD matrix carries engine provenance, and reuse requires a match.**
+Found the hard way: a cancelled forward-r5 run left four r5 walk matrices in
+Köln's derived cache, a later friction run silently reused them
+(`od_path.exists()` was the whole reuse test), and the published "friction"
+baseline was a hybrid — exposed only because the next cross-check agreed with
+it at an impossible ρ = 0.9997. Each `od_<service>_<mode>.parquet` is now
+written with a sidecar `od_<service>_<mode>.meta.json` recording engine, mode,
+cutoff and `k_nearest`; `run_access` reuses a matrix only when the sidecar
+matches what the current run would route, and a missing sidecar means
+re-route. Reverse direction is deliberately not part of the identity — the
+transpose is the same data, and the asymmetry report prices that claim.
+
 ## 7a. Robustness harness (structured, not probabilistic)
 
 `sensitivity/` recomputes only the **standardised / rank-based** targets
@@ -762,7 +821,10 @@ minutes at k = 30, so effective time floors at zero across the whole core; and
 walk+car over the 1 km friction *car* surface gives ~95 % of cells a
 zero-minute pair. Between them they had produced the headline "κ moves the HH
 share most" — both reporting the identical range because both returned the same
-degenerate split. The per-variant table carries `max_tie_everyday`,
+degenerate split. The walk+car degeneracy is a friction artifact, not a fact
+about the mode set: under the r5 primary engine (§5) the car times are
+street-resolved and the `everyday_mode` axis becomes evaluable — expect it in
+the acceptance table from the first r5-primary runs onward. The per-variant table carries `max_tie_everyday`,
 `zero_floor_pop_share` and `degenerate` so this is visible rather than inferred.
 Only the HH share carries an "exceeds the threshold axis" verdict: ρ is computed
 after the percentile transform, which the typology threshold does not touch, so
@@ -825,7 +887,12 @@ provenance sidecars; no raw data committed; unit tests on the DLF/DCF
 mapping, soft-min reducer, 2SFCA factor, unreachable handling (incl. the
 shared no-path mask and the reachable-but-service-deprived finite-fill,
 §2.4), the per-service `t0` seam and the divergence typology; CI runs the
-tests on every push.
+tests on every push. **Derived travel-time matrices carry their own
+provenance** (§7.1): every `od_*.parquet` has a `.meta.json` sidecar naming
+the engine, mode, cutoff and `k_nearest` that produced it, and the access
+stage refuses to reuse a matrix whose sidecar does not match the current run —
+the guard that stops a cached matrix from one engine silently entering another
+engine's outputs.
 
 **Deprivation parameters are never hardcoded in `src/`.** The per-service
 everyday thresholds (§3.1) live in `config/deprivation.yaml` with a `source`

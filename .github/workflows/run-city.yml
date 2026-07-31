@@ -10,9 +10,13 @@ name: run one city
 # between runs per city.
 #
 # Notes:
-# - Tier-2 r5 cities (hamburg, koeln) need the big inputs (state .pbf, GTFS):
-#   allow 1-3 h on the first, uncached run.
-# - Tier-1 fast-path cities (friction engine + Overpass) run in minutes.
+# - r5 is the primary engine (methods.md §5). A first, uncached r5 run pays
+#   the .pbf fetch/clip + R5 network build (~25-30 min) before routing; with
+#   reverse routing the routing itself is minutes per service, so allow
+#   ~45-75 min cold and ~10 min warm. Friction cities run in minutes.
+# - Routing carries a wall-clock budget (DEPACC_ROUTING_BUDGET_MIN below):
+#   exit code 2 is a RESUMABLE stop with progress cached, not a failure —
+#   re-dispatch the same inputs to continue from the last finished chunk.
 # - The deprivation stage stops with a clear error until the literature
 #   parameters in config/deprivation.yaml are filled in (see methods.md §3);
 #   use stage=ingest or access to prepare data before that.
@@ -77,6 +81,16 @@ jobs:
       - name: Install depacc (full stack)
         run: pip install -e ".[full,dev]"
 
+      # r5py's default JVM heap is 80 % of RAM (~12.8 GB of 16), which starved
+      # the runner agent to death on the Köln cross-check (run 30526795903).
+      # Capped, memory pressure surfaces as a Java OutOfMemoryError inside the
+      # step — a real log line and a failed step whose post steps still run —
+      # instead of a dead runner that saves no caches.
+      - name: Cap the R5 JVM heap so OOM fails the step, not the runner
+        run: |
+          mkdir -p ~/.config
+          echo "max-memory: 8G" > ~/.config/r5py.yml
+
       # Two raw caches, deliberately. SHARED holds the national/continental
       # archives — one EU census grid for all of Europe, one Zensus theme set for
       # all of Germany, the URAU boundary layer, the GHS-POP tiles — keyed on the
@@ -116,8 +130,27 @@ jobs:
           restore-keys: |
             depacc-derived-${{ inputs.city }}-
 
+      # The step timeout sits well under the 300-min job timeout: a step
+      # timeout FAILS the step (post steps, i.e. the cache saves, still run),
+      # while a job timeout CANCELS (actions/cache@v4 post-saves are skipped)
+      # — the §5.9 lesson. The routing budget stops the access stage cleanly
+      # before either can fire; exit 2 is a resumable stop, and later stages
+      # are refused on a half-routed city, so we surface it as a notice and
+      # let the sweeps/persist steps no-op on the absent surfaces.
       - name: Run pipeline
-        run: depacc run --city "${{ inputs.city }}" --stage "${{ inputs.stage }}"
+        timeout-minutes: 240
+        env:
+          DEPACC_ROUTING_BUDGET_MIN: "210"
+        run: |
+          set +e
+          depacc run --city "${{ inputs.city }}" --stage "${{ inputs.stage }}"
+          rc=$?
+          set -e
+          if [ "$rc" = "2" ]; then
+            echo "::notice::Routing stopped on its 210 min budget with progress cached. Re-dispatch this workflow for '${{ inputs.city }}' to resume from the last finished origin chunk."
+            exit 0
+          fi
+          exit $rc
 
       # Robustness sweep over the deprivation-function assumptions (curvature +
       # split threshold) for every city accumulated in cityplane.csv, then

@@ -1,8 +1,10 @@
 name: Tier-1 many-city batch
 
-# The many-city study on GitHub's runners, using the Tier-1 fast path:
-# facilities from small Overpass queries + travel times from per-city
-# friction-surface windows (a few MB per city, no .pbf, no GTFS, no Java).
+# The many-city study on GitHub's runners: facilities from small Overpass
+# queries + travel times from r5 over the country Geofabrik extract, clipped
+# to each FUA window (methods.md §5 — r5 is the primary engine since the E.1
+# promotion; friction is the sensitivity variant). Reverse routing keeps a
+# city at roughly the network build plus minutes of routing (~30-60 min).
 # One parallel job per city, then a collect job that merges all city rows,
 # runs the cross-city clustering + size-gradient read, and uploads the
 # combined results (artifact: depacc-cross-city).
@@ -118,10 +120,10 @@ jobs:
   city:
     needs: [plan, warm]
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 150
     strategy:
       fail-fast: false
-      max-parallel: 5   # be polite to the Overpass + WCS servers
+      max-parallel: 5   # be polite to the Overpass + Geofabrik servers
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
@@ -129,8 +131,22 @@ jobs:
         with:
           python-version: "3.11"
           cache: "pip"
-      - name: Install depacc (geo + stats + viz; no Java needed)
-        run: pip install -e ".[geo,stats,viz,dev]"
+      # r5 needs a JDK and osmium (streams the country extract down to the
+      # FUA window before anything parses it).
+      - uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "21"
+      - name: Install osmium-tool
+        run: sudo apt-get update -q && sudo apt-get install -y -q osmium-tool
+      - name: Install depacc (full stack)
+        run: pip install -e ".[full,dev]"
+      # See run-city.yml: capped, memory pressure is a Java OutOfMemoryError
+      # that fails the step, not a dead runner that saves no caches.
+      - name: Cap the R5 JVM heap so OOM fails the step, not the runner
+        run: |
+          mkdir -p ~/.config
+          echo "max-memory: 8G" > ~/.config/r5py.yml
       # Two caches, deliberately: the shared national/continental archives (one
       # copy for the whole batch, seeded by `warm`) and this city's own raw data
       # (friction window, Overpass extract, OSM clip, GTFS — unshareable). One
@@ -149,14 +165,41 @@ jobs:
           path: ${{ env.CITY_RAW_PATHS }}
           key: depacc-raw-city-${{ matrix.city }}-t1
           restore-keys: depacc-raw-city-${{ matrix.city }}-
+      # The derived cache is what makes a budget-stopped r5 city RESUMABLE
+      # across batch dispatches: finished matrices and partial origin chunks
+      # ride here (run-city.yml has the same cache for the same reason).
+      - name: Restore per-city derived cache
+        uses: actions/cache@v4
+        with:
+          path: data/derived/${{ matrix.city }}
+          key: depacc-derived-${{ matrix.city }}-${{ github.run_id }}
+          restore-keys: |
+            depacc-derived-${{ matrix.city }}-
       - name: Generate config if needed
         if: matrix.spec != ''
         run: |
           IFS=',' read -r CODE NAME CC <<< "${{ matrix.spec }}"
           depacc make-city --fua-code "$CODE" --name "$NAME" --country "$CC" \
             --city-id "${{ matrix.city }}"
-      - name: Run pipeline (Tier-1 fast path)
-        run: depacc run --city "${{ matrix.city }}"
+      # Step timeout below the job timeout so a slow city FAILS the step (post
+      # steps, i.e. the cache saves, still run) instead of being CANCELLED (they
+      # do not). The routing budget stops the access stage cleanly first; exit 2
+      # is a resumable stop — re-dispatch the batch and the city resumes from
+      # its last finished origin chunk via the per-city raw/derived caches.
+      - name: Run pipeline (r5 primary)
+        timeout-minutes: 130
+        env:
+          DEPACC_ROUTING_BUDGET_MIN: "110"
+        run: |
+          set +e
+          depacc run --city "${{ matrix.city }}"
+          rc=$?
+          set -e
+          if [ "$rc" = "2" ]; then
+            echo "::notice::${{ matrix.city }}: routing stopped on its 110 min budget with progress cached. Re-dispatch the batch to resume."
+            exit 0
+          fi
+          exit $rc
       - name: Upload city results
         if: always()
         uses: actions/upload-artifact@v4

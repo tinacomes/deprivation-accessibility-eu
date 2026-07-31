@@ -15,6 +15,10 @@ crs:
   local: "EPSG:32632"   # UTM 32N
 
 sources:
+  # Facilities always come from Overpass, whatever the routing engine:
+  # the engine choice must never change the facility set (methods.md
+  # §5, §7.1). The .pbf below is the r5 STREET NETWORK only.
+  facilities: "overpass"
   osm_pbf:
     url: "https://download.geofabrik.de/europe/germany/nordrhein-westfalen-latest.osm.pbf"
     licence: "ODbL 1.0"
@@ -30,22 +34,16 @@ sources:
     licence: "dl-de/by-2-0"
 
 routing:
-  # MUST be stated explicitly. `config/defaults.yaml` sets `engine: "r5"`, so a
-  # city config that omits this silently inherits full R5 routing — and with
-  # `transit` in the mode set that is the heaviest path the pipeline has. Run
-  # 30476375657 dispatched the engine cross-check for this city and spent over
-  # an hour inside "Ensure the baseline surfaces exist", because the *baseline*
-  # was being routed with R5 forward (~47 h for the emergency leg alone,
-  # measured on Hamburg in §5.9) rather than with the friction fast path.
-  #
-  # Tier 2 is about the DATA SOURCES (Zensus 100 m, GTFS, national grids), not
-  # about the routing engine: the engine is chosen per run. The baseline is the
-  # friction fast path, exactly as Hamburg's is, which is also what makes this
-  # city usable as the BASE of an engine cross-check against r5.
-  #
-  # For the full transit deep-dive, switch to:
-  #   engine: "r5"
-  #   modes: ["walk", "car", "transit"]
-  # and expect hours, not minutes (route with `routing.reverse_direction`).
-  engine: "friction"
+  # MUST be stated explicitly (test_every_city_declares_its_routing_engine).
+  # r5 over the real street network is the PRIMARY engine (methods.md §5): the
+  # E.1 cross-check on Hamburg and Köln showed the friction fast path's error
+  # is city-specific (gini_emergency −18.5 % here vs −30 % in Hamburg), so it
+  # cannot be corrected away, while reverse routing below makes a full r5 city
+  # ~30 min instead of ~8–12 h. WITHOUT `transit` in the mode set — transit is
+  # the Tier-2 deep-dive, dispatched deliberately, never inherited (run
+  # 30476375657 spent an hour in a forward-R5 transit baseline by accident).
+  # Friction remains available as the SENSITIVITY variant:
+  #   depacc engine-check --city koeln --engine friction
+  engine: "r5"
   modes: ["walk", "car"]
+  reverse_direction: ["car", "walk"]

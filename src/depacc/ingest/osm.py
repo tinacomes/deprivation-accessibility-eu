@@ -21,6 +21,30 @@ from depacc.provenance import download
 
 OSM_LICENCE = "ODbL 1.0 (© OpenStreetMap contributors)"
 
+#: Geofabrik country extracts for `depacc make-city` (r5 needs a street
+#: network; a generated Tier-1 config has no hand-picked regional extract).
+#: A country file is 1-5 GB but is clipped to the FUA window with osmium
+#: streaming before anything parses it, and cached per city. A hand-tuned
+#: regional extract (see hamburg.yaml) is always the better substitute.
+GEOFABRIK_COUNTRY = {
+    "AT": "austria", "BE": "belgium", "BG": "bulgaria", "CH": "switzerland",
+    "CZ": "czech-republic", "DE": "germany", "DK": "denmark", "EE": "estonia",
+    "EL": "greece", "ES": "spain", "FI": "finland", "FR": "france",
+    "HR": "croatia", "HU": "hungary", "IE": "ireland-and-northern-ireland",
+    "IT": "italy", "LT": "lithuania", "LU": "luxembourg", "LV": "latvia",
+    "NL": "netherlands", "NO": "norway", "PL": "poland", "PT": "portugal",
+    "RO": "romania", "SE": "sweden", "SI": "slovenia", "SK": "slovakia",
+    "UK": "great-britain",
+}
+
+
+def geofabrik_country_url(country: str) -> str | None:
+    """Geofabrik download URL for a two-letter country code, or None when the
+    country is not mapped (the caller should then ask for an explicit URL)."""
+    slug = GEOFABRIK_COUNTRY.get(country.upper())
+    return (f"https://download.geofabrik.de/europe/{slug}-latest.osm.pbf"
+            if slug else None)
+
 
 def fetch_pbfs(cfg: dict, root: Path) -> list[Path]:
     src = cfg["sources"]["osm_pbf"]

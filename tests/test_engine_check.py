@@ -35,15 +35,15 @@ def test_shadow_id_nests_inside_the_city_directory():
 
 def test_shadow_config_overrides_only_the_engine():
     cfg = load_config("hamburg")
-    alt = shadow_config(cfg, "r5")
-    assert alt["routing"]["engine"] == "r5"
-    assert cfg["routing"]["engine"] == "friction"        # original untouched
+    alt = shadow_config(cfg, "friction")
+    assert alt["routing"]["engine"] == "friction"
+    assert cfg["routing"]["engine"] == "r5"              # original untouched
     for section in ("softmin", "catchment", "regimes", "unreachable",
                     "everyday_services", "emergency_services"):
         assert alt[section] == cfg[section], section
     # The mode set is overridable, and only when asked for.
     assert alt["routing"]["modes"] == cfg["routing"]["modes"]
-    assert shadow_config(cfg, "r5", ["walk", "car", "transit"])["routing"]["modes"] \
+    assert shadow_config(cfg, "friction", ["walk", "car", "transit"])["routing"]["modes"] \
         == ["walk", "car", "transit"]
 
 
