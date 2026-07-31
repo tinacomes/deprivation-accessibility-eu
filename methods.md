@@ -742,7 +742,8 @@ the saved deprivation-free travel times (`t_regime_*`), so no re-routing;
 service* and re-composited from the saved per-service effective times
 (`t_eff_<service>`), still no re-routing; (3) the **accessibility axis**, run
 with `depacc sensitivity --layer access` — the knobs (mode set, `softmin.kappa`,
-`catchment.gamma`, bandwidth, `k_nearest`, unreachable treatment) that build the
+`catchment.gamma`, bandwidth, `k_nearest`, unreachable fill, off-network-cell
+policy) that build the
 travel times and can therefore actually move the ranks; (4) flip-cells — cells
 whose typology class changes across the sweep,
 reported as a stable-vs-sensitive population share and mapped. Reported as
@@ -788,6 +789,28 @@ unroutable cells, of which a well-connected FUA has none — Hamburg has zero, s
 sweeping it produced two identical rows. The knob that actually sets the
 deprivation of the 12–13 % of the population with no walkable GP is the
 large-but-finite time assigned to *reachable-but-service-deprived* cells.
+
+The **`off_network` axis** makes the off-network-cell choice explicit instead.
+The pipeline *masks* cells the router cannot reach at all — they enter no
+statistic, whatever `unreachable.policy` says about the per-service columns.
+The `cap` variant keeps them in every statistic, in **both** regimes, at the
+capped deprivation `g(routing.max_time_min)`. Under the friction engine this
+axis governs ~0 cells (the raster reaches everything); under r5 a cell that
+fails to snap to the street network is genuinely off-network, so the masking
+choice becomes a priced assumption rather than an invisible default —
+`off_network_pop_share` (the population share the policy governs) is reported
+on every variant row.
+
+**The sweep honours the OD provenance sidecars** (§5's never-reuse rule,
+applied on the read side). A variant whose mode set needs a matrix whose
+`od_<service>_<mode>.meta.json` is missing or was routed under a different
+engine/cutoff/`k_nearest` is reported **not evaluable** (`evaluable = false`
+plus the recorded reason, counted per knob as `n_not_evaluable` in the
+acceptance table) instead of being silently evaluated against foreign data; if
+the *baseline* modes themselves carry foreign provenance the sweep refuses
+outright. Routing the extra sensitivity modes (e.g. the everyday car OD for
+the walk+car variant) is opt-in per run: `routing.route_sensitivity_modes:
+true` or `DEPACC_ROUTE_SENSITIVITY_MODES=1`.
 
 Every variant recomputes the everyday per-service deprivations, composites them
 exactly as the deprivation stage does (the weighted mean of `g(t_s)` — **not**

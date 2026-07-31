@@ -51,15 +51,15 @@ def test_expand_access_variants_one_knob_at_a_time():
     assert "everyday_modes_walk" not in names
     # Off-baseline knobs are present.
     for expected in ("kappa_0.1", "gamma_0.0", "bandwidth_10", "k_nearest_10",
-                     "nearest_only", "unreachable_exclude",
+                     "nearest_only", "unreachable_exclude", "off_network_cap",
                      "everyday_modes_walk+car"):
         assert expected in names, expected
     # Each non-baseline variant changes exactly one axis from baseline.
     base = baseline_params(cfg)
     for v in variants[1:]:
         differing = [k for k in ("kappa", "gamma", "bandwidth", "k", "policy",
-                                 "cap_min", "finite_fill", "modes",
-                                 "nearest_only")
+                                 "cap_min", "finite_fill", "off_network",
+                                 "modes", "nearest_only")
                      if v.params[k] != base[k]]
         assert len(differing) == 1, (v.name, differing)
 
@@ -94,6 +94,25 @@ def test_unreachable_axis_sweeps_the_finite_fill_not_the_policy():
                                                   "unreachable": ["exclude"]})
            if v.knob == "unreachable"]
     assert pol and pol[0].params["policy"] == "exclude"
+
+
+def test_off_network_axis_expansion():
+    """The off-network-cell policy is its own axis: `mask` (the pipeline's
+    fixed behaviour for cells with no network path) is the baseline and is
+    skipped; `cap` yields one variant that differs ONLY on that knob."""
+    cfg = load_config("demo")
+    base = baseline_params(cfg)
+    assert base["off_network"] == "mask"
+    variants = expand_access_variants(cfg, {**BASE_GRID,
+                                            "off_network": ["mask", "cap"]})
+    off = [v for v in variants if v.knob == "off_network"]
+    assert [v.name for v in off] == ["off_network_cap"]
+    assert off[0].params["off_network"] == "cap"
+    # ...and every other knob stays at baseline (policy included: the cap
+    # behaviour is applied inside everyday_regime, not via `policy`).
+    for k in ("kappa", "gamma", "bandwidth", "k", "policy", "cap_min",
+              "finite_fill", "modes", "nearest_only"):
+        assert off[0].params[k] == base[k], k
 
 
 # --------------------------------------------------------------------------- #
@@ -304,3 +323,149 @@ def test_cli_layer_access_dispatch(demo_cache):
                  "--project-root", str(root)]) == 0
     sens = root / cfg["output"]["root"] / "sensitivity"
     assert (sens / "demo_access_acceptance.csv").exists()
+
+
+# --------------------------------------------------------------------------- #
+# OD provenance sidecars (read side) + the off-network axis                   #
+# --------------------------------------------------------------------------- #
+def _copy_cache(demo_cache, tmp_path):
+    """A private copy of the demo cache, so tampering never leaks into the
+    module-scoped fixture the other tests share."""
+    from depacc.ingest.pipeline import derived_dir
+
+    cfg, root = demo_cache
+    root2 = tmp_path / "root"
+    shutil.copytree(root, root2)
+    return cfg, root2, derived_dir(cfg, "demo", root2)
+
+
+def test_foreign_provenance_marks_mode_variant_not_evaluable(demo_cache, tmp_path):
+    """A variant whose mode set needs a matrix routed under a DIFFERENT engine
+    must be reported not-evaluable, never silently evaluated — the read-side
+    counterpart of run_access's never-reuse guard (the Köln contamination)."""
+    import json
+
+    from depacc.sensitivity.access import city_access_sensitivity, od_mode_status
+
+    cfg, root2, out = _copy_cache(demo_cache, tmp_path)
+    meta = out / "od_gp_car.meta.json"
+    assert meta.exists(), "demo access stage should write provenance sidecars"
+    poisoned = json.loads(meta.read_text())
+    poisoned["engine"] = "friction"
+    meta.write_text(json.dumps(poisoned))
+
+    services = list(cfg.get("everyday_services", {}))
+    status = od_mode_status(out, cfg, services)
+    assert status["car"] == "foreign" and status["walk"] == "ok"
+
+    table = city_access_sensitivity(cfg, "demo", root2, BASE_GRID, threshold=0.5)
+    row = table[table.variant == "everyday_modes_walk+car"].iloc[0]
+    assert not bool(row["evaluable"])
+    assert "provenance" in row["not_evaluable_reason"]
+    assert np.isnan(float(row["spearman_rho"]))
+    assert np.isnan(float(row["flip_pop_share"]))
+    # Walk-only variants are untouched by the poisoned car matrix.
+    assert bool(table[table.variant == "gamma_0.0"]["evaluable"].iloc[0])
+
+    acc = acceptance_table(table).set_index("knob")
+    assert acc.loc["everyday_mode", "n_not_evaluable"] == 1
+    assert np.isnan(acc.loc["everyday_mode", "hh_share_range"])
+    assert acc.loc["gamma", "n_not_evaluable"] == 0
+
+
+def test_foreign_baseline_provenance_refuses_the_sweep(demo_cache, tmp_path):
+    """A missing sidecar on a BASELINE-mode matrix means the whole cache is of
+    unknown origin for this config — the sweep must refuse, not anchor every
+    range on foreign data."""
+    from depacc.sensitivity.access import city_access_sensitivity
+
+    cfg, root2, out = _copy_cache(demo_cache, tmp_path)
+    (out / "od_gp_walk.meta.json").unlink()
+    assert city_access_sensitivity(cfg, "demo", root2, BASE_GRID,
+                                   threshold=0.5) is None
+
+
+OFFNET_GRID = {"kappa": [], "gamma": [], "bandwidth_min": [], "k_nearest": [],
+               "nearest_only": False, "unreachable": [],
+               "off_network": ["cap"], "everyday_modes": []}
+
+
+@pytest.fixture()
+def offnet_cache(demo_cache, tmp_path):
+    """Demo cache with ~40 populated cells made genuinely off-network (their
+    rows dropped from EVERY saved OD matrix), surfaces rebuilt to match — the
+    r5-like situation the off_network axis exists for."""
+    from depacc.cli import main
+
+    cfg, root2, out = _copy_cache(demo_cache, tmp_path)
+    cells = pd.read_parquet(out / "cells.parquet")
+    dropped = set(cells[cells.population > 0].cell_id.iloc[:40])
+    for p in out.glob("od_*.parquet"):
+        od = pd.read_parquet(p)
+        od[~od.origin.isin(dropped)].to_parquet(p)
+    assert main(["run", "--city", "demo", "--stage", "deprivation",
+                 "--project-root", str(root2)]) == 0
+    return cfg, root2, out, dropped
+
+
+def test_off_network_cap_keeps_cells_and_moves_targets(offnet_cache):
+    from depacc.sensitivity.access import city_access_sensitivity
+
+    cfg, root2, out, dropped = offnet_cache
+    cells = pd.read_parquet(out / "cells.parquet").set_index("cell_id")
+    surfaces = pd.read_parquet(out / "surfaces.parquet")
+
+    base = baseline_params(cfg)
+    dep_mask = everyday_regime(cfg, out, cells, base)[0]
+    # The baseline ("mask") still reproduces the rebuilt pipeline exactly,
+    # NaN mask on the off-network cells included.
+    assert np.allclose(dep_mask, surfaces["deprivation_everyday"].to_numpy(float),
+                       equal_nan=True, atol=1e-9)
+    nan_cells = np.isnan(dep_mask)
+    assert nan_cells.any()
+
+    dep_cap = everyday_regime(cfg, out, cells, {**base, "off_network": "cap"})[0]
+    # Under "cap" the off-network cells stay in the surface, all at the same
+    # capped deprivation.
+    assert np.isfinite(dep_cap[nan_cells]).all()
+    assert np.allclose(dep_cap[nan_cells], dep_cap[nan_cells][0])
+    # ...and the reachable cells are untouched by the policy.
+    assert np.allclose(dep_cap[~nan_cells], dep_mask[~nan_cells], equal_nan=True)
+
+    table = city_access_sensitivity(cfg, "demo", root2, OFFNET_GRID,
+                                    threshold=0.5)
+    base_row = table[table.variant == "baseline"].iloc[0]
+    cap_row = table[table.variant == "off_network_cap"].iloc[0]
+    assert base_row["off_network_pop_share"] > 0
+    assert bool(cap_row["evaluable"]) and cap_row["off_network"] == "cap"
+    # Including the off-network population at capped deprivation must move the
+    # deprivation targets — that is the whole point of pricing the policy.
+    assert abs(cap_row["gini_everyday"] - base_row["gini_everyday"]) > 1e-9
+    acc = acceptance_table(table).set_index("knob")
+    assert "off_network" in acc.index
+
+
+def test_cli_grid_governs_the_access_sweep(demo_cache, tmp_path):
+    """The config-supplied accessibility axes must reach the variant expansion:
+    run_access_sensitivity used to pass the WHOLE sensitivity grid down, so the
+    accessibility block of config/sensitivity.yaml was silently ignored in
+    favour of the built-in defaults."""
+    import yaml
+
+    from depacc.cli import main
+
+    cfg, root = demo_cache
+    grid_path = tmp_path / "grid.yaml"
+    grid_path.write_text(yaml.safe_dump({
+        "sensitivity": {
+            "accessibility": {
+                "kappa": [], "gamma": [0.9], "bandwidth_min": [],
+                "k_nearest": [], "nearest_only": False,
+                "unreachable": [], "off_network": [], "everyday_modes": []},
+            "threshold": 0.5}}))
+    assert main(["sensitivity", "--layer", "access", "--city", "demo",
+                 "--grid", str(grid_path), "--project-root", str(root)]) == 0
+    table = pd.read_csv(root / cfg["output"]["root"] / "sensitivity"
+                        / "demo_access_sensitivity.csv")
+    var = table[table.axis != "threshold"]
+    assert set(var.variant) == {"baseline", "gamma_0.9"}
