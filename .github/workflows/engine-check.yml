@@ -71,9 +71,9 @@ on:
         required: true
         default: "hamburg"
       engine:
-        description: "Alternative engine to compare the city's configured one against"
+        description: "Alternative engine to compare the city's configured one against. With r5 the primary engine (methods.md §5), 'friction' is the sensitivity direction; run_engine_check raises if it equals the city's own engine."
         required: false
-        default: "r5"
+        default: "friction"
       modes:
         description: "Space-separated mode override for the alternative run (blank = the city's own, e.g. 'walk car transit')"
         required: false

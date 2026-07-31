@@ -1745,6 +1745,42 @@ E.1 is answered, A′–D are landed and verified, and the two-city state on
    already has, friction becomes the declared sensitivity variant, methods.md
    §2/§7.1 updated. One code iteration; the provenance guard makes the switch
    safe against every cached matrix.
+
+   **Done.** What landed, and the three decisions inside it:
+
+   - **The facility set no longer follows the engine.** `sources.facilities`
+     now defaults to `overpass` for every engine, and ingest fetches/clips
+     the .pbf whenever `routing.engine: r5` — previously only the
+     engine-check's `ensure_network` did that, so a plain `depacc run` on an
+     r5 + Overpass city died at access with no network file, and an r5 city
+     with unset `sources.facilities` silently switched facility extraction to
+     the pbf. Both cities pin `facilities: "overpass"` explicitly
+     (`tests/test_ingest_network.py` covers all three properties).
+   - **hamburg/koeln: `engine: r5`, `modes: [walk, car]`,
+     `reverse_direction: [car, walk]`** — reverse routing comes from config
+     now, not a workflow env. Transit stays a deliberate Tier-2 dispatch,
+     never inherited. `engine-check.yml`'s default alternative engine flips
+     to `friction` (the standing sensitivity direction; the self-comparison
+     guard already raises if it matches the city's engine).
+   - **`make-city` generates r5 configs**, with the street network resolved
+     from a country → Geofabrik map (`ingest/osm.py:GEOFABRIK_COUNTRY`, 28
+     countries; unmapped countries get an instructive refusal, not a broken
+     config). Country extracts are 1–5 GB but osmium-clip streams them to the
+     FUA window; hand-tuned regional extracts remain the better substitute.
+   - Workflows: run-city and tier1-batch both gain the 8 G JVM cap, a routing
+     budget (210/110 min) under a step timeout below the job timeout, and
+     exit-2-as-resumable-notice; tier1-batch's city job additionally gains
+     Java + osmium + the full install and — previously missing entirely — a
+     per-city derived cache, without which a budget-stopped r5 city would
+     have discarded its finished matrices between batch dispatches.
+
+   Operational notes for the first dispatches: the provenance guard will
+   re-route both cities' matrices under r5 (the koeln shadow's r5 matrices
+   are sidecar-less, so they re-route too — do not be surprised by a cold
+   ~60–90 min first run per city), and the first friction sensitivity
+   cross-checks re-route the friction side into the shadow the same way.
+   methods.md §5, §7.1, §7a, §8 and the README carry the new engine order,
+   the Köln verdict table and the OD-provenance rule.
 2. **F.1** — `config/fua_population.csv` (pure data assembly, parallel).
 3. **F.5 pilot (~10 cities) under r5** at ~30 min/city, with the §5.7
    country-mix constraint (DE/FR EMP gap) applied to the draw; §4(c)

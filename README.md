@@ -49,7 +49,7 @@ uv venv .venv && uv pip install -p .venv/bin/python -e ".[dev]"     # core + tes
 uv pip install -p .venv/bin/python -e ".[full]"                     # full geospatial/routing stack
 ```
 
-`r5py` (Tier-2 transit routing) requires a **JDK 21** Java runtime.
+`r5py` (the primary r5 routing engine) requires a **JDK 21** Java runtime.
 
 ## Run
 
@@ -133,20 +133,23 @@ runs safe (`tools/persist_and_push.sh`). Synthetic fixtures (`demo`) are never
 persisted. To read the accumulated study, check out `depacc-results` or open
 `cross/` in it; the `depacc-cross-city` artifact on the batch run mirrors it.
 
-## Two routing engines (the many-city bypass)
+## Two routing engines
 
-| | `r5` (Tier-2 reference) | `friction` (Tier-1 fast path) |
+| | `r5` (PRIMARY, every tier) | `friction` (sensitivity variant) |
 |---|---|---|
-| Travel times | R5 street/transit routing | least-cost paths over Weiss et al. (2020) friction surfaces |
-| Modes | walk, car, transit | walk, car |
-| Facilities | .pbf + pyrosm | small Overpass API queries |
-| Downloads per city | 0.5–2 GB (.pbf, GTFS) | a **few MB** (WCS raster window + JSON) |
+| Travel times | R5 street routing (+ transit for Tier-2 deep-dives), reverse-routed facilities→cells | least-cost paths over Weiss et al. (2020) friction surfaces |
+| Modes | walk, car (+ transit, Tier 2) | walk, car |
+| Downloads per city | 0.5–5 GB .pbf, osmium-clipped to the FUA | a **few MB** (WCS raster window + JSON) |
 | Needs Java | yes (JDK 21) | no |
 | Resolution | street-level | ~1 km, harmonised Europe-wide |
+| Cost per city | ~30–60 min (network build + minutes of routing) | minutes |
 
-Set `routing.engine: friction` + `sources.facilities: overpass` in a city
-config (or use `depacc make-city`, which does both). Tier-2 r5 runs
-cross-check whether the coarse engine changes city rankings (methods.md §7).
+Facilities come from small Overpass API queries under **both** engines
+(`sources.facilities`) — the engine choice never changes the facility set.
+r5 was promoted from Tier-2 reference to primary after the engine cross-check
+showed the friction error is city-specific and therefore uncorrectable
+(methods.md §5, §7.1); run the friction sensitivity direction with
+`depacc engine-check --city <id> --engine friction`.
 
 No raw data is committed; everything under `data/` is reproduced by the ingest
 stage with cached downloads and JSON provenance sidecars (URL, SHA-256,

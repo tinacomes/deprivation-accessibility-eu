@@ -17,6 +17,10 @@ crs:
   local: "EPSG:32632"
 
 sources:
+  # Facilities always come from Overpass, whatever the routing engine:
+  # the engine choice must never change the facility set (methods.md
+  # §5, §7.1). The .pbf below is the r5 STREET NETWORK only.
+  facilities: "overpass"
   osm_pbf:
     # Geofabrik extract covering the Hamburg FUA (the FUA spills into
     # Schleswig-Holstein and Lower Saxony, so use the north-Germany-covering
@@ -152,13 +156,17 @@ equity:
       level: "income_tier2"
 
 routing:
-  # Fast path: least-cost paths over the Weiss et al. friction surfaces
-  # (walk + car), reusing the OSM facilities already ingested — no R5, no
-  # Java, minutes not hours. Tractable for this 176k-cell / 6135 km2 FUA.
-  #
-  # For the full Tier-2 transit deep-dive, switch back to:
-  #   engine: "r5"
-  #   modes: ["walk", "car", "transit"]
-  # (heavy at 176k cells — scope to the urban core or expect a long run).
-  engine: "friction"
+  # r5 over the real street network is the PRIMARY engine (methods.md §5):
+  # the E.1 cross-check on Hamburg and Köln showed the friction fast path's
+  # error is city-specific — gini_emergency −30 % here vs −18.5 % in Köln —
+  # so it cannot be corrected away, while reverse routing (facilities→cells,
+  # `reverse_direction` below) makes a full r5 city ~30 min instead of ~8–12 h.
+  # Friction remains available as the SENSITIVITY variant:
+  #   depacc engine-check --city hamburg --engine friction
+  # Facilities stay on Overpass regardless of engine (sources.facilities) so
+  # the engine choice never changes the facility set.
+  engine: "r5"
   modes: ["walk", "car"]
+  # Walk is symmetric (no one-way streets for pedestrians); car asymmetry is
+  # measured, not assumed — median |Δ| 1.0 min on Hamburg (methods.md §7.1).
+  reverse_direction: ["car", "walk"]

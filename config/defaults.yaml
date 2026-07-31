@@ -129,13 +129,21 @@ sources:
         denominator: ["T"]
 
 routing:
-  # r5:       reference engine, all modes (walk/car/transit), needs .pbf +
-  #           JDK 21 (+GTFS for transit). Tier-2 default.
-  # friction: Tier-1 fast path — least-cost paths over the Weiss et al.
-  #           friction surfaces (walk/car only, ~1 km, a few MB per city via
-  #           WCS window download, no Java). Pair with
-  #           sources.facilities: overpass. Coarser but harmonised; Tier-2
-  #           r5 runs cross-check the rankings (methods.md §5, §7).
+  # r5:       PRIMARY engine, every tier — real street-network routing via
+  #           r5py (needs .pbf + JDK 21; +GTFS only for transit). Affordable
+  #           at scale because of reverse routing (`reverse_direction`):
+  #           ~30 min/city walk+car, not ~8-12 h. Promoted from Tier-2
+  #           reference after the E.1 cross-check showed the friction error
+  #           is CITY-SPECIFIC (gini_emergency -30 % Hamburg, -18.5 % Köln —
+  #           methods.md §7.1) and therefore not correctable.
+  # friction: the SENSITIVITY variant — least-cost paths over the Weiss et
+  #           al. ~1 km friction surfaces (walk/car only, a few MB per city,
+  #           no Java). Run it against an r5 baseline with
+  #           `depacc engine-check --city <id> --engine friction`.
+  # Facilities come from Overpass under BOTH engines (sources.facilities
+  # defaults to overpass) — the engine choice never changes the facility set.
+  # Every city config MUST declare its engine explicitly
+  # (test_every_city_declares_its_routing_engine).
   engine: "r5"
   departure:
     # Fixed representative departure for transit routing (Tier 2); walk/car

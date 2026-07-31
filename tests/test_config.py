@@ -71,10 +71,13 @@ def test_city_overlay_hamburg():
     assert cfg["city"]["fua_code"] == "DE002F"
     assert cfg["crs"]["local"] == "EPSG:32632"
     assert cfg["crs"]["analysis"] == "EPSG:3035"  # global key survives merge
-    # Hamburg uses the friction fast path (walk/car) by default; the r5
-    # transit deep-dive is a documented config switch.
-    assert cfg["routing"]["engine"] == "friction"
+    # r5 is the primary engine since the E.1 promotion (methods.md §5);
+    # friction is the sensitivity variant, and the facility set is pinned to
+    # Overpass so the engine choice can never change it.
+    assert cfg["routing"]["engine"] == "r5"
     assert cfg["routing"]["modes"] == ["walk", "car"]
+    assert sorted(cfg["routing"]["reverse_direction"]) == ["car", "walk"]
+    assert cfg["sources"]["facilities"] == "overpass"
     assert cfg["routing"]["max_time_min"] == 120  # inherited default
 
 
