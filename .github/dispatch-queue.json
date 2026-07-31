@@ -3,7 +3,7 @@
     "workflow": "tier1-batch.yml",
     "ref": "main",
     "inputs": {
-      "cities": "[\"stockholm\",\"aarhus\",\"amsterdam\",\"antwerpen\",\"madrid\",\"palermo\",\"warszawa\",\"brno\"]"
+      "cities": "[\"madrid\"]"
     }
   }
 ]
