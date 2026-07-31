@@ -43,8 +43,14 @@ jobs:
           jq -c '.[]' .github/dispatch-queue.json | while read -r item; do
             wf=$(jq -r '.workflow' <<<"$item")
             ref=$(jq -r '.ref // "main"' <<<"$item")
-            args=$(jq -r '(.inputs // {}) | to_entries[] | "-f \(.key)=\(.value)"' <<<"$item" | xargs)
-            echo "::group::dispatch $wf @ $ref $args"
-            gh workflow run "$wf" --ref "$ref" $args -R "$GITHUB_REPOSITORY"
+            cmd=(gh workflow run "$wf" --ref "$ref" -R "$GITHUB_REPOSITORY")
+            # One -f key=value per input, array-built so values may hold
+            # spaces/semicolons (e.g. tier1-batch's make_cities triplets).
+            while IFS= read -r pair; do
+              cmd+=(-f "$pair")
+            done < <(jq -r '(.inputs // {}) | to_entries[] | "\(.key)=\(.value)"' <<<"$item")
+            echo "::group::dispatch $wf @ $ref"
+            printf '  %q\n' "${cmd[@]}"
+            "${cmd[@]}"
             echo "::endgroup::"
           done
