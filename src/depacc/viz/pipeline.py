@@ -31,7 +31,13 @@ from depacc.ingest.pipeline import derived_dir
 
 # Stevens bivariate 2x2 corner scheme (LL near-neutral by construction;
 # classes carry a labelled legend + CSV table, CVD ΔE validated).
-TYPOLOGY_COLORS = {"LL": "#e8e8e8", "HL": "#5ac8c8", "LH": "#be64ac", "HH": "#3b4994"}
+# LL was #e8e8e8 — near-invisible on the white page, so "low on both" was
+# indistinguishable from "no populated cell at all" (face-validation feedback:
+# Harburg's low-deprivation core simply vanished). The low-low corner is now a
+# light warm sand: still the lightest corner (bivariate corner logic), but
+# chroma-bearing and warm against the cool NO_DATA grey; worst adjacent-pair
+# CVD ΔE vs the other corners is 12.8 (validated).
+TYPOLOGY_COLORS = {"LL": "#d8b365", "HL": "#5ac8c8", "LH": "#be64ac", "HH": "#3b4994"}
 TYPOLOGY_LABELS = {
     "LL": "low both",
     "HL": "high everyday only",
@@ -39,6 +45,13 @@ TYPOLOGY_LABELS = {
     "HH": "compounding (high both)",
 }
 REGIME_CMAP = {"everyday": "Oranges", "emergency": "Purples"}
+#: Populated cells that carry no value/class (off-network). Grey, never white:
+#: white is reserved for "no populated 100 m cell here at all".
+NO_DATA = "#b3b3b3"
+#: Half-width (m) of the core-zoom window around the population-weighted
+#: centre — the scale at which intra-city structure (a secondary centre, a
+#: villa quarter) is actually readable.
+CORE_HALF_M = 12_000.0
 
 
 def _style(ax):
@@ -115,13 +128,50 @@ def _grid_scatter(fig, ax, x, y, *, color=None, c=None, cmap=None,
                       marker="s", linewidths=0)
 
 
+def _ramp(name: str, low: float = 0.22):
+    """Truncate a sequential colormap so its LOW end is a visible tint.
+
+    The stock ramps fade to white at 0, which made "least deprived"
+    indistinguishable from the white no-cell background — the exact ambiguity
+    face validation tripped over. Low values must be *light*, never *absent*.
+    """
+    import matplotlib as mpl
+
+    base = mpl.colormaps[name]
+    return mpl.colors.LinearSegmentedColormap.from_list(
+        f"{name}_visible", base(np.linspace(low, 1.0, 256)))
+
+
+def _map_caption(fig, nodata_any: bool) -> None:
+    txt = "white = no populated 100 m cell"
+    if nodata_any:
+        txt += " · grey = populated cell, no data (off-network)"
+    fig.text(0.01, 0.01, txt, ha="left", va="bottom", fontsize=7, color="0.45")
+
+
+def _pop_center(df) -> tuple[float, float]:
+    x = df.x.to_numpy(float)
+    y = df.y.to_numpy(float)
+    if "population" in df:
+        w = np.nan_to_num(df["population"].to_numpy(float), nan=0.0)
+        if w.sum() > 0:
+            return float(np.average(x, weights=w)), float(np.average(y, weights=w))
+    return float(np.nanmean(x)), float(np.nanmean(y))
+
+
 def _choropleth(fig, ax, df, value_col, cmap, *, vmin=0.0, vmax=None,
                 unreachable_col=None):
     dep = df[value_col].to_numpy(float)
     if vmax is None:
         vmax = float(np.nanquantile(dep, 0.98))
-    sc = _grid_scatter(fig, ax, df.x.to_numpy(), df.y.to_numpy(),
-                       c=dep, cmap=cmap, vmin=vmin, vmax=vmax)
+    nodata = ~np.isfinite(dep)
+    if nodata.any():
+        _grid_scatter(fig, ax, df.x.to_numpy()[nodata], df.y.to_numpy()[nodata],
+                      color=np.full(int(nodata.sum()), NO_DATA))
+    sc = _grid_scatter(fig, ax, df.x.to_numpy()[~nodata], df.y.to_numpy()[~nodata],
+                       c=dep[~nodata], cmap=_ramp(cmap) if isinstance(cmap, str) else cmap,
+                       vmin=vmin, vmax=vmax)
+    _map_caption(fig, bool(nodata.any()))
     if unreachable_col and unreachable_col in df:
         unreach = df[df[unreachable_col]]
         if len(unreach):
@@ -163,23 +213,42 @@ def run_viz(cfg: dict, city: str, root: Path) -> None:
     # --- 1b. PERCENTILE choropleths (the surfaces the co-location split uses)
     # These are the population-weighted ranks; the typology thresholds cut them
     # at 0.50 / 0.75. Showing them bridges the magnitude maps and the class map.
+    # Each map is written twice: the full FUA and a core zoom (±CORE_HALF_M
+    # around the population-weighted centre) — intra-city structure like a
+    # secondary centre or a villa quarter is unreadable at FUA scale.
+    cx, cy = _pop_center(typology)
+    core_mask = ((np.abs(typology.x.to_numpy(float) - cx) <= CORE_HALF_M)
+                 & (np.abs(typology.y.to_numpy(float) - cy) <= CORE_HALF_M))
     for regime in ("everyday", "emergency"):
         pcol = f"{regime}_pct"
         if pcol not in typology.columns:
             continue
-        fig, ax = plt.subplots(figsize=(7, 6.5))
-        sc = _grid_scatter(fig, ax, typology.x.to_numpy(), typology.y.to_numpy(),
-                           c=typology[pcol].to_numpy(float),
-                           cmap=REGIME_CMAP[regime], vmin=0.0, vmax=1.0)
-        ax.set_title(f"{name}: {regime} deprivation — population-weighted "
-                     f"percentile (rank)", fontsize=11)
-        cb = fig.colorbar(sc, ax=ax, shrink=0.75)
-        cb.set_label("percentile of population-weighted rank", fontsize=9)
-        cb.outline.set_visible(False)
-        _watermark(fig, cfg)
-        fig.tight_layout()
-        fig.savefig(figdir / f"percentile_{regime}.png", dpi=180, bbox_inches="tight")
-        plt.close(fig)
+        for suffix, sel in (("", None), ("_core", core_mask)):
+            frame = typology if sel is None else typology[sel]
+            if len(frame) < 50:
+                continue
+            vals = frame[pcol].to_numpy(float)
+            nodata = ~np.isfinite(vals)
+            fig, ax = plt.subplots(figsize=(7, 6.5))
+            if nodata.any():
+                _grid_scatter(fig, ax, frame.x.to_numpy()[nodata],
+                              frame.y.to_numpy()[nodata],
+                              color=np.full(int(nodata.sum()), NO_DATA))
+            sc = _grid_scatter(fig, ax, frame.x.to_numpy()[~nodata],
+                               frame.y.to_numpy()[~nodata], c=vals[~nodata],
+                               cmap=_ramp(REGIME_CMAP[regime]), vmin=0.0, vmax=1.0)
+            zoom = " — core ±12 km" if suffix else ""
+            ax.set_title(f"{name}: {regime} deprivation — population-weighted "
+                         f"percentile (rank){zoom}", fontsize=11)
+            cb = fig.colorbar(sc, ax=ax, shrink=0.75)
+            cb.set_label("percentile of population-weighted rank", fontsize=9)
+            cb.outline.set_visible(False)
+            _map_caption(fig, bool(nodata.any()))
+            _watermark(fig, cfg)
+            fig.tight_layout()
+            fig.savefig(figdir / f"percentile_{regime}{suffix}.png", dpi=180,
+                        bbox_inches="tight")
+            plt.close(fig)
 
     # --- 2. bivariate compounding maps (one per configured threshold) -------
     thresholds = cfg.get("typology", {}).get("thresholds", [0.5, 0.75])
@@ -192,6 +261,18 @@ def run_viz(cfg: dict, city: str, root: Path) -> None:
                          typology=typology, typ_col=typ_col, name=name,
                          threshold=thr, summary_csv=out / f"typology_summary_{key}.csv",
                          cfg=cfg, plt=plt)
+        if core_mask.sum() >= 50:
+            _compounding_map(fig_out=figdir / f"compounding_map_{key}_core.png",
+                             typology=typology[core_mask], typ_col=typ_col,
+                             name=name, threshold=thr,
+                             summary_csv=out / f"typology_summary_{key}.csv",
+                             cfg=cfg, plt=plt, subtitle=" — core ±12 km")
+        # One panel per class over a grey context: "where exactly is HL?" is
+        # unreadable when four classes share one map (face-validation ask).
+        _class_facets(fig_out=figdir / f"compounding_classes_{key}.png",
+                      typology=typology, typ_col=typ_col, name=name,
+                      threshold=thr, summary_csv=out / f"typology_summary_{key}.csv",
+                      cfg=cfg, plt=plt)
     # Back-compat alias: the median-split map keeps its original filename.
     src = figdir / "compounding_map_50.png"
     if src.exists():
@@ -271,17 +352,21 @@ def run_viz(cfg: dict, city: str, root: Path) -> None:
 
 
 def _compounding_map(*, fig_out, typology, typ_col, name, threshold,
-                     summary_csv, cfg, plt):
+                     summary_csv, cfg, plt, subtitle=""):
     """One bivariate co-location map with an on-figure population-share table."""
     colors = typology[typ_col].map(TYPOLOGY_COLORS).to_numpy()
     valid = typology[typ_col].notna().to_numpy()
     fig, ax = plt.subplots(figsize=(8.2, 6.5))
+    if (~valid).any():
+        _grid_scatter(fig, ax, typology.x.to_numpy()[~valid],
+                      typology.y.to_numpy()[~valid],
+                      color=np.full(int((~valid).sum()), NO_DATA))
     _grid_scatter(fig, ax, typology.x.to_numpy()[valid],
                   typology.y.to_numpy()[valid], color=colors[valid])
     pct = int(round(threshold * 100))
     split = "median split" if pct == 50 else f"p{pct} split"
     ax.set_title(f"{name}: everyday x emergency co-location "
-                 f"(pop-weighted {split} of percentiles)", fontsize=11)
+                 f"(pop-weighted {split} of percentiles){subtitle}", fontsize=11)
     # Legend + population-share table (shares are population-weighted; the map
     # is area-weighted — see module docstring).
     import matplotlib.patches as mpatches
@@ -297,13 +382,70 @@ def _compounding_map(*, fig_out, typology, typ_col, name, threshold,
         if share is not None and np.isfinite(share):
             lab += f"  ({share:.0%} pop)"
         handles.append(mpatches.Patch(color=TYPOLOGY_COLORS[cls], label=lab))
+    if (~valid).any():
+        handles.append(mpatches.Patch(color=NO_DATA,
+                                      label="no class (off-network)"))
     ax.legend(handles=handles, loc="upper left", bbox_to_anchor=(1.01, 1),
               frameon=False, fontsize=8,
               title="class (share = % of population)", title_fontsize=8)
+    _map_caption(fig, bool((~valid).any()))
     fig.text(0.99, 0.02,
              "shares are population-weighted; map area is not\n"
              "(dense low-deprivation cores hold many people in few cells)",
              ha="right", va="bottom", fontsize=7, color="0.45")
+    _watermark(fig, cfg)
+    fig.tight_layout()
+    fig.savefig(fig_out, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+
+
+def _class_facets(*, fig_out, typology, typ_col, name, threshold,
+                  summary_csv, cfg, plt):
+    """One panel per co-location class, that class in colour over a grey
+    context of every other classified cell.
+
+    The single four-colour map answers "what is this cell?", but face
+    validation asks the transposed question — "where exactly is HL?" — and a
+    class that shares the map with three others is hard to trace as a shape
+    (the rural HL ring, the HH commuter belt). Small multiples answer it
+    directly; the context grey keeps the FUA outline readable in each panel.
+    """
+    valid = typology[typ_col].notna().to_numpy()
+    x = typology.x.to_numpy(float)
+    y = typology.y.to_numpy(float)
+    shares = {}
+    if summary_csv.exists():
+        s = pd.read_csv(summary_csv).set_index("typology")
+        shares = s["population_share"].to_dict()
+    fig, axes = plt.subplots(2, 2, figsize=(11.5, 10.5))
+    # Shared extent, fixed before plotting: each panel otherwise auto-scales
+    # to its own class's bounding box and the four shapes stop being
+    # comparable (marker sizing keys off the axis limits too).
+    pad = 500.0
+    xlim = (float(np.nanmin(x[valid])) - pad, float(np.nanmax(x[valid])) + pad)
+    ylim = (float(np.nanmin(y[valid])) - pad, float(np.nanmax(y[valid])) + pad)
+    for ax, cls in zip(axes.ravel(), ("LL", "HL", "LH", "HH")):
+        ax.set_xlim(*xlim)
+        ax.set_ylim(*ylim)
+        ax.autoscale(False)
+        in_cls = (typology[typ_col] == cls).to_numpy()
+        ctx = valid & ~in_cls
+        if ctx.any():
+            _grid_scatter(fig, ax, x[ctx], y[ctx],
+                          color=np.full(int(ctx.sum()), "#e9e9e9"))
+        if in_cls.any():
+            _grid_scatter(fig, ax, x[in_cls], y[in_cls],
+                          color=np.full(int(in_cls.sum()), TYPOLOGY_COLORS[cls]))
+        share = shares.get(cls)
+        title = f"{cls} — {TYPOLOGY_LABELS[cls]}"
+        if share is not None and np.isfinite(share):
+            title += f"  ({share:.0%} pop)"
+        ax.set_title(title, fontsize=10)
+        ax.set_xticks([])
+        ax.set_yticks([])
+    pct = int(round(threshold * 100))
+    fig.suptitle(f"{name}: co-location classes, one per panel "
+                 f"(p{pct} split; grey = other classified cells)", fontsize=12)
     _watermark(fig, cfg)
     fig.tight_layout()
     fig.savefig(fig_out, dpi=180, bbox_inches="tight")

@@ -66,6 +66,7 @@ SUMMARY_GLOBS = (
 FIGURE_GLOBS = (
     "figures/percentile_*.png",
     "figures/compounding_map_*.png",
+    "figures/compounding_classes_*.png",
 )
 CROSS_FILES = (
     "cityplane.csv",
