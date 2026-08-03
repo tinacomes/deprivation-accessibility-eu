@@ -1,12 +1,10 @@
 [
   {
-    "workflow": "run-city.yml",
+    "workflow": "tier1-batch.yml",
     "ref": "main",
-    "nonce": "viz-refresh-20260803T120950",
+    "nonce": "full-sample-chunk-1",
     "inputs": {
-      "city": "hamburg",
-      "stage": "viz",
-      "route_sensitivity_modes": "true"
+      "cities": "[\"paris\",\"berlin\",\"barcelona\",\"milano\",\"roma\",\"athina\",\"lisboa\",\"napoli\",\"bucuresti\",\"budapest\",\"praha\",\"kobenhavn\"]"
     }
   }
 ]
