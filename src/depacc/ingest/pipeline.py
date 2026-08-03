@@ -36,6 +36,23 @@ def network_marker_valid(marker: Path) -> bool:
     return False
 
 
+def gtfs_list_valid(listing: Path) -> bool:
+    """True iff the GTFS list exists, is non-empty and every feed it names
+    exists — the same stale-pointer rule as :func:`network_marker_valid`."""
+    if not listing.exists():
+        return False
+    try:
+        paths = [p for p in listing.read_text().splitlines() if p]
+    except OSError:
+        return False
+    missing = [p for p in paths if not Path(p).exists()]
+    if missing:
+        print(f"GTFS list {listing} names missing feed file(s) {missing} — "
+              f"refetching")
+        return False
+    return bool(paths)
+
+
 def derived_dir(cfg: dict, city: str, root: Path) -> Path:
     d = root / cfg["output"]["root"] / city
     d.mkdir(parents=True, exist_ok=True)

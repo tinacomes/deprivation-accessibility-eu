@@ -156,8 +156,10 @@ def ensure_network(alt_cfg: dict, city: str, root: Path, alt_out: Path) -> None:
         (alt_out / "network_pbf_path.txt").write_text(str(network_pbf))
         print(f"engine-check: street network ready ({network_pbf.name})")
 
+    from depacc.ingest.pipeline import gtfs_list_valid
+
     if "transit" in (alt_cfg["routing"].get("modes") or []) \
-            and not (alt_out / "gtfs_paths.txt").exists():
+            and not gtfs_list_valid(alt_out / "gtfs_paths.txt"):
         import geopandas as gpd
 
         from depacc.ingest.gtfs import fetch_gtfs
