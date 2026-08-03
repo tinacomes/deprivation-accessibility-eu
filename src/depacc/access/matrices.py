@@ -637,14 +637,40 @@ def _synthetic_matrix(cells: pd.DataFrame, facilities: pd.DataFrame,
     })
 
 
+def _network_gtfs(cfg: dict, out: Path) -> list[str]:
+    """The GTFS feeds the R5 network build should load, stale-pointer safe.
+
+    A city's Tier-2 past can leave a ``gtfs_paths.txt`` in the derived cache
+    whose feed files live outside every cache on a fresh runner — the Köln
+    resume (run 30660897560) crashed on ``~/.cache/r5py/gtfs_de_germany.zip``
+    while routing no transit at all. Feeds are only loaded when this run
+    actually routes transit; a stale list is then a hard error naming the fix
+    rather than a FileNotFoundError from inside r5py.
+    """
+    gtfs_list = out / "gtfs_paths.txt"
+    if not gtfs_list.exists():
+        return []
+    listed = [p for p in gtfs_list.read_text().splitlines() if p]
+    if "transit" not in (cfg["routing"].get("modes") or []):
+        if listed:
+            print(f"  network: ignoring {len(listed)} GTFS feed(s) in "
+                  f"{gtfs_list.name} — 'transit' is not in routing.modes")
+        return []
+    missing = [p for p in listed if not Path(p).exists()]
+    if missing:
+        raise RuntimeError(
+            f"{gtfs_list} names missing GTFS feed file(s): {missing}. The "
+            f"cached list is stale (the feeds live outside the caches on a "
+            f"fresh runner) — delete it and re-run the ingest stage to "
+            f"refetch.")
+    return listed
+
+
 def _build_r5_network(cfg: dict, city: str, out: Path):
     import r5py
 
     pbf = Path((out / "network_pbf_path.txt").read_text().strip())
-    gtfs: list[str] = []
-    gtfs_list = out / "gtfs_paths.txt"
-    if gtfs_list.exists():
-        gtfs = [p for p in gtfs_list.read_text().splitlines() if p]
+    gtfs = _network_gtfs(cfg, out)
     print(f"Building R5 network from {pbf.name} + {len(gtfs)} GTFS feed(s)")
     return r5py.TransportNetwork(str(pbf), gtfs)
 

@@ -123,3 +123,38 @@ def test_stale_network_marker_is_not_trusted(tmp_path):
     pbf.write_bytes(b"pbf")
     marker.write_text(str(pbf))
     assert network_marker_valid(marker)              # marker -> real file
+
+
+def test_stale_gtfs_pointers_are_ignored_or_refused(tmp_path):
+    """Köln's resume (run 30660897560) crashed on a stale ~/.cache/r5py GTFS
+    path from its Tier-2 past while routing no transit at all. Feeds are
+    loaded only when transit is routed; a stale list is then a clear error,
+    and for walk/car runs it is ignored with a note."""
+    import pytest as _pytest
+
+    from depacc.access.matrices import _network_gtfs
+    from depacc.ingest.pipeline import gtfs_list_valid
+
+    out = tmp_path
+    listing = out / "gtfs_paths.txt"
+    cfg_street = {"routing": {"modes": ["walk", "car"]}}
+    cfg_transit = {"routing": {"modes": ["walk", "car", "transit"]}}
+
+    # No list at all: nothing to load, in any mode set.
+    assert _network_gtfs(cfg_street, out) == []
+    assert _network_gtfs(cfg_transit, out) == []
+    assert not gtfs_list_valid(listing)
+
+    # Stale list: ignored for street-only routing, refused for transit.
+    listing.write_text(str(out / "gone.zip"))
+    assert _network_gtfs(cfg_street, out) == []
+    with _pytest.raises(RuntimeError, match="stale"):
+        _network_gtfs(cfg_transit, out)
+    assert not gtfs_list_valid(listing)
+
+    # Valid list: loaded for transit.
+    feed = out / "feed.zip"
+    feed.write_bytes(b"zip")
+    listing.write_text(str(feed))
+    assert _network_gtfs(cfg_transit, out) == [str(feed)]
+    assert gtfs_list_valid(listing)
