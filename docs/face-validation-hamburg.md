@@ -7,8 +7,20 @@ the persisted copies on the `depacc-results` branch
 (`cities/hamburg/figures/`, refreshed on every Hamburg run):
 
 - everyday percentile surface: `figures/percentile_everyday.png`
+  (+ `percentile_everyday_core.png`, ±12 km around the population-weighted
+  centre — checks 2 and 5 are unreadable at FUA scale)
 - emergency percentile surface: `figures/percentile_emergency.png`
+  (+ `_core` variant)
 - co-location typology at p50: `figures/compounding_map_50.png`
+  (+ `_core` variant, and `compounding_classes_50.png` — one panel per class
+  over a grey context, for tracing a single class as a shape: the HL ring of
+  check 3, the HH belt of check 4)
+
+Colour key (fixed after the first face-validation pass): **white** = no
+populated 100 m cell; **grey** = populated cell with no value/class
+(off-network); low deprivation is a visible light tint, never white — the
+first-generation maps faded to white at the low end, which made "least
+deprived" indistinguishable from "no cell" and check 2 unanswerable.
 
 > Raw links (render on GitHub once the figures have been persisted by a
 > post-merge Hamburg run):
@@ -49,8 +61,29 @@ the persisted copies on the `depacc-results` branch
 
 ## Verdict
 
-To be filled from the first post-merge r5 Hamburg run's persisted figures
-(per-cell class assignment is engine-sensitive — 23.7 % flip share, §5.10 —
-so the face validation is read on the r5 maps, not the friction ones).
-Checks 1–3 bear on the surfaces; 4–5 on the typology. Any failed check gets
-its own note here with the map crop and the suspected mechanism.
+Per-cell class assignment is engine-sensitive (23.7 % flip share, §5.10), so
+the face validation is read on the r5 maps only. Checks 1–3 bear on the
+surfaces; 4–5 on the typology.
+
+**First pass (2026-08, on the first-generation figures — to be re-read on
+the fixed maps above):**
+
+1. *Elbe barrier*: "somewhat visible, but in the centre not much of a
+   barrier." Partially consistent with expectation — the centre is where the
+   crossings are (the city bridges and the Elbtunnel), so a weak central
+   gradient is what the road network implies; the diagnostic stretch is
+   *between* crossings (Finkenwerder / Altes Land side). Re-read on
+   `percentile_emergency_core.png`.
+2. *Harburg core*: **not judgeable on the first-generation map** — low
+   deprivation rendered white and was indistinguishable from no-cell. This
+   was the finding that triggered the colour fix. Re-read.
+3. *Rural HL ring*: not clearly visible on the combined map — re-read on the
+   HL panel of `compounding_classes_50.png`, which isolates it.
+4. *HH belt*: no clear transition visible — same re-read on the HH panel.
+   If the belt still fails to appear there, that is a genuine finding
+   against the commuter-belt hypothesis, not a viz artefact.
+5. *Blankenese*: not resolvable at FUA scale — re-read on
+   `percentile_everyday_core.png`.
+
+Net: one genuine partial confirmation (1), one viz defect fixed (2), three
+checks deferred to the purpose-built figures (3–5).
