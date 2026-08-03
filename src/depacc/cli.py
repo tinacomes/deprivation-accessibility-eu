@@ -187,6 +187,16 @@ def main(argv: list[str] | None = None) -> int:
     comp.add_argument("--project-root", type=Path,
                       default=Path(__file__).resolve().parents[2])
 
+    ds = sub.add_parser(
+        "draw-sample",
+        help="F.2: the seeded region x size stratified draw "
+             "(city_definition.region_strata) over config/fua_population.csv; "
+             "writes config/full_sample.csv (deterministic, reviewable)")
+    ds.add_argument("--out", type=Path, default=None,
+                    help="output CSV (default: config/full_sample.csv)")
+    ds.add_argument("--project-root", type=Path,
+                    default=Path(__file__).resolve().parents[2])
+
     fp = sub.add_parser(
         "build-fua-population",
         help="F.1: compile the FUA population table (fua_code, population) "
@@ -224,6 +234,22 @@ def main(argv: list[str] | None = None) -> int:
         run_completeness(load_config(), args.project_root,
                          [c.upper() for c in args.country],
                          out_dir=args.out_dir)
+        return 0
+
+    if args.command == "draw-sample":
+        import pandas as pd
+
+        from depacc.ingest.fua_sample import draw_region_strata
+
+        cfg = load_config()
+        pop_csv = (args.project_root
+                   / (cfg["city_definition"].get("fua_population_csv")
+                      or "config/fua_population.csv"))
+        fuas = pd.read_csv(pop_csv)
+        out = draw_region_strata(fuas, cfg)
+        out_csv = args.out or (args.project_root / "config" / "full_sample.csv")
+        out.to_csv(out_csv, index=False)
+        print(f"wrote {out_csv}")
         return 0
 
     if args.command == "build-fua-population":

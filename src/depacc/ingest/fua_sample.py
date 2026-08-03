@@ -176,6 +176,147 @@ def build_fua_population(cfg: dict, root: Path, out_csv: Path) -> pd.DataFrame:
     return result
 
 
+# --------------------------------------------------------------------------- #
+# F.2 — the region x size stratified draw (the full sample)                   #
+# --------------------------------------------------------------------------- #
+def draw_region_strata(fuas: pd.DataFrame, cfg: dict) -> pd.DataFrame:
+    """The full-sample draw: 4 macro-regions x 4 size strata, seeded.
+
+    Deterministic given ``city_definition.region_strata`` (seed, regions,
+    pins) and the FUA population table, so the committed
+    ``config/full_sample.csv`` is exactly reproducible. Rules, in order:
+
+    1. **Pins** (pilot cities + validity probes) enter first and consume
+       their cell's slots.
+    2. **Country coverage**: every region-member country with an eligible
+       FUA appears at least once (its largest) — the rule that guarantees
+       e.g. EL and PT presence, which a pure random-within-region draw
+       silently dropped.
+    3. Cells fill to ``per_cell``: largest FUA first when the cell is still
+       empty, then seeded random draws. DE+FR are capped (``max_de_fr``,
+       the census-EMP gap, plan §5.7).
+    4. Empty ``>5M`` cells (only the West and South have FUAs that large)
+       backfill into their region's 1-5M cell.
+    5. ``post_pins`` (reviewer pins) are appended AFTER the draw so they
+       never perturb the seeded sequence.
+
+    Countries without a Geofabrik extract mapping are excluded (reported).
+    """
+    import random
+
+    from depacc.ingest.osm import GEOFABRIK_COUNTRY
+
+    rs = cfg["city_definition"]["region_strata"]
+    bounds = [float(b) for b in rs["strata_bounds"]] + [float("inf")]
+    labels = []
+    for lo, hi in zip(bounds[:-1], bounds[1:]):
+        def _fmt(v):
+            return f"{v / 1e6:g}M" if v >= 1e6 else f"{v / 1e3:g}k"
+        labels.append(f"{_fmt(lo)}-{_fmt(hi)}" if hi != float("inf")
+                      else f">{_fmt(lo)}")
+    region_of = {cc: rg for rg, ccs in rs["regions"].items() for cc in ccs}
+
+    univ = []
+    dropped_cc = set()
+    for r in fuas.dropna(subset=["population"]).itertuples():
+        cc, pop = r.country, float(r.population)
+        if cc not in region_of or pop < bounds[0]:
+            continue
+        if cc not in GEOFABRIK_COUNTRY:
+            dropped_cc.add(cc)
+            continue
+        idx = next(i for i, (lo, hi) in enumerate(zip(bounds[:-1], bounds[1:]))
+                   if lo <= pop < hi)
+        univ.append(dict(fua_code=r.fua_code, name=r.name, country=cc,
+                         population=int(pop), region=region_of[cc],
+                         stratum=labels[idx]))
+    if dropped_cc:
+        print(f"draw: countries without a Geofabrik mapping excluded: "
+              f"{sorted(dropped_cc)}")
+
+    by_cell: dict[tuple, list] = {}
+    by_cc: dict[str, list] = {}
+    by_code = {}
+    for u in univ:
+        by_cell.setdefault((u["region"], u["stratum"]), []).append(u)
+        by_cc.setdefault(u["country"], []).append(u)
+        by_code[u["fua_code"]] = u
+
+    rng = random.Random(int(rs["seed"]))
+    target = int(rs["per_cell"])
+    max_de_fr = int(rs.get("max_de_fr", 12))
+    sample, taken = [], set()
+    de_fr = 0
+
+    def _add(u, why):
+        nonlocal de_fr
+        sample.append({**u, "why": why})
+        taken.add(u["fua_code"])
+        if u["country"] in ("DE", "FR"):
+            de_fr += 1
+
+    for code, why in (rs.get("pins") or {}).items():
+        if code in by_code and code not in taken:
+            _add(by_code[code], str(why))
+    for cc in sorted(by_cc):
+        if not any(s["country"] == cc for s in sample):
+            _add(max(by_cc[cc], key=lambda u: u["population"]),
+                 "country coverage (largest)")
+
+    order = [(rg, st) for rg in rs["regions"] for st in labels]
+    shortfall = {}
+    for key in order:
+        cand = sorted(by_cell.get(key, []), key=lambda u: -u["population"])
+        have = sum(1 for s in sample if (s["region"], s["stratum"]) == key)
+        free = [u for u in cand if u["fua_code"] not in taken]
+        if not have and free:
+            _add(free.pop(0), "largest in cell")
+            have += 1
+        while have < target and free:
+            pool = [u for u in free
+                    if not (u["country"] in ("DE", "FR") and de_fr >= max_de_fr)]
+            if not pool:
+                break
+            u = pool[rng.randrange(len(pool))]
+            free.remove(u)
+            _add(u, "seeded draw")
+            have += 1
+        if have < target:
+            shortfall[key] = target - have
+
+    top = labels[-1]
+    mid = labels[-2]
+    for (rg, st), n in shortfall.items():
+        if st != top:
+            continue
+        free = sorted([u for u in by_cell.get((rg, mid), [])
+                       if u["fua_code"] not in taken],
+                      key=lambda u: -u["population"])
+        for _ in range(n):
+            if not free:
+                break
+            u = (free.pop(0) if rng.random() < 0.5
+                 else free.pop(rng.randrange(len(free))))
+            _add(u, f"backfill (no {top} FUA in {rg})")
+
+    for code, why in (rs.get("post_pins") or {}).items():
+        if code in by_code and code not in taken:
+            _add(by_code[code], str(why))
+
+    out = pd.DataFrame(sample)
+    reg_order = {rg: i for i, rg in enumerate(rs["regions"])}
+    st_order = {st: i for i, st in enumerate(labels)}
+    out = out.sort_values(
+        ["region", "stratum", "population"],
+        key=lambda s: (s.map(reg_order) if s.name == "region"
+                       else s.map(st_order) if s.name == "stratum"
+                       else -s),
+    ).reset_index(drop=True)
+    print(f"draw: {len(out)} cities, {out.country.nunique()} countries, "
+          f"DE+FR {int(out.country.isin(['DE', 'FR']).sum())}")
+    return out
+
+
 def sample_cities(fuas: pd.DataFrame, cfg: dict, per_stratum: int = 2) -> pd.DataFrame:
     cd = cfg["city_definition"]
     threshold = float(cd["fua_size_threshold"])
