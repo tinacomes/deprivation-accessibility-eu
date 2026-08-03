@@ -3,8 +3,8 @@
     "workflow": "run-city.yml",
     "ref": "main",
     "inputs": {
-      "city": "koeln",
-      "stage": "all",
+      "city": "hamburg",
+      "stage": "viz",
       "route_sensitivity_modes": "true"
     }
   }
