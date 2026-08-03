@@ -7,7 +7,7 @@ the persisted copies on the `depacc-results` branch
 (`cities/hamburg/figures/`, refreshed on every Hamburg run):
 
 - everyday percentile surface: `figures/percentile_everyday.png`
-  (+ `percentile_everyday_core.png`, ±12 km around the population-weighted
+  (+ `percentile_everyday_core.png`, a core zoom (±15 km default, `viz.core_half_m` per city) around the population-weighted
   centre — checks 2 and 5 are unreadable at FUA scale)
 - emergency percentile surface: `figures/percentile_emergency.png`
   (+ `_core` variant)

@@ -48,10 +48,18 @@ REGIME_CMAP = {"everyday": "Oranges", "emergency": "Purples"}
 #: Populated cells that carry no value/class (off-network). Grey, never white:
 #: white is reserved for "no populated 100 m cell here at all".
 NO_DATA = "#b3b3b3"
-#: Half-width (m) of the core-zoom window around the population-weighted
-#: centre — the scale at which intra-city structure (a secondary centre, a
-#: villa quarter) is actually readable.
-CORE_HALF_M = 12_000.0
+#: Default half-width (m) of the core-zoom window around the population-
+#: weighted centre — the scale at which intra-city structure (a secondary
+#: centre, a villa quarter) is actually readable. Override per city with
+#: ``viz.core_half_m``. 15 km, not 12: the window is anchored on the
+#: population-weighted centre, which a lopsided commuting zone displaces
+#: (Hamburg's FUA is population-heavy to the north, and at 12 km Harburg —
+#: the check-2 district — sat on the bottom edge of the frame).
+CORE_HALF_M = 15_000.0
+
+
+def _core_half_m(cfg: dict) -> float:
+    return float((cfg.get("viz", {}) or {}).get("core_half_m", CORE_HALF_M))
 
 
 def _style(ax):
@@ -217,8 +225,9 @@ def run_viz(cfg: dict, city: str, root: Path) -> None:
     # around the population-weighted centre) — intra-city structure like a
     # secondary centre or a villa quarter is unreadable at FUA scale.
     cx, cy = _pop_center(typology)
-    core_mask = ((np.abs(typology.x.to_numpy(float) - cx) <= CORE_HALF_M)
-                 & (np.abs(typology.y.to_numpy(float) - cy) <= CORE_HALF_M))
+    half = _core_half_m(cfg)
+    core_mask = ((np.abs(typology.x.to_numpy(float) - cx) <= half)
+                 & (np.abs(typology.y.to_numpy(float) - cy) <= half))
     for regime in ("everyday", "emergency"):
         pcol = f"{regime}_pct"
         if pcol not in typology.columns:
@@ -237,7 +246,7 @@ def run_viz(cfg: dict, city: str, root: Path) -> None:
             sc = _grid_scatter(fig, ax, frame.x.to_numpy()[~nodata],
                                frame.y.to_numpy()[~nodata], c=vals[~nodata],
                                cmap=_ramp(REGIME_CMAP[regime]), vmin=0.0, vmax=1.0)
-            zoom = " — core ±12 km" if suffix else ""
+            zoom = f" — core ±{half/1000:g} km" if suffix else ""
             ax.set_title(f"{name}: {regime} deprivation — population-weighted "
                          f"percentile (rank){zoom}", fontsize=11)
             cb = fig.colorbar(sc, ax=ax, shrink=0.75)
@@ -266,7 +275,8 @@ def run_viz(cfg: dict, city: str, root: Path) -> None:
                              typology=typology[core_mask], typ_col=typ_col,
                              name=name, threshold=thr,
                              summary_csv=out / f"typology_summary_{key}.csv",
-                             cfg=cfg, plt=plt, subtitle=" — core ±12 km")
+                             cfg=cfg, plt=plt,
+                             subtitle=f" — core ±{half/1000:g} km")
         # One panel per class over a grey context: "where exactly is HL?" is
         # unreadable when four classes share one map (face-validation ask).
         _class_facets(fig_out=figdir / f"compounding_classes_{key}.png",
