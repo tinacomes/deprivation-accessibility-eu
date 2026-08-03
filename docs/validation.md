@@ -51,12 +51,46 @@ pharmacy and GP per municipality). This is a **direction + magnitude** check,
 not a calibration: the comparanda differ in population weighting, network,
 and facility universe.
 
-Status: open. The BBSR reference values must be pulled from INKAR (not
-reachable from the session environment) and recorded here with their
-indicator ids and vintage before any comparison is quoted. What can be said
-already, from E.1: absolute travel times under the **friction** engine are
-understated by 34–314 % by service, so any external comparison of levels must
-use the r5 numbers (the primary engine since the promotion).
+**Done for the everyday side** (reference data: a manual INKAR export
+supplied 2026-08-03, archived verbatim as
+[`validation/inkar_erreichbarkeit_2023.csv`](validation/inkar_erreichbarkeit_2023.csv);
+the automated downloads were corrupt at the time). Comparanda differ in
+scope on purpose — INKAR reports the population-weighted mean **street
+distance** to the nearest facility for the **core city** (Kreisfreie Stadt,
+2023, BBSR Erreichbarkeitsmodell); ours is the population-weighted mean
+**walk time** over the whole **FUA** (r5, 4.8 km/h ⇒ 80 m/min conversion) —
+so ratios modestly above 1 are the *expected* sign (the FUA adds the
+commuting ring the core city excludes).
+
+| city | service | INKAR (m → min) | ours (min, FUA) | ratio |
+|---|---|---|---|---|
+| Hamburg | supermarket | 419 → 5.2 | 5.8 | 1.11 |
+| Hamburg | GP | 410 → 5.1 | 7.0 | 1.36 |
+| Hamburg | pharmacy | 543 → 6.8 | 6.8 | 1.00 |
+| Hamburg | primary school | 507 → 6.3 | 6.8 | 1.07 |
+| Köln | supermarket | 377 → 4.7 | 5.3 | 1.13 |
+| Köln | GP | 346 → 4.3 | 6.4 | 1.49 |
+| Köln | pharmacy | 487 → 6.1 | 6.4 | 1.06 |
+| Köln | primary school | 465 → 5.8 | **3.7** | **0.64** |
+
+Verdict: **direction and magnitude both pass** for supermarket, pharmacy
+and GP — ratios 1.0–1.5 with the FUA⊃core-city bias in the expected
+direction, and the between-city ordering (Köln ≤ Hamburg per service)
+agrees between sources. Germany-wide INKAR means (e.g. supermarket 979 m ≈
+12 min) sit far above both cities, as they must — the Bund value averages
+over rural Germany.
+
+**The one anomaly is a catch, not a pass: Köln primary schools.** Ours is
+*faster* than the core-city reference (0.64×) — impossible if both measure
+the same facility set — and the tell is in our own table: the Köln FUA
+extraction carries **2 884** `school_primary` facilities against Hamburg's
+1 120 in a FUA 1.3× Köln's population. Suspected OSM over-extraction in the
+NRW clip (e.g. kindergartens or per-building `amenity=school` tagging
+counted as schools). Action: inspect the Köln school extraction rules
+before any school-based result is quoted; this is exactly the class of
+error an external benchmark exists to catch. The emergency side has no
+INKAR comparandum in this export (no hospital car-time indicator was
+retrievable); it stays open.
 
 ## E.4 — resolution sanity check (friction vs network QQ)
 
