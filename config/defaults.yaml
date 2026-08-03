@@ -28,6 +28,44 @@ city_definition:
   stratified_countries: ["DE", "NL", "FR"]
   # Size strata bounds (FUA population) used by the stratified sampler.
   strata_bounds: [100000, 250000, 500000, 1000000, 5000000]
+  # F.2 — the full-sample draw (4 macro-regions x 4 size strata, seeded;
+  # `depacc draw-sample` reproduces config/full_sample.csv exactly).
+  # Powered per the 2026-08 power calculation: n=67 detects a size-gradient
+  # |r| >= 0.33 and regional differences at Cohen f >= ~0.42; medium regional
+  # effects (f=0.25) need ~180 cities, which the 26-FUA North makes reachable
+  # only as a near-census of the 492-FUA universe (stage 2, all_eu_fua).
+  region_strata:
+    seed: 20260803
+    per_cell: 4          # target cities per (region, stratum) cell
+    max_de_fr: 12        # DE+FR cap: the census-EMP gap (plan §5.7)
+    strata_bounds: [100000, 250000, 1000000, 5000000]
+    # Codes quoted: bare NO is YAML-1.1 boolean false, which silently dropped
+    # Norway from the universe and shifted the whole seeded draw.
+    regions:
+      North: ["SE", "NO", "DK", "FI"]
+      West: ["DE", "NL", "FR", "BE", "AT", "LU"]
+      South: ["ES", "IT", "PT", "EL"]
+      CEE: ["PL", "CZ", "SK", "HU", "RO", "BG", "SI", "HR", "EE", "LV", "LT"]
+    # Pinned BEFORE the seeded fills (consume cell slots): the ten pilot
+    # cities (already computed) and the validity probes of plan §F.3.
+    pins:
+      DE002F: pilot
+      DE004F: pilot
+      SE001F: pilot
+      DK002F: pilot
+      NL001F: pilot
+      BE002F: pilot
+      ES001F: pilot
+      IT005F: "pilot + contrast: island/peripheral"
+      PL001F: pilot
+      CZ002F: pilot
+      DE084F: "contrast: shrinking (eastern DE)"
+      PL010F: "contrast: polycentric conurbation (URAU splits Ruhr/Randstad; Katowice is one FUA)"
+      ES010F: "contrast: tourist-coastal (seasonal population mismatch)"
+    # Appended AFTER the draw (no rng consumed, frozen draw undisturbed).
+    post_pins:
+      IT001F: "reviewer pin: Roma"
+      PT002F: "reviewer pin: Porto"
 
 tiers:
   tier1:

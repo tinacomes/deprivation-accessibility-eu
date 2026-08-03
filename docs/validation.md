@@ -80,17 +80,31 @@ agrees between sources. Germany-wide INKAR means (e.g. supermarket 979 m ≈
 12 min) sit far above both cities, as they must — the Bund value averages
 over rural Germany.
 
-**The one anomaly is a catch, not a pass: Köln primary schools.** Ours is
-*faster* than the core-city reference (0.64×) — impossible if both measure
-the same facility set — and the tell is in our own table: the Köln FUA
-extraction carries **2 884** `school_primary` facilities against Hamburg's
-1 120 in a FUA 1.3× Köln's population. Suspected OSM over-extraction in the
-NRW clip (e.g. kindergartens or per-building `amenity=school` tagging
-counted as schools). Action: inspect the Köln school extraction rules
-before any school-based result is quoted; this is exactly the class of
-error an external benchmark exists to catch. The emergency side has no
-INKAR comparandum in this export (no hospital car-time indicator was
-retrievable); it stays open.
+**The one anomaly was a catch — and it is RESOLVED: Köln's facility cache
+was stale-inflated.** The 0.64× school ratio was impossible if both sources
+measured the same facility universe, and it didn't: the cached Köln
+extraction carried 2 884 primary schools, 5 593 green spaces and **185
+emergency departments** — 3–8× inflated against any plausible count (Hamburg,
+a 1.4× larger FUA: 1 120 / 2 030 / 27). On 2026-08-03 a cache eviction
+forced a fresh Overpass extraction under the current rules, which returned
+**871 schools, 874 greens, 23 EDs** — Hamburg-consistent — and the school
+comparison now *passes*: 5.20 min vs INKAR 5.81 ⇒ **ratio 0.89** (and
+supermarket moves to 4.68 ⇒ 0.99). Every Köln surface on `depacc-results`
+was rebuilt on the corrected set the same day; earlier Köln levels
+(including the pilot row of 2026-07-31 and the E.1 absolute levels) carried
+the inflated set. E.1's *engine* verdict survives — it held facilities
+fixed across engines by construction, so the friction-vs-r5 deltas compared
+like with like.
+
+**The policy lesson (binding for the 67-city batch):** the facility
+extraction *date* is part of the model. Per-city Overpass caches from
+different eras make cities non-comparable — Köln's stale cache survived
+several reruns precisely because caching treats extraction as immutable.
+Before any comparative batch, extractions should be refreshed to a common
+OSM snapshot week (Hamburg's cache, from 2026-07-22, is next in line), and
+the extraction date from the provenance sidecar belongs alongside every
+cross-city figure. The emergency side of the INKAR comparison stays open
+(no hospital car-time indicator retrievable).
 
 ## E.4 — resolution sanity check (friction vs network QQ)
 

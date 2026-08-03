@@ -2,6 +2,7 @@
   {
     "workflow": "run-city.yml",
     "ref": "main",
+    "nonce": "viz-refresh-20260803T120950",
     "inputs": {
       "city": "hamburg",
       "stage": "viz",

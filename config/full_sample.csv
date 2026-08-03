@@ -1,0 +1,68 @@
+fua_code,name,country,population,region,stratum,why
+SE012F,FUA Helsingborg,SE,242540,North,100k-250k,largest in cell
+SE010F,FUA Västerås,SE,198800,North,100k-250k,seeded draw
+FI007F,FUA Lahti,FI,189282,North,100k-250k,seeded draw
+SE011F,FUA Norrköping,SE,163368,North,100k-250k,seeded draw
+DK002F,FUA Århus,DK,845971,North,250k-1M,pilot
+DK004F,FUA Aalborg,DK,580272,North,250k-1M,seeded draw
+FI003F,FUA Turku,FI,377369,North,250k-1M,seeded draw
+NO004F,FUA Stavanger,NO,319822,North,250k-1M,seeded draw
+SE001F,FUA Stockholm,SE,2308143,North,1M-5M,pilot
+DK001F,FUA København,DK,1928612,North,1M-5M,backfill (no >5M FUA in North)
+FI001F,FUA Helsinki / Espoo / Vanta,FI,1750158,North,1M-5M,country coverage (largest)
+NO001F,FUA Oslo,NO,1278827,North,1M-5M,country coverage (largest)
+SE002F,FUA Göteborg,SE,1021831,North,1M-5M,seeded draw
+NL007F,FUA Apeldoorn,NL,248042,West,100k-250k,largest in cell
+NL006F,FUA Amersfoort,NL,193533,West,100k-250k,seeded draw
+DE064F,FUA Landshut,DE,173559,West,100k-250k,seeded draw
+NL039F,FUA Sittard-Geleen,NL,165650,West,100k-250k,seeded draw
+FR012F,FUA Grenoble,FR,724742,West,250k-1M,seeded draw
+FR015F,FUA Toulon / La Seyne-sur-Mer,FR,586917,West,250k-1M,seeded draw
+LU001F,FUA Luxembourg,LU,493500,West,250k-1M,country coverage (largest)
+DE084F,FUA Chemnitz,DE,439562,West,250k-1M,contrast: shrinking (eastern DE)
+BE001F,FUA Bruxelles / Leuven / Mechelen,BE,3425403,West,1M-5M,backfill (no >5M FUA in West)
+DE002F,FUA Hamburg / Elmshorn / Noderstedt,DE,3269519,West,1M-5M,pilot
+NL001F,FUA Amsterdam / Almere / Haarlem / Haarlemmermeer / Heemskerk / Hilversum / Hoorn / Purmerend / Zaanstad,NL,2988878,West,1M-5M,pilot
+DE003F,FUA München,DE,2976289,West,1M-5M,backfill (no >5M FUA in West)
+DE004F,FUA Köln / Leverkusen / Bergisch Gladbach / Troisdorf,DE,2312691,West,1M-5M,pilot
+BE002F,FUA Antwerpen,BE,1183670,West,1M-5M,pilot
+FR001F,FUA Paris / Creil / Meaux / Melun / Mantes-la-Jolie,FR,13239090,West,>5M,country coverage (largest)
+DE001F,FUA Berlin / Potsdam,DE,5051349,West,>5M,seeded draw
+ES074F,FUA Jaén / Linares,ES,248623,South,100k-250k,largest in cell
+IT046F,FUA Cosenza (greater city),IT,233931,South,100k-250k,seeded draw
+IT080F,FUA Arezzo,IT,149997,South,100k-250k,seeded draw
+ES035F,FUA Talavera de la Reina,ES,101784,South,100k-250k,seeded draw
+IT005F,FUA Palermo / Bagheria,IT,992590,South,250k-1M,pilot + contrast: island/peripheral
+ES010F,FUA Palma de Mallorca,ES,816163,South,250k-1M,contrast: tourist-coastal (seasonal population mismatch)
+IT020F,FUA Caserta  (greater city),IT,279832,South,250k-1M,seeded draw
+IT076F,FUA Vicenza,IT,264758,South,250k-1M,seeded draw
+IT001F,FUA Roma / Anzio / Guidonia Montecelio / Tivoli,IT,4380590,South,1M-5M,reviewer pin: Roma
+EL001F,FUA Athina,EL,3828434,South,1M-5M,country coverage (largest)
+IT003F,FUA Napoli (greater city),IT,3373061,South,1M-5M,seeded draw
+PT001F,FUA Lisboa / Sintra / Setúbal / Vila Franca de Xira,PT,3162965,South,1M-5M,country coverage (largest)
+PT002F,FUA Porto / Paredes,PT,1351950,South,1M-5M,reviewer pin: Porto
+ES019F,FUA Bilbao,ES,1159387,South,1M-5M,backfill (no >5M FUA in South)
+ES021F,FUA Alicante/Alacant / Elche,ES,1007894,South,1M-5M,seeded draw
+ES001F,FUA Madrid / Aranjuez / Arganda del Rey / Collado Villalba / Coslada / Fuenlabrada / Las Rozas de Madrid / Parla / Pinto / Valdemoro / Torrejón de Ardoz / Rivas-Vaciamadrid,ES,7407493,South,>5M,pilot
+ES002F,FUA Barcelona / Granollers / Castelldefels / Premiá de Mar / Viladecans / Mollet del Vallés / Igualada / Mataró / Sabadell / Vilanova i la Geltrú / El Prat de Llobregat,ES,5646374,South,>5M,seeded draw
+IT002F,FUA Milano (greater city),IT,5078244,South,>5M,seeded draw
+HU006F,FUA Szeged,HU,243373,CEE,100k-250k,largest in cell
+RO005F,FUA Brăila,RO,210271,CEE,100k-250k,seeded draw
+SK006F,FUA Žilina,SK,161052,CEE,100k-250k,seeded draw
+PL047F,FUA Łomża,PL,106927,CEE,100k-250k,seeded draw
+LV001F,FUA Rīga,LV,923604,CEE,250k-1M,country coverage (largest)
+SI001F,FUA Ljubljana,SI,916100,CEE,250k-1M,country coverage (largest)
+LT001F,FUA Vilnius,LT,767907,CEE,250k-1M,country coverage (largest)
+CZ002F,FUA Brno,CZ,734109,CEE,250k-1M,pilot
+SK001F,FUA Bratislava / Trnava,SK,723714,CEE,250k-1M,country coverage (largest)
+EE001F,FUA Tallinn,EE,646315,CEE,250k-1M,country coverage (largest)
+PL001F,FUA WARSZAWA PRUSZKÓW LEGIONOWO,PL,3513840,CEE,1M-5M,pilot
+HU001F,FUA Budapest,HU,3067751,CEE,1M-5M,country coverage (largest)
+RO001F,FUA București,RO,2478618,CEE,1M-5M,country coverage (largest)
+CZ001F,FUA Praha / Kladno,CZ,2216746,CEE,1M-5M,backfill (no >5M FUA in CEE)
+BG001F,FUA Sofia/Pernik,BG,1531867,CEE,1M-5M,country coverage (largest)
+PL003F,FUA Kraków,PL,1449830,CEE,1M-5M,backfill (no >5M FUA in CEE)
+PL010F,FUA KATOWICE CHORZÓW MYSŁOWICE SIEMIANOWICE ŚL ŚWIĘTOCHŁOWICE,PL,1276300,CEE,1M-5M,contrast: polycentric conurbation (URAU splits Ruhr/Randstad; Katowice is one FUA)
+HR001F,FUA Zagreb,HR,1225505,CEE,1M-5M,country coverage (largest)
+PL002F,FUA ŁÓDŹ PABIANICE,PL,1034461,CEE,1M-5M,backfill (no >5M FUA in CEE)
+PL004F,FUA Wrocław,PL,1033762,CEE,1M-5M,backfill (no >5M FUA in CEE)
