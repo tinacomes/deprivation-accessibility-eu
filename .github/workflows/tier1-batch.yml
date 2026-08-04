@@ -120,7 +120,7 @@ jobs:
   city:
     needs: [plan, warm]
     runs-on: ubuntu-latest
-    timeout-minutes: 150
+    timeout-minutes: 185
     strategy:
       fail-fast: false
       max-parallel: 5   # be polite to the Overpass + Geofabrik servers
@@ -187,9 +187,17 @@ jobs:
       # is a resumable stop — re-dispatch the batch and the city resumes from
       # its last finished origin chunk via the per-city raw/derived caches.
       - name: Run pipeline (r5 primary)
-        timeout-minutes: 130
+        # The budget clock starts at the ACCESS stage, but this step timeout
+        # covers ingest too — and a first-round giant (Berlin: germany-latest,
+        # ~4 GB download + clip) can eat the headroom so the step dies before
+        # the budget ever fires (a mid-matrix timeout instead of a clean
+        # resumable stop; the always() cache saves still ran, so nothing was
+        # lost — but the budget exists so runs END cleanly). 90 + 65 min of
+        # headroom covers a cold country download; the job timeout stays
+        # above the step so post steps always run.
+        timeout-minutes: 155
         env:
-          DEPACC_ROUTING_BUDGET_MIN: "110"
+          DEPACC_ROUTING_BUDGET_MIN: "90"
         run: |
           set +e
           depacc run --city "${{ matrix.city }}"
