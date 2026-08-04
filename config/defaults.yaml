@@ -170,6 +170,22 @@ sources:
         # codes absent -> the share is skipped, not zero-filled.
         numerator: ["EU_OTH", "OTH"]
         denominator: ["T"]
+  overpass:
+    # Facility extraction (see ingest/overpass.py; endpoint/endpoints override
+    # the built-in mirror rotation when set).
+    #
+    # The extraction DATE is part of the model. A cached extraction is treated
+    # as immutable, so a bad or old snapshot silently persists across reruns:
+    # Köln's cache carried 2884 schools / 5593 greens / 185 EDs (real: 871 /
+    # 874 / 23) until an accidental eviction forced a fresh pull — caught only
+    # by the INKAR benchmark (docs/validation.md E.3). max_age_days bounds how
+    # long an extraction may be reused; beyond it, ingest re-extracts ALL of
+    # the city's services (one snapshot date per city) and purges the OD
+    # matrices and surfaces built on the old facility set, forcing a re-route.
+    # 10 days keeps a comparative batch within roughly one OSM snapshot week
+    # while letting a resumed/re-dispatched run reuse its own extraction.
+    # null disables the check (never expire).
+    max_age_days: 10
 
 routing:
   # r5:       PRIMARY engine, every tier — real street-network routing via

@@ -123,6 +123,54 @@ def _post_overpass(query: str, endpoints: list[str], timeout: int = 300):
     raise RuntimeError(f"All Overpass endpoints failed; last error: {last_err}")
 
 
+def _cache_stale(cache: Path, cfg: dict) -> bool:
+    """True when the cached extraction is older than
+    ``sources.overpass.max_age_days`` (null disables the check).
+
+    The extraction DATE is part of the model: Köln's cached facility set
+    carried 2 884 schools / 5 593 greens / 185 EDs (real: 871 / 874 / 23) and
+    survived several reruns precisely because caching treated the extraction
+    as immutable — only an accidental cache eviction surfaced it, via the
+    INKAR benchmark (docs/validation.md E.3). A comparative batch needs all
+    cities on a common OSM snapshot week, so age, not just existence, decides
+    reuse. The provenance sidecar carries the retrieval timestamp.
+    """
+    from depacc.provenance import sidecar_path
+
+    max_age = ((cfg.get("sources", {}).get("overpass", {}) or {})
+               .get("max_age_days"))
+    if not max_age:
+        return False
+    sc = sidecar_path(cache)
+    if not sc.exists():
+        return True   # unknown vintage — same rule as the OD sidecars
+    try:
+        retrieved = pd.Timestamp(json.loads(sc.read_text())["retrieved_utc"])
+    except (ValueError, KeyError, OSError):
+        return True
+    if retrieved.tzinfo is None:
+        retrieved = retrieved.tz_localize("UTC")
+    age_days = (pd.Timestamp.now(tz="UTC") - retrieved).days
+    if age_days > float(max_age):
+        print(f"  overpass cache {cache.name} is {age_days} days old "
+              f"(max_age_days {max_age}) — re-extracting")
+        return True
+    return False
+
+
+def any_cache_stale(cfg: dict, root: Path, city: str,
+                    services: list[str]) -> bool:
+    """True when any of the city's cached Overpass extractions is older than
+    ``sources.overpass.max_age_days`` — the ingest stage then re-extracts ALL
+    services (one snapshot date per city) and purges the OD matrices built on
+    the old facility set."""
+    raw = root / cfg["output"]["raw_root"] / "overpass" / city
+    if not raw.exists():
+        return False
+    return any(_cache_stale(raw / f"{s}.json", cfg)
+               for s in services if (raw / f"{s}.json").exists())
+
+
 def fetch_service(service: str, spec: dict, bbox, cfg: dict, root: Path,
                   city: str) -> pd.DataFrame:
     """Query one service's facilities, cache the raw JSON with provenance."""
@@ -132,6 +180,8 @@ def fetch_service(service: str, spec: dict, bbox, cfg: dict, root: Path,
     raw = root / cfg["output"]["raw_root"] / "overpass" / city
     raw.mkdir(parents=True, exist_ok=True)
     cache = raw / f"{service}.json"
+    if cache.exists() and _cache_stale(cache, cfg):
+        cache.unlink()
 
     if not cache.exists():
         used_endpoint = endpoints[0]

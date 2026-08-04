@@ -108,3 +108,82 @@ def test_overpass_sends_user_agent_and_rotates_mirrors(monkeypatch):
     assert used != ov.DEFAULT_MIRRORS[0]          # rotated past the 406 endpoint
     assert all("depacc" in ua for _, ua in calls)  # UA always present
     assert resp.status_code == 200
+
+
+def _overpass_cache(tmp_path, city="demo", service="school",
+                    retrieved=None, sidecar=True):
+    """A cached extraction with an optional provenance sidecar."""
+    import json
+
+    from depacc.provenance import sidecar_path
+
+    raw = tmp_path / "data/raw/overpass" / city
+    raw.mkdir(parents=True, exist_ok=True)
+    cache = raw / f"{service}.json"
+    cache.write_text(json.dumps({"elements": []}))
+    if sidecar:
+        meta = {"url": "x", "sha256": "y"}
+        if retrieved is not None:
+            meta["retrieved_utc"] = retrieved
+        sidecar_path(cache).write_text(json.dumps(meta))
+    return cache
+
+
+def _age_cfg(max_age):
+    return {"sources": {"overpass": {"max_age_days": max_age}},
+            "output": {"raw_root": "data/raw"}}
+
+
+def test_cache_stale_by_age(tmp_path):
+    """The extraction date is part of the model: a cache past max_age_days is
+    stale; a fresh one, or any cache with the check disabled, is not."""
+    from depacc.ingest.overpass import _cache_stale
+
+    fresh = pd.Timestamp.now(tz="UTC").isoformat()
+    old = (pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=30)).isoformat()
+
+    cache = _overpass_cache(tmp_path, retrieved=fresh)
+    assert not _cache_stale(cache, _age_cfg(10))
+    assert not _cache_stale(cache, _age_cfg(None))   # null disables the check
+
+    cache_old = _overpass_cache(tmp_path, city="demo2", retrieved=old)
+    assert _cache_stale(cache_old, _age_cfg(10))
+    assert not _cache_stale(cache_old, _age_cfg(None))
+
+
+def test_cache_without_sidecar_is_unknown_vintage(tmp_path):
+    """No sidecar (or no timestamp in it) = unknown vintage -> stale whenever
+    an age limit is set — the same never-trust-unprovenanced rule as the OD
+    matrices. With the check disabled it is left alone."""
+    from depacc.ingest.overpass import _cache_stale
+
+    bare = _overpass_cache(tmp_path, sidecar=False)
+    assert _cache_stale(bare, _age_cfg(10))
+    assert not _cache_stale(bare, _age_cfg(None))
+
+    no_ts = _overpass_cache(tmp_path, city="demo2", retrieved=None)
+    assert _cache_stale(no_ts, _age_cfg(10))
+
+
+def test_any_cache_stale_scans_only_existing_services(tmp_path):
+    """One old service makes the CITY stale (all services re-extract on one
+    snapshot date); services with no cache yet do not."""
+    from depacc.ingest.overpass import any_cache_stale
+
+    fresh = pd.Timestamp.now(tz="UTC").isoformat()
+    old = (pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=30)).isoformat()
+    _overpass_cache(tmp_path, service="school", retrieved=fresh)
+    cfg = _age_cfg(10)
+
+    assert not any_cache_stale(cfg, tmp_path, "demo", ["school", "pharmacy"])
+    # second service, old vintage -> the whole city is stale
+    import json
+
+    from depacc.provenance import sidecar_path
+    raw = tmp_path / "data/raw/overpass/demo"
+    cache = raw / "pharmacy.json"
+    cache.write_text(json.dumps({"elements": []}))
+    sidecar_path(cache).write_text(json.dumps({"retrieved_utc": old}))
+    assert any_cache_stale(cfg, tmp_path, "demo", ["school", "pharmacy"])
+    # a city with no extractions at all is not stale (nothing to distrust yet)
+    assert not any_cache_stale(cfg, tmp_path, "elsewhere", ["school"])
