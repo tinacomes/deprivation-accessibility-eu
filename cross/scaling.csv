@@ -7,7 +7,7 @@ compounding_pop_share_50,log-log (elasticity),-0.023665800340026938,0.0129227688
 compounding_intensity,log-log (elasticity),-0.007118348823212842,0.005721651781031623,0.21346006991944266,67,0.022868761148051697,cross-sectional space-for-time
 mean_everyday,log-log (elasticity) + country FE,-0.16579045897619285,0.022588892137790296,2.1444396056388508e-13,67,0.7920878748519073,cross-sectional space-for-time
 mean_emergency,log-log (elasticity) + country FE,-0.013097508304607236,0.04008982316674247,0.7438917233097819,67,0.7224598580533177,cross-sectional space-for-time
-gini_everyday,log-log (elasticity) + country FE,0.03792390024084469,0.015231059597308612,0.012777703691552903,67,0.7774162162453029,cross-sectional space-for-time
+gini_everyday,log-log (elasticity) + country FE,0.037923900240844674,0.01523105959730861,0.01277770369155291,67,0.7774162162453029,cross-sectional space-for-time
 gini_emergency,log-log (elasticity) + country FE,-0.0004468667645203678,0.021201285979749032,0.9831839590026711,67,0.602430073311629,cross-sectional space-for-time
 compounding_pop_share_50,log-log (elasticity) + country FE,-0.029380623724415522,0.01699954702541771,0.08393122126882256,67,0.45649889505141306,cross-sectional space-for-time
 compounding_intensity,log-log (elasticity) + country FE,-0.009665527367248766,0.007517838985810978,0.19855512902354244,67,0.4292173524889523,cross-sectional space-for-time
