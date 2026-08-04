@@ -382,8 +382,16 @@ def run_sensitivity(cfg: dict, grid: dict, root: Path) -> None:
             rows.append({"variant": name, "target": target,
                          "spearman_rho": rho, "kendall_tau": tau})
     rank_table = pd.DataFrame(rows)
-    rank_table.to_csv(out / "rank_agreement.csv", index=False)
-    if not rank_table.empty:
+    # Rank agreement is a CROSS-city statistic: with fewer than two cities
+    # every rho/tau is NaN, and writing that table would overwrite a real one
+    # accumulated by an earlier multi-city run (a paris-only resume round did
+    # exactly this to depacc-results). No information > wrong information.
+    if not rank_table.empty and len(base) < 2:
+        print(f"rank agreement skipped: only {len(base)} city with staged "
+              f"surfaces (needs >= 2); existing rank_agreement.csv left as-is")
+    else:
+        rank_table.to_csv(out / "rank_agreement.csv", index=False)
+    if not rank_table.empty and len(base) >= 2:
         print("rank agreement vs baseline (min across variants):")
         for target, g in rank_table.groupby("target"):
             print(f"  {target}: min rho={g.spearman_rho.min():.3f} "

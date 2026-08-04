@@ -17,6 +17,27 @@ from depacc.cityvector.scaling_features import ScaledFeatures, scale_features
 
 MIN_CITIES = 5
 
+# Features holding a population share beyond a travel-time threshold. These are
+# zero-inflated: in most cities essentially NOBODY lives beyond the outer
+# emergency thresholds (67-city IQR of the beyond-60-min share: 0.002), so
+# robust median/IQR scaling turns the few cities with real tails (8-20 % of
+# population) into 30-sigma-equivalent outliers, and the k=2 silhouette (0.84)
+# becomes an outlier-separation artefact of the scaler. log1p on the percentage
+# keeps zero at zero and orders tails honestly; the separation that survives it
+# (silhouette 0.65 on the full sample) is a data property, not a scaler
+# property.
+TAIL_SHARE_PREFIX = "pop_share_beyond_"
+
+
+def declump_tail_shares(vectors: pd.DataFrame,
+                        feature_cols: list[str]) -> pd.DataFrame:
+    """log1p-open the beyond-threshold share features (see TAIL_SHARE_PREFIX)."""
+    out = vectors.copy()
+    for c in feature_cols:
+        if c.startswith(TAIL_SHARE_PREFIX) and c in out.columns:
+            out[c] = np.log1p(out[c].astype(float) * 100.0)
+    return out
+
 
 def _require_scaled(scaled) -> None:
     if not isinstance(scaled, ScaledFeatures):
@@ -120,8 +141,11 @@ def run_cross_city(cfg: dict, root: Path, n_clusters: int | None = None) -> None
 
     method = cfg.get("cityvector", {}).get("cross_city_scaler", "robust")
     ccfg = cfg.get("cityvector", {}).get("clustering", {})
+    # The CSVs keep the raw shares; only the clustering distances see the
+    # log1p-opened tails (see declump_tail_shares).
     scaled = scale_features(
-        real, feature_columns(cfg), method=method,
+        declump_tail_shares(real, feature_columns(cfg)),
+        feature_columns(cfg), method=method,
         max_missing_share=float(cfg.get("cityvector", {})
                                 .get("max_missing_share", 0.25)),
     )
@@ -160,10 +184,77 @@ def run_cross_city(cfg: dict, root: Path, n_clusters: int | None = None) -> None
     if not diffs.empty:
         diffs.to_csv(derived / "regime_slope_difference.csv", index=False)
 
-    _plot_cross_city(real, derived)
+    _plot_cross_city(cfg, real, derived)
 
 
-def _plot_cross_city(vectors: pd.DataFrame, derived: Path) -> None:
+# Fixed macro-region colour order (validated all-pairs incl. CVD; the aqua
+# slot's sub-3:1 surface contrast is relieved by the direct city labels).
+# Marker shape is the secondary encoding so region identity never rides on
+# colour alone. Regions outside the mapping fall back to grey/circle.
+REGION_STYLE = {
+    "North": ("#2a78d6", "o"),
+    "West": ("#eb6834", "s"),
+    "South": ("#1baf7a", "^"),
+    "CEE": ("#4a3aa7", "D"),
+}
+FALLBACK_STYLE = ("#898781", "o")
+
+
+def _region_lookup(cfg: dict) -> dict[str, str]:
+    regions = (cfg.get("city_definition", {})
+               .get("region_strata", {}) or {}).get("regions", {}) or {}
+    return {cc: region for region, ccs in regions.items() for cc in ccs}
+
+
+def _outlier_group(vectors: pd.DataFrame) -> pd.Series:
+    """The smallest k-means cluster, when it is small enough to be a flagged
+    GROUP rather than a partition (< a quarter of the sample). On the full
+    sample this is the five emergency-desert capitals; the ring on the plots
+    marks them without pretending the sample splits into two city types."""
+    if "cluster_kmeans" not in vectors or vectors["cluster_kmeans"].isna().all():
+        return pd.Series(False, index=vectors.index)
+    sizes = vectors["cluster_kmeans"].value_counts()
+    if len(sizes) < 2 or sizes.min() >= len(vectors) / 4:
+        return pd.Series(False, index=vectors.index)
+    return vectors["cluster_kmeans"] == sizes.idxmin()
+
+
+def _label_set(vectors: pd.DataFrame, x: str, y: str,
+               flagged: pd.Series, n_extreme: int = 2,
+               n_pop: int = 3) -> set[int]:
+    """Label only what a reader will ask about: the flagged group, the axis
+    extremes and the largest cities — not all 67 names on top of each other."""
+    idx = set(vectors.index[flagged])
+    for col in (x, y):
+        s = vectors[col].dropna().sort_values()
+        idx.update(s.index[:n_extreme]); idx.update(s.index[-n_extreme:])
+    idx.update(vectors["population"].nlargest(n_pop).index)
+    return idx
+
+
+def _region_scatter(ax, vectors: pd.DataFrame, x: str, y: str,
+                    region_of: dict[str, str]) -> None:
+    flagged = _outlier_group(vectors)
+    labels = _label_set(vectors, x, y, flagged)
+    for region, (colour, marker) in {**REGION_STYLE, None: FALLBACK_STYLE}.items():
+        sel = (vectors.country.map(region_of) == region if region
+               else ~vectors.country.map(region_of).isin(REGION_STYLE))
+        if not sel.any():
+            continue
+        ax.scatter(vectors.loc[sel, x], vectors.loc[sel, y], c=colour,
+                   marker=marker, s=42, linewidths=0, zorder=2,
+                   label=region or "other")
+    if flagged.any():
+        ax.scatter(vectors.loc[flagged, x], vectors.loc[flagged, y],
+                   facecolors="none", edgecolors="#0b0b0b", marker="o", s=150,
+                   linewidths=1.2, zorder=3, label="emergency-desert group")
+    for i in labels:
+        r = vectors.loc[i]
+        ax.annotate(r["name"], (r[x], r[y]), textcoords="offset points",
+                    xytext=(5, 3), fontsize=7.5, color="0.25", zorder=4)
+
+
+def _plot_cross_city(cfg: dict, vectors: pd.DataFrame, derived: Path) -> None:
     if len(vectors) < 2:
         return
     import matplotlib
@@ -172,46 +263,91 @@ def _plot_cross_city(vectors: pd.DataFrame, derived: Path) -> None:
 
     figdir = derived / "figures"
     figdir.mkdir(parents=True, exist_ok=True)
-    cluster_colors = ["#5ac8c8", "#be64ac", "#3b4994", "#e0a04e", "#7a9e3a"]
-    have = "cluster_kmeans" in vectors and vectors["cluster_kmeans"].notna().any()
+    region_of = _region_lookup(cfg)
 
-    # everyday-vs-emergency inequity plane, coloured by cluster.
-    fig, ax = plt.subplots(figsize=(6.5, 6))
+    # Everyday-vs-emergency inequity plane. Colour = macro-region: the ANOVA
+    # puts the regional contrasts at Cohen f 0.51-0.74, so region is the
+    # pattern this plane actually shows; the k-means partition (62-vs-5) is an
+    # outlier group, drawn as a ring, not as the colour dimension.
+    fig, ax = plt.subplots(figsize=(6.8, 6.2))
     lim = max(vectors.gini_everyday.max(), vectors.gini_emergency.max()) * 1.15 + 1e-9
     ax.plot([0, lim], [0, lim], color="0.75", lw=1, ls="--", zorder=1)
-    for _, r in vectors.iterrows():
-        c = (cluster_colors[int(r.cluster_kmeans) % len(cluster_colors)]
-             if have and pd.notna(r.cluster_kmeans) else "#3b4994")
-        ax.scatter(r.gini_everyday, r.gini_emergency, c=c, s=45, linewidths=0, zorder=2)
-        ax.annotate(r["name"], (r.gini_everyday, r.gini_emergency),
-                    textcoords="offset points", xytext=(5, 3), fontsize=8, color="0.25")
+    _region_scatter(ax, vectors, "gini_everyday", "gini_emergency", region_of)
     ax.set_xlabel("Gini of everyday deprivation")
     ax.set_ylabel("Gini of emergency deprivation")
-    ax.set_title("Everyday-vs-emergency inequity plane"
-                 + (" (colour = cluster)" if have else ""), fontsize=10)
+    ax.set_title("Everyday-vs-emergency inequity plane (colour = macro-region)",
+                 fontsize=10)
     ax.set_xlim(0, lim); ax.set_ylim(0, lim)
+    ax.legend(frameon=False, fontsize=8, loc="lower right")
     for s in ("top", "right"):
         ax.spines[s].set_visible(False)
     ax.grid(True, lw=0.4, alpha=0.35); ax.set_axisbelow(True)
     fig.tight_layout(); fig.savefig(figdir / "cityplane.png", dpi=180, bbox_inches="tight")
     plt.close(fig)
 
-    # divergence_gap vs city size (space-for-time trajectory).
-    fig, ax = plt.subplots(figsize=(7, 5.5))
-    for _, r in vectors.iterrows():
-        c = (cluster_colors[int(r.cluster_kmeans) % len(cluster_colors)]
-             if have and pd.notna(r.cluster_kmeans) else "#3b4994")
-        ax.scatter(r.log10_population, r.divergence_gap, c=c, s=40, linewidths=0)
-        ax.annotate(r["name"], (r.log10_population, r.divergence_gap),
-                    textcoords="offset points", xytext=(5, 3), fontsize=8, color="0.25")
+    # divergence_gap vs city size (space-for-time trajectory), with the fitted
+    # slope drawn so the weak-but-directional reading (R^2 ~ 0.06) is explicit.
+    fig, ax = plt.subplots(figsize=(7.2, 5.8))
+    _region_scatter(ax, vectors, "log10_population", "divergence_gap", region_of)
     ax.axhline(0, color="0.75", lw=1, ls="--")
+    df = vectors[["log10_population", "divergence_gap"]].dropna()
+    if len(df) >= 4:
+        b, a = np.polyfit(df.log10_population, df.divergence_gap, 1)
+        xs = np.linspace(df.log10_population.min(), df.log10_population.max(), 2)
+        ax.plot(xs, a + b * xs, color="#52514e", lw=2, zorder=1)
+        r2 = np.corrcoef(df.log10_population, df.divergence_gap)[0, 1] ** 2
+        ax.annotate(f"slope {b:+.3f} per decade of population, R² = {r2:.02f}",
+                    (0.02, 0.02), xycoords="axes fraction", fontsize=8,
+                    color="#52514e")
     ax.set_xlabel("log10 FUA population")
     ax.set_ylabel("divergence gap (Gini emergency − everyday)")
     ax.set_title("Everyday-emergency divergence along the size gradient\n"
                  "(cross-sectional space-for-time)", fontsize=10)
+    # Outside the axes: every in-plot corner of this dense scatter has data.
+    ax.legend(frameon=False, fontsize=8, loc="upper left",
+              bbox_to_anchor=(1.01, 1.0))
     for s in ("top", "right"):
         ax.spines[s].set_visible(False)
     ax.grid(True, lw=0.4, alpha=0.35); ax.set_axisbelow(True)
     fig.tight_layout(); fig.savefig(figdir / "size_gradient.png", dpi=180, bbox_inches="tight")
+    plt.close(fig)
+
+    # The headline scaling result as its own panel: mean deprivation vs
+    # population, log-log, both regimes. This is where the strong effect lives
+    # (everyday elasticity ~ -0.20 at p ~ 1e-15 vs a flat emergency slope);
+    # the plane and gradient plots above are deliberately weaker views.
+    fig, ax = plt.subplots(figsize=(7.2, 5.8))
+    series = [("mean_everyday", "everyday", "#2a78d6", "o"),
+              ("mean_emergency", "emergency", "#eb6834", "s")]
+    for col, label, colour, marker in series:
+        df = vectors[["population", col]].dropna()
+        df = df[(df.population > 0) & (df[col] > 0)]
+        if len(df) < 4:
+            continue
+        ax.scatter(df.population, df[col], c=colour, marker=marker, s=34,
+                   linewidths=0, alpha=0.85, zorder=2)
+        b, a = np.polyfit(np.log(df.population), np.log(df[col]), 1)
+        xs = np.linspace(np.log(df.population.min()), np.log(df.population.max()), 2)
+        ax.plot(np.exp(xs), np.exp(a + b * xs), color=colour, lw=2, zorder=3)
+        # Ink, not series colour, for the text (position at the line's end
+        # carries identity); the mark/line already wears the colour.
+        x_end = df.population.max()
+        ax.annotate(f"{label}: elasticity {b:+.2f}",
+                    (x_end, np.exp(a + b * np.log(x_end))),
+                    textcoords="offset points", xytext=(6, -2), fontsize=8.5,
+                    color="#52514e")
+    ax.set_xscale("log"); ax.set_yscale("log")
+    ax.set_xlabel("FUA population")
+    ax.set_ylabel("mean deprivation (population-weighted)")
+    ax.set_title("Scaling of mean deprivation with city size, by regime\n"
+                 "(log-log; cross-sectional space-for-time)", fontsize=10)
+    ax.legend([plt.Line2D([], [], color=c, marker=m, ls="-", lw=2)
+               for _, _, c, m in series], [s[1] for s in series],
+              frameon=False, fontsize=8, loc="lower left")
+    for s in ("top", "right"):
+        ax.spines[s].set_visible(False)
+    ax.grid(True, lw=0.4, alpha=0.35, which="both"); ax.set_axisbelow(True)
+    fig.tight_layout()
+    fig.savefig(figdir / "scaling_elasticity.png", dpi=180, bbox_inches="tight")
     plt.close(fig)
     print(f"cross-city figures: {figdir}")
