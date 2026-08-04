@@ -1,0 +1,3 @@
+regime,weighted_mean,gini,units
+everyday,0.22376970060112125,0.5569497880526167,DLF: fraction of the saturation ceiling Lmax
+emergency,0.09570108129186541,0.3182841138826183,DCF: multiples of g(45 min) [anchored]
