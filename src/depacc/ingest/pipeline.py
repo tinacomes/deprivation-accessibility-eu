@@ -6,6 +6,7 @@ parquet under data/derived/<city>/ and is skipped when up to date."""
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 import pandas as pd
@@ -191,9 +192,28 @@ def run_ingest(cfg: dict, city: str, root: Path) -> None:
         print(f"street network ready: {network_pbf.name}")
 
     if facilities_source == "overpass":
-        if missing:
-            from depacc.ingest.overpass import extract_facilities_overpass
+        from depacc.ingest.overpass import (
+            any_cache_stale,
+            extract_facilities_overpass,
+        )
 
+        # The extraction DATE is part of the model (Köln's stale cache carried
+        # 3-8x inflated schools/greens/EDs undetected across reruns — E.3).
+        # A stale extraction re-fetches every service AND purges the OD
+        # matrices and surfaces built on the old facility set: the dest_ids
+        # are regenerated, so reusing old ODs would silently misjoin.
+        stale = any_cache_stale(cfg, root, city, list(services))
+        if stale:
+            purged = 0
+            for p in list(out.glob("od_*")) + [out / "surfaces.parquet"]:
+                if p.exists():
+                    (shutil.rmtree(p, ignore_errors=True) if p.is_dir()
+                     else p.unlink())
+                    purged += 1
+            print(f"overpass extraction stale — re-extracting all services "
+                  f"and purging {purged} derived file(s) built on the old "
+                  f"facility set")
+        if missing or stale:
             facilities = extract_facilities_overpass(cfg, fua, root, city)
             for service, fac in facilities.items():
                 fac.to_parquet(out / f"facilities_{service}.parquet")
