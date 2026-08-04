@@ -1,0 +1,3 @@
+level,regime,service,n_facilities,pop_mean_time_min,pop_median_time_min,pop_p90_time_min_reachable,pop_share_beyond_15min,pop_share_beyond_30min,pop_service_deprived_share,unreachable_pop_share,mean_deprivation,pop_share_beyond_45min,pop_share_beyond_60min
+everyday,everyday,everyday,,35.41134954818222,29.266380090361462,96.0981465080416,0.7403207479267669,0.5431272718048517,0.16971508331536678,0.0008467559246835379,0.49520719748607867,,
+emergency,emergency,emergency,,21.43355642607774,18.0,37.0,,0.22187697476882068,0.00020742186313533074,0.0008467559246835379,0.31878535908630623,0.028240936615913353,0.0011057223074296347
