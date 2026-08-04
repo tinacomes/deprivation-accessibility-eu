@@ -2,7 +2,7 @@
   {
     "workflow": "tier1-batch.yml",
     "ref": "main",
-    "nonce": "full-sample-paris-round-6",
+    "nonce": "full-sample-paris-round-7",
     "inputs": {
       "cities": "[\"paris\"]"
     }
