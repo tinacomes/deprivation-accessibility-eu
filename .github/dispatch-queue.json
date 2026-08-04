@@ -2,9 +2,9 @@
   {
     "workflow": "tier1-batch.yml",
     "ref": "main",
-    "nonce": "full-sample-paris-round-8",
+    "nonce": "refresh-cross-figures-post-36",
     "inputs": {
-      "cities": "[\"paris\"]"
+      "cities": "[\"lomza\"]"
     }
   }
 ]
