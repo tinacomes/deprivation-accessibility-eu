@@ -2,9 +2,9 @@
   {
     "workflow": "tier1-batch.yml",
     "ref": "main",
-    "nonce": "full-sample-chunk-2",
+    "nonce": "full-sample-chunk-3",
     "inputs": {
-      "cities": "[\"paris\",\"berlin\",\"bruxelles\",\"munchen\",\"helsinki\",\"sofia\",\"krakow\",\"porto\",\"oslo\",\"katowice\",\"zagreb\",\"bilbao\",\"lodz\",\"wroclaw\"]"
+      "cities": "[\"paris\",\"berlin\",\"goteborg\",\"alicante\",\"riga\",\"ljubljana\",\"palma_de_mallorca\",\"vilnius\",\"grenoble\",\"bratislava\",\"tallinn\",\"toulon\",\"aalborg\",\"luxembourg\"]"
     }
   }
 ]
