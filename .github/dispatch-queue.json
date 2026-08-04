@@ -2,9 +2,9 @@
   {
     "workflow": "tier1-batch.yml",
     "ref": "main",
-    "nonce": "full-sample-chunk-5",
+    "nonce": "full-sample-paris-round-6",
     "inputs": {
-      "cities": "[\"paris\",\"amersfoort\",\"lahti\",\"landshut\",\"sittard_geleen\",\"norrkoping\",\"zilina\",\"arezzo\",\"lomza\",\"talavera_de_la_reina\"]"
+      "cities": "[\"paris\"]"
     }
   }
 ]
