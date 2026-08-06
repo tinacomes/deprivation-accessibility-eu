@@ -89,6 +89,10 @@ SENSITIVITY_FILES = (
     "rank_agreement.csv",
     "flip_cells.csv",
     "typology_share_envelope.csv",
+    # Cross-city Gini claims under every deprivation parameterisation
+    # (cityvector/spec_curve.py).
+    "specification_curve.csv",
+    "specification_curve.png",
 )
 # Workstream E outputs, passed through verbatim (see _export_validation).
 VALIDATION_GLOBS = (
@@ -145,6 +149,19 @@ def cmd_import(results: Path, derived: Path) -> None:
             shutil.copytree(cdir, dest)
             imported += 1
     print(f"imported {imported} previously persisted cities")
+    # Per-city VARIANT tables too: the specification curve is cross-city and
+    # needs every persisted city's table, but a run's own sweep only rebuilds
+    # tables for cities with staged surfaces. Fresh tables always win.
+    sens_src = results / "sensitivity"
+    if sens_src.exists():
+        sens_dst = derived / "sensitivity"
+        sens_dst.mkdir(parents=True, exist_ok=True)
+        n = 0
+        for src in sorted(sens_src.glob("*_deprivation_sensitivity.csv")):
+            if not (sens_dst / src.name).exists():
+                shutil.copy2(src, sens_dst / src.name)
+                n += 1
+        print(f"imported {n} previously persisted variant table(s)")
     rebuild_cityplane(derived)
 
 
