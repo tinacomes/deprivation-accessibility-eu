@@ -1,5 +1,7 @@
 """Sensitivity computations: variant expansion, per-city stable targets from
-saved travel times, cross-variant rank agreement, and flip-cells."""
+the saved PER-SERVICE travel times (variant g applied per service, composited
+with the pipeline's weighted row mean — never g of the composite time),
+cross-variant rank agreement, and flip-cells."""
 
 from __future__ import annotations
 
@@ -86,19 +88,16 @@ def _resolve_form_swap(cfg: dict, base_spec: dict, entry: dict) -> tuple[dict, s
     return spec, str(spec.get("form"))
 
 
-def city_stable_targets(t_everyday: np.ndarray, t_emergency: np.ndarray,
-                        population: np.ndarray, everyday_spec: dict,
-                        emergency_spec: dict, city_id: str = "c",
-                        threshold: float = 0.5) -> dict:
-    """Standardised / rank targets for one city under one variant, evaluated on
-    the (fixed) travel times. Returns Ginis, divergence_gap, typology shares,
-    and the per-cell typology labels. No raw magnitudes leave this function."""
-    from depacc.deprivation.functions import DeprivationFunction
-
-    g_ev = DeprivationFunction.from_spec(everyday_spec, context="everyday")
-    g_em = DeprivationFunction.from_spec(emergency_spec, context="emergency")
-    ev = RegimeSurface(g_ev(t_everyday), population, "everyday", city_id, "raw")
-    em = RegimeSurface(g_em(t_emergency), population, "emergency", city_id, "raw")
+def stable_targets_from_deprivation(dep_everyday: np.ndarray,
+                                    dep_emergency: np.ndarray,
+                                    population: np.ndarray,
+                                    city_id: str = "c",
+                                    threshold: float = 0.5) -> dict:
+    """Standardised / rank targets for one city from precomputed DEPRIVATION
+    surfaces. Returns Ginis, divergence_gap, typology shares, and the per-cell
+    typology labels. No raw magnitudes leave this function."""
+    ev = RegimeSurface(dep_everyday, population, "everyday", city_id, "raw")
+    em = RegimeSurface(dep_emergency, population, "emergency", city_id, "raw")
     gini_ev = weighted_gini(ev.values, population)
     gini_em = weighted_gini(em.values, population)
     labels = classify(to_percentile(ev).values, to_percentile(em).values, threshold)
@@ -112,19 +111,113 @@ def city_stable_targets(t_everyday: np.ndarray, t_emergency: np.ndarray,
     }
 
 
-def city_variant_table(t_everyday: np.ndarray, t_emergency: np.ndarray,
-                       population: np.ndarray, variants: list["Variant"],
+def city_stable_targets(t_everyday: np.ndarray, t_emergency: np.ndarray,
+                        population: np.ndarray, everyday_spec: dict,
+                        emergency_spec: dict, city_id: str = "c",
+                        threshold: float = 0.5) -> dict:
+    """Single-surface evaluator: ``g(t)`` per regime on ONE composite time
+    array each. Correct only when a regime has (or is modelled as) a single
+    service — synthetic fixtures and property tests. The real pipeline
+    composites per-service deprivations (``Σ w_s g(t_s)``), and because g is
+    nonlinear the two differ by a Jensen gap; multi-service cities must go
+    through :func:`variant_regime_deprivations` instead (this function applied
+    to Hamburg's composite time gave gini_everyday 0.583 against the
+    pipeline's 0.543)."""
+    from depacc.deprivation.functions import DeprivationFunction
+
+    g_ev = DeprivationFunction.from_spec(everyday_spec, context="everyday")
+    g_em = DeprivationFunction.from_spec(emergency_spec, context="emergency")
+    return stable_targets_from_deprivation(g_ev(t_everyday), g_em(t_emergency),
+                                           population, city_id, threshold)
+
+
+def variant_regime_deprivations(surfaces: pd.DataFrame, cfg: dict,
+                                everyday_spec: dict, emergency_spec: dict
+                                ) -> tuple[np.ndarray, np.ndarray]:
+    """Both regimes' composite deprivation under one variant's specs, built
+    EXACTLY as ``depacc.deprivation.pipeline`` builds them: the variant's g is
+    applied PER SERVICE to the saved per-service times (``t_eff_<s>`` for
+    everyday, ``t_nearest_<s>`` for emergency) and composited with the
+    regime's weighted row mean; the shared no-path masks
+    (``unreachable_<regime>``) are then applied. g is nonlinear, so
+    ``g(mean t)`` — the previous implementation — is a different estimator
+    whose "baseline" did not reproduce ``cityplane_row.csv`` (the Layer-3
+    sweep had the same defect, fixed in plan §5.4; this is the Layer-1/2
+    counterpart).
+
+    The everyday variant spec replaces ``deprivation.everyday`` wholesale and
+    is resolved through :func:`depacc.config.everyday_service_spec`, so under
+    ``threshold_mode: per_service`` the per-service ``t0``/``k`` overrides
+    still win — the same precedence the pipeline gives them.
+    """
+    import copy
+
+    from depacc.config import everyday_service_spec
+    from depacc.deprivation.functions import DeprivationFunction
+
+    cfg_v = copy.deepcopy(cfg)
+    cfg_v.setdefault("deprivation", {})["everyday"] = everyday_spec
+
+    ev_services = [s for s in (cfg.get("everyday_services") or {})
+                   if f"t_eff_{s}" in surfaces.columns]
+    em_services = [s for s in (cfg.get("emergency_services") or {})
+                   if f"t_nearest_{s}" in surfaces.columns]
+    if not ev_services or not em_services:
+        raise ValueError(
+            "surfaces lack the per-service time columns (t_eff_*/t_nearest_*) "
+            "the per-service composite needs — re-run the deprivation stage "
+            "for this city")
+
+    def _composite(services: list[str], col_prefix: str, regime: str,
+                   fns: dict) -> np.ndarray:
+        weights = (cfg.get("regimes", {}).get(regime, {})
+                   .get("composite_weights") or {})
+        w = np.array([float(weights.get(s, 1.0)) for s in services])
+        vals = np.column_stack([
+            fns[s](surfaces[f"{col_prefix}{s}"].to_numpy(float))
+            for s in services])
+        dep = _weighted_row_mean(vals, w)
+        mask_col = f"unreachable_{regime}"
+        if mask_col in surfaces.columns:
+            dep = np.where(surfaces[mask_col].to_numpy(bool), np.nan, dep)
+        return dep
+
+    ev_fns = {s: DeprivationFunction.from_spec(
+        everyday_service_spec(cfg_v, s), context=f"everyday [{s}]")
+        for s in ev_services}
+    g_em = DeprivationFunction.from_spec(emergency_spec, context="emergency")
+    em_fns = {s: g_em for s in em_services}
+    return (_composite(ev_services, "t_eff_", "everyday", ev_fns),
+            _composite(em_services, "t_nearest_", "emergency", em_fns))
+
+
+def _weighted_row_mean(vals: np.ndarray, w: np.ndarray) -> np.ndarray:
+    """Row mean over non-NaN services, weights renormalised per row (matches
+    depacc.deprivation.pipeline._weighted_row_mean)."""
+    mask = ~np.isnan(vals)
+    wm = np.where(mask, w[None, :], 0.0)
+    denom = wm.sum(axis=1)
+    with np.errstate(invalid="ignore"):
+        out = np.nansum(vals * wm, axis=1) / denom
+    return np.where(denom > 0, out, np.nan)
+
+
+def city_variant_table(surfaces: pd.DataFrame, cfg: dict,
+                       variants: list["Variant"],
                        city_id: str, thresholds=(0.4, 0.5, 0.6, 0.75)) -> pd.DataFrame:
     """Per-city, per-variant robustness table — informative for a SINGLE city.
 
     Two axes are reported side by side:
 
       * DEPRIVATION-FUNCTION curvature (each ``variant``): within-regime Ginis
-        move, but the co-location typology does NOT — it is computed on
-        population-weighted ranks, and every g(t) here is strictly increasing,
-        so ranks (and therefore the LL/HL/LH/HH classes) are invariant by
-        construction. The table makes that explicit: the Gini columns spread
-        while the class-share columns stay put across curvature variants.
+        move, while the co-location typology is NEAR-invariant. Every g(t)
+        here is strictly increasing, so PER-SERVICE ranks never move; the
+        multi-service composite ``Σ w_s g(t_s)`` can still reorder cells
+        because a curvature change reweights how the services mix. (Under the
+        old ``g(composite time)`` estimator the invariance was exact — an
+        artifact of the estimator mismatch, not a property of the model.) The
+        table measures the residual drift instead of asserting zero: the Gini
+        columns spread while the class-share columns barely move.
       * THRESHOLD (the split choice): the compounding (HH) share is swept over
         several percentile cut-offs, since "how high is high" is an assumption.
 
@@ -133,10 +226,16 @@ def city_variant_table(t_everyday: np.ndarray, t_emergency: np.ndarray,
     (e.g. the plane's curvature error bars) can take the curvature envelope
     without the form-swap Ginis leaking into it.
     """
+    population = surfaces["population"].to_numpy(float)
     rows = []
+    base_dep = None
     for v in variants:
-        tgt = city_stable_targets(t_everyday, t_emergency, population,
-                                  v.everyday, v.emergency, city_id, threshold=0.5)
+        dep_ev, dep_em = variant_regime_deprivations(surfaces, cfg,
+                                                     v.everyday, v.emergency)
+        if v.name == "baseline":
+            base_dep = (dep_ev, dep_em)
+        tgt = stable_targets_from_deprivation(dep_ev, dep_em, population,
+                                              city_id, threshold=0.5)
         axis = "form_swap" if v.layer == "form_swap" else "curvature"
         rows.append({
             "city": city_id, "axis": axis, "variant": v.name,
@@ -147,11 +246,12 @@ def city_variant_table(t_everyday: np.ndarray, t_emergency: np.ndarray,
             **{f"share_{c}": tgt[f"share_{c}"] for c in ("LL", "LH", "HL", "HH")},
         })
     # Threshold sweep on the BASELINE specs.
-    base = variants[0]
-    g_ev = _dep_fn(base.everyday, "everyday")
-    g_em = _dep_fn(base.emergency, "emergency")
-    ev_p = to_percentile(RegimeSurface(g_ev(t_everyday), population, "everyday", city_id, "raw")).values
-    em_p = to_percentile(RegimeSurface(g_em(t_emergency), population, "emergency", city_id, "raw")).values
+    if base_dep is None:
+        base = variants[0]
+        base_dep = variant_regime_deprivations(surfaces, cfg,
+                                               base.everyday, base.emergency)
+    ev_p = to_percentile(RegimeSurface(base_dep[0], population, "everyday", city_id, "raw")).values
+    em_p = to_percentile(RegimeSurface(base_dep[1], population, "emergency", city_id, "raw")).values
     for thr in thresholds:
         labels = classify(ev_p, em_p, thr)
         shares = class_shares(labels, population)["population_share"].to_dict()
@@ -162,12 +262,6 @@ def city_variant_table(t_everyday: np.ndarray, t_emergency: np.ndarray,
             **{f"share_{c}": shares.get(c, np.nan) for c in ("LL", "LH", "HL", "HH")},
         })
     return pd.DataFrame(rows)
-
-
-def _dep_fn(spec: dict, context: str):
-    from depacc.deprivation.functions import DeprivationFunction
-
-    return DeprivationFunction.from_spec(spec, context=context)
 
 
 def city_calibration_targets(surfaces: pd.DataFrame, cfg: dict,
@@ -300,6 +394,40 @@ def _rank_agreement(baseline: pd.Series, variant: pd.Series) -> tuple[float, flo
     return float(rho), float(tau)
 
 
+RANK_TARGETS = ("divergence_gap", "gini_emergency", "gini_everyday")
+
+
+def rank_agreement_from_tables(sens_dir: Path) -> pd.DataFrame:
+    """Cross-city rank agreement vs baseline from the persisted per-city
+    variant tables (``<city>_deprivation_sensitivity.csv``). Reading the
+    tables instead of this run's staged surfaces means the statistic covers
+    every persisted city, the same source the spec curve reads. Rows carry
+    ``n_cities`` — the paired city count each rho/tau is computed on."""
+    frames = []
+    for p in sorted(sens_dir.glob("*_deprivation_sensitivity.csv")):
+        f = pd.read_csv(p)
+        frames.append(f[f.axis.isin(["curvature", "form_swap"])]
+                      .drop_duplicates(["city", "variant"]))
+    if not frames:
+        return pd.DataFrame()
+    stacked = pd.concat(frames, ignore_index=True)
+    base = stacked[stacked.variant == "baseline"].set_index("city")
+    if base.empty:
+        return pd.DataFrame()
+    rows = []
+    for name, vf in stacked[stacked.variant != "baseline"].groupby("variant",
+                                                                   sort=True):
+        vf = vf.set_index("city")
+        for target in RANK_TARGETS:
+            paired = pd.concat([base[target], vf[target]], axis=1,
+                               join="inner").dropna()
+            rho, tau = _rank_agreement(paired.iloc[:, 0], paired.iloc[:, 1])
+            rows.append({"variant": name, "target": target,
+                         "spearman_rho": rho, "kendall_tau": tau,
+                         "n_cities": len(paired)})
+    return pd.DataFrame(rows)
+
+
 def run_sensitivity(cfg: dict, grid: dict, root: Path) -> None:
     """Run Layers 1/2 across all cities in cityplane and write the rank-agreement
     table, typology-share drift, and flip-cell shares."""
@@ -329,19 +457,39 @@ def run_sensitivity(cfg: dict, grid: dict, root: Path) -> None:
         if not surf_path.exists():
             continue
         s = pd.read_parquet(surf_path)
-        if "t_regime_everyday" not in s or "t_regime_emergency" not in s:
+        has_per_service = (any(c.startswith("t_eff_") for c in s.columns)
+                           and any(c.startswith("t_nearest_") for c in s.columns))
+        if not has_per_service:
+            print(f"  NOTE: {city} skipped — surfaces.parquet lacks the "
+                  f"per-service time columns (t_eff_*/t_nearest_*) the "
+                  f"per-service composite needs; re-run its deprivation stage")
             continue
-        t_ev = s["t_regime_everyday"].to_numpy(float)
-        t_em = s["t_regime_emergency"].to_numpy(float)
         pop = s["population"].to_numpy(float)
         base_labels = None
         var_label_sets = []
         for v in variants:
-            tgt = city_stable_targets(t_ev, t_em, pop, v.everyday, v.emergency,
-                                      city, threshold)
+            dep_ev, dep_em = variant_regime_deprivations(s, cfg,
+                                                         v.everyday, v.emergency)
+            tgt = stable_targets_from_deprivation(dep_ev, dep_em, pop,
+                                                  city, threshold)
             labels = tgt.pop("labels")
             if v.name == "baseline":
                 base_labels = labels
+                # The baseline recompute must be the model: pin it against the
+                # deprivation stage's own saved composites (they disagree only
+                # if the config's deprivation params changed since the city's
+                # surfaces were written — then the surfaces are stale).
+                for col, dep in (("deprivation_everyday", dep_ev),
+                                 ("deprivation_emergency", dep_em)):
+                    if col in s.columns:
+                        saved = s[col].to_numpy(float)
+                        both = np.isfinite(saved) & np.isfinite(dep)
+                        gap = (float(np.max(np.abs(saved[both] - dep[both])))
+                               if both.any() else 0.0)
+                        if gap > 1e-9 or (np.isfinite(saved) != np.isfinite(dep)).any():
+                            print(f"  WARNING: {city} baseline recompute "
+                                  f"deviates from saved {col} (max |Δ| "
+                                  f"{gap:.3g}) — stale surfaces vs config?")
             else:
                 var_label_sets.append(labels)
             per_variant.setdefault(v.name, {})[city] = tgt
@@ -354,7 +502,7 @@ def run_sensitivity(cfg: dict, grid: dict, root: Path) -> None:
         # single-city-meaningful view of deprivation-assumption sensitivity.
         out_city = derived / "sensitivity"
         out_city.mkdir(parents=True, exist_ok=True)
-        cvt = city_variant_table(t_ev, t_em, pop, variants, city)
+        cvt = city_variant_table(s, cfg, variants, city)
         cvt.to_csv(out_city / f"{city}_deprivation_sensitivity.csv", index=False)
         cur = cvt[cvt.axis == "curvature"]
         g_ev_rng = cur.gini_everyday.max() - cur.gini_everyday.min()
@@ -362,37 +510,33 @@ def run_sensitivity(cfg: dict, grid: dict, root: Path) -> None:
         hh_rng = cur.share_HH.max() - cur.share_HH.min()
         print(f"  {city}: across curvature variants — gini_everyday range "
               f"{g_ev_rng:.3f}, gini_emergency range {g_em_rng:.3f}; "
-              f"HH-share range {hh_rng:.4f} (typology is rank-based → ~0)")
+              f"HH-share range {hh_rng:.4f} (rank-based typology → near-0; "
+              f"exact zero only held under the old composite-time estimator)")
 
     frames = {name: pd.DataFrame(d).T for name, d in per_variant.items()}
     if "baseline" not in frames:
         print("sensitivity: baseline targets unavailable")
         return
 
-    # Rank-agreement of city ordering vs baseline, per stable target.
+    # Rank-agreement of city ordering vs baseline, per stable target —
+    # computed from the persisted per-city variant TABLES (unioned across
+    # runs by the persist import), not from the cities staged in this run.
+    # The staged-surfaces version needed every batch city's surfaces in one
+    # job: any partial round (a paris-only resume) saw <= 2 cities, Spearman
+    # needs 3, and depacc-results carried an all-NaN table for 67 cities.
     out = derived / "sensitivity"
     out.mkdir(parents=True, exist_ok=True)
     base = frames["baseline"]
-    rows = []
-    for name, f in frames.items():
-        if name == "baseline":
-            continue
-        for target in ("divergence_gap", "gini_emergency", "gini_everyday"):
-            rho, tau = _rank_agreement(base[target], f[target])
-            rows.append({"variant": name, "target": target,
-                         "spearman_rho": rho, "kendall_tau": tau})
-    rank_table = pd.DataFrame(rows)
-    # Rank agreement is a CROSS-city statistic: with fewer than two cities
-    # every rho/tau is NaN, and writing that table would overwrite a real one
-    # accumulated by an earlier multi-city run (a paris-only resume round did
-    # exactly this to depacc-results). No information > wrong information.
-    if not rank_table.empty and len(base) < 2:
-        print(f"rank agreement skipped: only {len(base)} city with staged "
-              f"surfaces (needs >= 2); existing rank_agreement.csv left as-is")
+    rank_table = rank_agreement_from_tables(out)
+    if rank_table.empty or rank_table.n_cities.max() < 3:
+        n = 0 if rank_table.empty else int(rank_table.n_cities.max())
+        print(f"rank agreement skipped: only {n} persisted variant table(s) "
+              f"(needs >= 3 cities); existing rank_agreement.csv left as-is")
     else:
         rank_table.to_csv(out / "rank_agreement.csv", index=False)
-    if not rank_table.empty and len(base) >= 2:
-        print("rank agreement vs baseline (min across variants):")
+        print(f"rank agreement vs baseline over "
+              f"{int(rank_table.n_cities.max())} cities "
+              f"(min across variants):")
         for target, g in rank_table.groupby("target"):
             print(f"  {target}: min rho={g.spearman_rho.min():.3f} "
                   f"min tau={g.kendall_tau.min():.3f}")

@@ -13,10 +13,12 @@ re-estimating the cross-city claims once per variant:
   divergence gap (permutation over whole countries).
 
 Rank-based outcomes (coupling rho, the LL/HL/LH/HH typology at a fixed
-threshold) are INVARIANT under these variants by construction — every
-deprivation function in the grid is strictly increasing in travel time, so
-percentile ranks never move. The curve therefore covers exactly the claims
-the parameters could bend: the Gini-based ones.
+threshold) are NEAR-invariant under these variants — every deprivation
+function in the grid is strictly increasing in travel time, so per-service
+ranks never move; the multi-service composite can drift slightly because a
+curvature change reweights how the services mix (the per-city flip-cell and
+share-envelope tables measure that drift). The curve therefore covers the
+claims the parameters bend materially: the Gini-based ones.
 
 The result reads like: "the everyday-Gini size slope is +X to +Y and
 significant under all N parameterisations" — or it is not, and we learn that

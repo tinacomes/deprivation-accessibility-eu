@@ -65,28 +65,100 @@ def test_curvature_preserves_city_rankings():
     assert rho > 0.8  # rankings survive the curvature change
 
 
-def test_city_variant_table_curvature_invariant_typology():
-    """The co-location typology is rank-based, so curvature variants leave the
-    class shares identical while the within-regime Ginis move; the threshold
-    sweep, by contrast, moves the shares."""
+def _synthetic_surfaces(cfg, n, rng):
+    surf = pd.DataFrame({"population": rng.uniform(1, 500, n)})
+    for svc in cfg["everyday_services"]:
+        surf[f"t_eff_{svc}"] = rng.uniform(0, 40, n)
+    for svc in cfg["emergency_services"]:
+        surf[f"t_nearest_{svc}"] = rng.uniform(0, 90, n)
+    return surf
+
+
+def test_city_variant_table_curvature_near_invariant_typology():
+    """The co-location typology is rank-based, so curvature variants move the
+    class shares only marginally (per-service ranks are invariant; the
+    composite can drift slightly as curvature reweights the service mix)
+    while the within-regime Ginis move materially; the threshold sweep, by
+    contrast, moves the shares by design."""
     cfg = load_config()
     grid = {"everyday": {"k": [0.1, 0.2, 0.3]}, "emergency": {"lam": [1.4, 1.8, 2.2]}}
     variants = expand_variants(cfg, grid)
     rng = np.random.default_rng(3)
-    n = 400
-    t_ev = rng.uniform(0, 40, n)
-    t_em = rng.uniform(0, 90, n)
-    pop = rng.uniform(1, 500, n)
-    tbl = city_variant_table(t_ev, t_em, pop, variants, "c")
+    surf = _synthetic_surfaces(cfg, 400, rng)
+    tbl = city_variant_table(surf, cfg, variants, "c")
     cur = tbl[tbl.axis == "curvature"]
-    # Class shares invariant across curvature variants (rank-based typology).
+    # Class shares near-invariant across curvature variants (rank-based
+    # typology; small composite-mix drift only).
     for cls in ("LL", "LH", "HL", "HH"):
-        assert cur[f"share_{cls}"].nunique() == 1
-    # But the everyday Gini genuinely moves with curvature.
-    assert cur["gini_everyday"].max() - cur["gini_everyday"].min() > 1e-3
+        assert cur[f"share_{cls}"].max() - cur[f"share_{cls}"].min() < 0.02
+    # But the Ginis genuinely move with curvature — an order of magnitude more
+    # than the shares.
+    assert cur["gini_emergency"].max() - cur["gini_emergency"].min() > 0.05
+    assert cur["gini_everyday"].max() - cur["gini_everyday"].min() > 1e-2
     # Threshold sweep changes the compounding (HH) share monotonically down.
     thr = tbl[tbl.axis == "threshold"].sort_values("threshold")
     assert thr["share_HH"].is_monotonic_decreasing
+
+
+def test_variant_composite_is_per_service_not_g_of_mean():
+    """The variant recompute must equal the pipeline's estimator (weighted row
+    mean of per-service g(t)) exactly, and must NOT equal g applied to the
+    composite time — the Jensen gap that made the old sensitivity baseline
+    (and the spec curve's ringed point) miss cityplane_row.csv."""
+    from depacc.config import everyday_service_spec
+    from depacc.deprivation.functions import DeprivationFunction
+    from depacc.sensitivity.harness import variant_regime_deprivations
+
+    cfg = load_config()
+    rng = np.random.default_rng(7)
+    surf = _synthetic_surfaces(cfg, 300, rng)
+    ev_spec = cfg["deprivation"]["everyday"]
+    em_spec = cfg["deprivation"]["emergency"]
+    dep_ev, dep_em = variant_regime_deprivations(surf, cfg, ev_spec, em_spec)
+
+    # Hand-built pipeline composite, with the config's composite weights.
+    ev_services = list(cfg["everyday_services"])
+    ev_weights = cfg["regimes"]["everyday"].get("composite_weights") or {}
+    w = np.array([float(ev_weights.get(s, 1.0)) for s in ev_services])
+    cols = []
+    for s in ev_services:
+        g = DeprivationFunction.from_spec(everyday_service_spec(cfg, s),
+                                          context=f"t [{s}]")
+        cols.append(g(surf[f"t_eff_{s}"].to_numpy(float)))
+    vals = np.column_stack(cols)
+    expected = (vals * w[None, :]).sum(axis=1) / w.sum()
+    np.testing.assert_allclose(dep_ev, expected, rtol=0, atol=1e-12)
+
+    # ...and the Jensen gap: g(mean t) is a different surface.
+    g_ev = DeprivationFunction.from_spec(ev_spec, context="ev")
+    t_mean = (np.column_stack(
+        [surf[f"t_eff_{s}"].to_numpy(float) for s in ev_services])
+        * w[None, :]).sum(axis=1) / w.sum()
+    assert np.max(np.abs(g_ev(t_mean) - dep_ev)) > 1e-3
+
+    # Emergency: same per-service estimator with the (two) emergency services.
+    em_services = list(cfg["emergency_services"])
+    em_weights = cfg["regimes"]["emergency"].get("composite_weights") or {}
+    ew = np.array([float(em_weights.get(s, 1.0)) for s in em_services])
+    g_em = DeprivationFunction.from_spec(em_spec, context="em")
+    em_vals = np.column_stack(
+        [g_em(surf[f"t_nearest_{s}"].to_numpy(float)) for s in em_services])
+    em_expected = (em_vals * ew[None, :]).sum(axis=1) / ew.sum()
+    np.testing.assert_allclose(dep_em, em_expected, rtol=0, atol=1e-12)
+
+
+def test_variant_composite_masks_no_path_cells():
+    cfg = load_config()
+    rng = np.random.default_rng(11)
+    surf = _synthetic_surfaces(cfg, 60, rng)
+    surf["unreachable_everyday"] = np.array([True] * 4 + [False] * 56)
+    surf["unreachable_emergency"] = np.array([True] * 4 + [False] * 56)
+    from depacc.sensitivity.harness import variant_regime_deprivations
+
+    dep_ev, dep_em = variant_regime_deprivations(
+        surf, cfg, cfg["deprivation"]["everyday"], cfg["deprivation"]["emergency"])
+    assert np.isnan(dep_ev[:4]).all() and np.isnan(dep_em[:4]).all()
+    assert np.isfinite(dep_ev[4:]).all() and np.isfinite(dep_em[4:]).all()
 
 
 def test_form_swap_resolves_named_alternatives():
@@ -122,10 +194,8 @@ def test_city_table_separates_form_swap_from_curvature():
             "form_swap": {"emergency": [{"alternative": "emergency_exponential"}]}}
     variants = expand_variants(cfg, grid)
     rng = np.random.default_rng(5)
-    n = 300
-    t_ev, t_em = rng.uniform(0, 40, n), rng.uniform(0, 90, n)
-    pop = rng.uniform(1, 100, n)
-    tbl = city_variant_table(t_ev, t_em, pop, variants, "c")
+    surf = _synthetic_surfaces(cfg, 300, rng)
+    tbl = city_variant_table(surf, cfg, variants, "c")
     assert (tbl.axis == "form_swap").any()
     cur = tbl[tbl.axis == "curvature"]
     assert not cur.variant.str.contains("formswap").any()
@@ -180,6 +250,54 @@ def test_calibration_masks_no_path_cells():
     # Masked cells are unclassified (they carry NaN everyday deprivation), so
     # the classified shares still sum to ~1 over the reachable cells.
     assert sum(tgt[f"share_{c}"] for c in ("LL", "LH", "HL", "HH")) == pytest.approx(1.0)
+
+
+def test_rank_agreement_from_tables(tmp_path):
+    """Cross-city rank agreement reads the persisted per-city variant tables,
+    so it covers every persisted city — not just the cities whose surfaces
+    were staged in the current run (the all-NaN-table failure mode)."""
+    from depacc.sensitivity.harness import rank_agreement_from_tables
+
+    ginis = {"a": 0.30, "b": 0.45, "c": 0.60, "d": 0.75}
+    for city, g in ginis.items():
+        rows = [
+            # baseline
+            dict(city=city, axis="curvature", variant="baseline",
+                 layer="baseline", threshold=0.5, gini_everyday=g,
+                 gini_emergency=g / 2, divergence_gap=-g / 2,
+                 share_LL=0.3, share_LH=0.2, share_HL=0.2, share_HH=0.3),
+            # order-preserving variant -> rho 1
+            dict(city=city, axis="curvature", variant="mono",
+                 layer="curvature", threshold=0.5, gini_everyday=g + 0.05,
+                 gini_emergency=g / 2 + 0.01, divergence_gap=-g / 2,
+                 share_LL=0.3, share_LH=0.2, share_HL=0.2, share_HH=0.3),
+            # order-reversing variant -> rho -1
+            dict(city=city, axis="curvature", variant="rev",
+                 layer="curvature", threshold=0.5, gini_everyday=1.0 - g,
+                 gini_emergency=g / 2, divergence_gap=-g / 2,
+                 share_LL=0.3, share_LH=0.2, share_HL=0.2, share_HH=0.3),
+            # threshold rows must be ignored
+            dict(city=city, axis="threshold", variant="threshold_0.75",
+                 layer="threshold", threshold=0.75, gini_everyday=np.nan,
+                 gini_emergency=np.nan, divergence_gap=np.nan,
+                 share_LL=0.6, share_LH=0.1, share_HL=0.1, share_HH=0.2),
+        ]
+        pd.DataFrame(rows).to_csv(
+            tmp_path / f"{city}_deprivation_sensitivity.csv", index=False)
+
+    table = rank_agreement_from_tables(tmp_path)
+    assert set(table.variant) == {"mono", "rev"}
+    assert (table.n_cities == 4).all()
+    mono = table[(table.variant == "mono") & (table.target == "gini_everyday")]
+    rev = table[(table.variant == "rev") & (table.target == "gini_everyday")]
+    assert mono.spearman_rho.iloc[0] == pytest.approx(1.0)
+    assert rev.spearman_rho.iloc[0] == pytest.approx(-1.0)
+
+
+def test_rank_agreement_from_tables_empty_dir(tmp_path):
+    from depacc.sensitivity.harness import rank_agreement_from_tables
+
+    assert rank_agreement_from_tables(tmp_path).empty
 
 
 def test_flip_cells():
