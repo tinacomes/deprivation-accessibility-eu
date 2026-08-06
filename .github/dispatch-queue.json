@@ -2,7 +2,7 @@
   {
     "workflow": "tier1-batch.yml",
     "ref": "main",
-    "nonce": "refresh-cross-inference-post-38",
+    "nonce": "refresh-spec-curve-post-39",
     "inputs": {
       "cities": "[\"lomza\"]"
     }

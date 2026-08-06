@@ -92,6 +92,47 @@ def choose_k_and_cluster(scaled: ScaledFeatures, k_range=(2, 6),
     }
 
 
+def silhouette_null(scaled: ScaledFeatures, observed_sil: float,
+                    k_range=(2, 6), n_sim: int = 999,
+                    random_state: int = 0) -> dict:
+    """Is the observed best-k silhouette surprising under NO cluster
+    structure? Parametric bootstrap: draw same-shape samples from one
+    multivariate normal with the scaled matrix's mean/covariance, apply the
+    SAME max-silhouette k-selection to each draw, and report where the
+    observed value falls. Guards the emergency-desert group against 'any
+    small outlier set silhouettes well' — the null preserves the feature
+    correlations, so heavy shared tails are in it."""
+    _require_scaled(scaled)
+    from sklearn.cluster import KMeans
+    from sklearn.metrics import silhouette_score
+
+    X = scaled.matrix
+    n = X.shape[0]
+    lo, hi = k_range
+    hi = min(hi, n - 1)
+    if n < MIN_CITIES or hi < lo or not np.isfinite(observed_sil):
+        return {}
+    rng = np.random.default_rng(random_state)
+    mean, cov = X.mean(axis=0), np.cov(X.T)
+    hits = 0
+    for _ in range(n_sim):
+        Xs = rng.multivariate_normal(mean, cov, size=n,
+                                     method="cholesky" if
+                                     np.all(np.linalg.eigvalsh(cov) > 1e-10)
+                                     else "eigh")
+        best = -1.0
+        for k in range(lo, hi + 1):
+            lab = KMeans(n_clusters=k, n_init=4,
+                         random_state=random_state).fit_predict(Xs)
+            if len(set(lab)) > 1:
+                best = max(best, silhouette_score(Xs, lab))
+        if best >= observed_sil:
+            hits += 1
+    return {"observed_silhouette": float(observed_sil),
+            "p_null_gaussian": (hits + 1) / (n_sim + 1),
+            "n_sim": n_sim}
+
+
 def size_gradient(vectors: pd.DataFrame,
                   outcomes=("divergence_gap", "spearman_rho",
                             "compounding_pop_share_50")) -> pd.DataFrame:
@@ -161,6 +202,16 @@ def run_cross_city(cfg: dict, root: Path, n_clusters: int | None = None) -> None
     if result.get("k"):
         print(f"clusters: k={result['k']} silhouette={result['silhouette']:.3f} "
               f"stability_ARI={result['stability_ari']}")
+        null = silhouette_null(scaled, result["silhouette"],
+                               k_range=tuple(ccfg.get("k_range", [2, 6])),
+                               random_state=int(ccfg.get("random_state", 0)))
+        if null:
+            null["k"] = result["k"]
+            null["stability_ari"] = result["stability_ari"]
+            pd.DataFrame([null]).to_csv(derived / "cluster_null.csv",
+                                        index=False)
+            print(f"cluster null (gaussian, same covariance): "
+                  f"p={null['p_null_gaussian']:.4f} over {null['n_sim']} sims")
     else:
         print(result.get("note", "clustering skipped"))
 
