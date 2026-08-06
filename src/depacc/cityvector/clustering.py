@@ -350,4 +350,102 @@ def _plot_cross_city(cfg: dict, vectors: pd.DataFrame, derived: Path) -> None:
     fig.tight_layout()
     fig.savefig(figdir / "scaling_elasticity.png", dpi=180, bbox_inches="tight")
     plt.close(fig)
+
+    _plot_region_strips(vectors, region_of, figdir)
+    _plot_rho_ranked(vectors, region_of, figdir)
     print(f"cross-city figures: {figdir}")
+
+
+# The four outcomes whose regional contrasts the ANOVA flags (Cohen f
+# 0.51-0.74 on the full sample) — the strip panel is that test, visualized:
+# separated medians over overlapping clouds, i.e. regional GRADIENTS, not
+# regional clusters (k-means vs region ARI ~ 0.07).
+STRIP_PANELS = (
+    ("spearman_rho", "coupling ρ (everyday vs emergency ranks)"),
+    ("gini_everyday", "Gini of everyday deprivation"),
+    ("gini_emergency", "Gini of emergency deprivation"),
+    ("divergence_gap", "divergence gap (em − ev Gini)"),
+)
+
+
+def _plot_region_strips(vectors: pd.DataFrame, region_of: dict[str, str],
+                        figdir: Path) -> None:
+    import matplotlib.pyplot as plt
+
+    regions = [r for r in REGION_STYLE if
+               (vectors.country.map(region_of) == r).any()]
+    if len(regions) < 2:
+        return
+    rng = np.random.default_rng(0)   # deterministic jitter
+    fig, axes = plt.subplots(1, len(STRIP_PANELS),
+                             figsize=(2.9 * len(STRIP_PANELS), 3.6))
+    for ax, (col, title) in zip(np.atleast_1d(axes), STRIP_PANELS):
+        for i, region in enumerate(regions):
+            colour, marker = REGION_STYLE[region]
+            vals = vectors.loc[vectors.country.map(region_of) == region,
+                               col].dropna()
+            ax.scatter(i + rng.uniform(-0.16, 0.16, len(vals)), vals,
+                       c=colour, marker=marker, s=26, alpha=0.85,
+                       linewidths=0, zorder=2)
+            ax.hlines(vals.median(), i - 0.28, i + 0.28, color="#0b0b0b",
+                      lw=2, zorder=3)
+        if col == "divergence_gap":
+            ax.axhline(0, color="0.8", lw=0.8, ls="--", zorder=1)
+        ax.set_xticks(range(len(regions)), regions, fontsize=8)
+        ax.set_title(title, fontsize=8.5)
+        ax.tick_params(labelsize=8)
+        for s in ("top", "right"):
+            ax.spines[s].set_visible(False)
+        ax.grid(True, axis="y", lw=0.4, alpha=0.35); ax.set_axisbelow(True)
+    fig.suptitle("Deprivation structure by macro-region (bar = regional median)",
+                 fontsize=11, y=1.02)
+    fig.tight_layout()
+    fig.savefig(figdir / "region_strips.png", dpi=180, bbox_inches="tight")
+    plt.close(fig)
+
+
+def _plot_rho_ranked(vectors: pd.DataFrame, region_of: dict[str, str],
+                     figdir: Path) -> None:
+    """Every city ordered by its everyday-emergency coupling ρ — the
+    compounding question (do the same areas lose twice?) as one readable
+    column, with the regional patterning legible from the colours."""
+    import matplotlib.pyplot as plt
+
+    s = vectors.dropna(subset=["spearman_rho"]) \
+        .sort_values("spearman_rho").reset_index(drop=True)
+    if len(s) < 3:
+        return
+    flagged = _outlier_group(vectors)
+    flagged_cities = set(vectors.loc[flagged, "city"])
+    fig, ax = plt.subplots(figsize=(6.5, max(4.0, 0.17 * len(s))))
+    for region in [r for r in REGION_STYLE
+                   if (s.country.map(region_of) == r).any()]:
+        colour, marker = REGION_STYLE[region]
+        sel = s.country.map(region_of) == region
+        ax.scatter(s.loc[sel, "spearman_rho"], s.index[sel], c=colour,
+                   marker=marker, s=30, linewidths=0, zorder=2, label=region)
+    other = ~s.country.map(region_of).isin(REGION_STYLE)
+    if other.any():
+        ax.scatter(s.loc[other, "spearman_rho"], s.index[other],
+                   c=FALLBACK_STYLE[0], marker=FALLBACK_STYLE[1], s=30,
+                   linewidths=0, zorder=2, label="other")
+    des = s.city.isin(flagged_cities)
+    if des.any():
+        ax.scatter(s.loc[des, "spearman_rho"], s.index[des],
+                   facecolors="none", edgecolors="#0b0b0b", s=110,
+                   linewidths=1.1, zorder=3, label="emergency-desert group")
+    ax.set_yticks(s.index, s["name"], fontsize=6.5)
+    ax.set_xlabel("Spearman ρ between everyday and emergency deprivation",
+                  fontsize=9)
+    ax.set_title("Compounding: does the same population carry both "
+                 "deprivations?\n(ρ ≈ 0: unrelated maps · high ρ: the same "
+                 "areas lose twice)", fontsize=9.5)
+    ax.axvline(0, color="0.8", lw=0.8, ls="--", zorder=1)
+    ax.legend(frameon=False, fontsize=8, loc="lower right")
+    for sp in ("top", "right"):
+        ax.spines[sp].set_visible(False)
+    ax.grid(True, axis="x", lw=0.4, alpha=0.35); ax.set_axisbelow(True)
+    ax.margins(y=0.01)
+    fig.tight_layout()
+    fig.savefig(figdir / "rho_ranked.png", dpi=180, bbox_inches="tight")
+    plt.close(fig)
