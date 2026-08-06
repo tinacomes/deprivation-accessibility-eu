@@ -75,6 +75,12 @@ CROSS_FILES = (
     "scaling.csv",
     "size_gradient.csv",
     "regime_slope_difference.csv",
+    # Country-clustered inference (cityvector/inference.py): the citable
+    # p-values — permutation-over-countries for the regional contrasts,
+    # wild-cluster-bootstrap scaling, and the emergency TOST.
+    "inference_regional.csv",
+    "inference_scaling_clustered.csv",
+    "inference_equivalence.csv",
 )
 # Robustness-harness outputs (data/derived/sensitivity/*), passed through
 # verbatim into results/sensitivity/. The per-city deprivation-sensitivity
