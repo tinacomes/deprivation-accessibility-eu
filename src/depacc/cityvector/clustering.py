@@ -184,6 +184,13 @@ def run_cross_city(cfg: dict, root: Path, n_clusters: int | None = None) -> None
     if not diffs.empty:
         diffs.to_csv(derived / "regime_slope_difference.csv", index=False)
 
+    # Country-clustered inference: region is a country-level variable and
+    # cities nest in countries, so the tests above are anti-conservative on
+    # their own — the permutation/cluster tables are the citable p-values.
+    from depacc.cityvector.inference import run_inference
+
+    run_inference(real, _region_lookup(cfg), derived)
+
     _plot_cross_city(cfg, real, derived)
 
 
