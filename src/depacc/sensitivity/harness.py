@@ -414,6 +414,15 @@ def run_sensitivity(cfg: dict, grid: dict, root: Path) -> None:
                                "min": np.nanmin(vals), "max": np.nanmax(vals)})
     pd.DataFrame(share_rows).to_csv(out / "typology_share_envelope.csv", index=False)
 
+    # Specification curve: the cross-city Gini claims re-estimated under
+    # every variant. Reads the per-city variant TABLES (unioned across runs
+    # by the persist import), so it covers all persisted cities even when
+    # only a few had surfaces staged in this run.
+    from depacc.cityvector.clustering import _region_lookup
+    from depacc.cityvector.spec_curve import run_spec_curve
+
+    run_spec_curve(derived, _region_lookup(cfg))
+
     # Layer 3-adjacent: the DEPRIVATION-CALIBRATION variant — uniform t0=15 vs
     # per-service t0 — reported as a robustness result against the Layer-3
     # accessibility axis (§7.3): outputs should move MORE with supply/mode than
