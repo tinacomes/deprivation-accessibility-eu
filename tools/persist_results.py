@@ -81,6 +81,9 @@ CROSS_FILES = (
     "inference_regional.csv",
     "inference_scaling_clustered.csv",
     "inference_equivalence.csv",
+    "inference_regime_paired.csv",
+    "inference_influence.csv",
+    "cluster_null.csv",
 )
 # Robustness-harness outputs (data/derived/sensitivity/*), passed through
 # verbatim into results/sensitivity/. The per-city deprivation-sensitivity
