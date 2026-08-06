@@ -1,0 +1,3 @@
+measure,gradient_everyday,gradient_difference_emergency,se_cluster_country,p_cluster_country,p_wild_cluster_bootstrap,n_cities,n_countries,inference
+mean,-0.19603018589596657,0.1379546190753665,0.0424355199838918,0.001150309012563511,0.0018,67,24,"paired regimes, country-clustered; cross-sectional space-for-time"
+gini,0.06184525887173544,-0.057097826268400924,0.025608636936840068,0.02577190989216103,0.0292,67,24,"paired regimes, country-clustered; cross-sectional space-for-time"
