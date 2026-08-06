@@ -131,9 +131,28 @@ already exists in `city_calibration_targets`) and pin the baseline row to
 `cityplane_row.csv` in a test. Then regenerate the sensitivity tables and
 the spec curve.
 
-Note the emergency side is unaffected (one g on one nearest-time surface),
-and all rank-based outputs are unaffected for the *curvature* variants —
-the defect moves Gini levels only.
+Note the emergency side has the same shape of defect (g of the composite
+nearest time vs the pipeline's weighted mean of the two per-service
+deprivations), just with a smaller Jensen gap (two services, one g).
+
+> **FIXED (this branch).** `variant_regime_deprivations` now applies each
+> variant's g PER SERVICE to the saved `t_eff_<s>` / `t_nearest_<s>` columns
+> and composites with the pipeline's own weighted row mean, for both
+> regimes; the shared no-path masks are applied; `run_sensitivity` warns if
+> the baseline recompute deviates from the saved `deprivation_<regime>`
+> columns by more than 1e-9 (which can only mean stale surfaces vs config).
+> Tests pin the estimator to a hand-built pipeline composite and to the
+> Jensen gap (`test_variant_composite_is_per_service_not_g_of_mean`).
+>
+> A consequence worth stating: the *exact* curvature-invariance of the
+> typology was itself an artifact of the old estimator (g of a composite
+> time is monotone; a weighted mean of per-service g's is not). Under the
+> correct estimator the typology is NEAR-invariant — per-service ranks are
+> fixed, the composite mix can drift (~0.5 pp class-share range on a
+> synthetic fixture, vs Ginis moving an order of magnitude more). methods.md
+> §7a and the spec-curve docstring now say "near-invariant" and the tables
+> measure the drift instead of asserting zero. Expect the per-city
+> flip-cell shares to become small-but-nonzero when the tables regenerate.
 
 ### 2.2 DEFECT — `sensitivity/rank_agreement.csv` is all-NaN
 
@@ -146,6 +165,15 @@ compute it from the persisted per-city variant tables (as
 `spec_curve.load_variant_planes` already does) instead of from staged
 surfaces; it then covers all 67 cities regardless of what a given run
 staged.
+
+> **FIXED (this branch).** `rank_agreement_from_tables` reads the unioned
+> `<city>_deprivation_sensitivity.csv` tables (the same source the spec
+> curve reads), pairs each variant with the baseline per city, and reports
+> ρ/τ with an `n_cities` column. `run_sensitivity` writes it only when at
+> least 3 cities pair (otherwise the existing file is left as-is).
+> Caveat until the tables regenerate: a partial dispatch would mix
+> old-estimator and new-estimator tables in the union — run the batch over
+> the full sample once after merging (see the run instructions).
 
 ### 2.3 The PR #40 additions have not produced results yet
 

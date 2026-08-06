@@ -777,7 +777,9 @@ The calibrated parameters and their anchor equations live in
 `config/deprivation.yaml → deprivation.alternatives.*` (`note:` fields, exactly
 reproducible), and the swap is wired in `config/sensitivity.yaml → form_swap`.
 Because every admissible `g(t)` is still strictly increasing, the co-location
-typology stays rank-invariant across Layer 2 as well; what Layer 2 tests is
+typology stays near-invariant across Layer 2 as well (per-service ranks are
+fixed; only the composite service mix can drift — see the single-city view
+below); what Layer 2 tests is
 whether the **Ginis and the plane** survive a change of *form* (not just
 curvature), tracked separately on the `form_swap` axis so it never contaminates
 the Layer-1 curvature envelope.
@@ -889,12 +891,17 @@ cluster-agreement targets need the multi-city sample; for one city the sweep
 still reports the two things that *are* well-defined:
 
 - *Curvature axis.* Across the deprivation-function curvature variants the
-  within-regime **Ginis move** (they are computed on raw magnitudes), but the
-  **co-location typology does not**: it is built on population-weighted ranks,
-  and every admissible `g(t)` is strictly increasing, so the ranks — and hence
-  the `LL/HL/LH/HH` classes and their shares — are **invariant by
-  construction**. The table makes this explicit (Gini columns spread, class-
-  share columns constant); it is the scale-free property, not a null result.
+  within-regime **Ginis move** (they are computed on raw magnitudes), while
+  the **co-location typology is near-invariant**: it is built on
+  population-weighted ranks, and every admissible `g(t)` is strictly
+  increasing, so the **per-service** ranks are invariant by construction. The
+  multi-service composite `Σ w_s g(t_s)` can still reorder cells slightly,
+  because a curvature change reweights how the services mix — the sweep
+  applies each variant's `g` per service and composites with the pipeline's
+  own weighted row mean (never `g` of the composite time, whose *exact*
+  invariance was an artifact of that estimator mismatch), so the residual
+  class-share drift is measured rather than asserted away. The table makes
+  this explicit (Gini columns spread, class-share columns barely move).
 - *Threshold axis.* "How high is high" is a genuine assumption, so the `HH`
   (compounding) share is swept over several percentile cut-offs (0.40–0.75).
   This is where the headline number actually moves, and it is reported so the
