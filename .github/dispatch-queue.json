@@ -2,9 +2,9 @@
   {
     "workflow": "tier1-batch.yml",
     "ref": "main",
-    "nonce": "refresh-spec-curve-post-39",
+    "nonce": "rerun-22-outage-cities-post-41",
     "inputs": {
-      "cities": "[\"lomza\"]"
+      "cities": "[\"oslo\", \"palma_de_mallorca\", \"paris\", \"porto\", \"praha\", \"riga\", \"roma\", \"sittard_geleen\", \"sofia\", \"stavanger\", \"stockholm\", \"szeged\", \"talavera_de_la_reina\", \"tallinn\", \"toulon\", \"turku\", \"vasteras\", \"vicenza\", \"vilnius\", \"warszawa\", \"wroclaw\", \"zagreb\"]"
     }
   }
 ]
