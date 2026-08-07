@@ -1,3 +1,3 @@
 regime,weighted_mean,gini,units,concentration_index,concentration_ses_col
-everyday,0.36157985466154585,0.5026782370611653,DLF: fraction of the saturation ceiling Lmax,-0.07211394499905188,ses_census_employment_share
-emergency,0.49216364914133415,0.6854352206916363,DCF: multiples of g(45 min) [anchored],-0.2299483267587644,ses_census_employment_share
+everyday,0.36205074317207725,0.501738970705067,DLF: fraction of the saturation ceiling Lmax,-0.07198360810859675,ses_census_employment_share
+emergency,0.500082892912148,0.6819395340870698,DCF: multiples of g(45 min) [anchored],-0.22313930490410874,ses_census_employment_share
