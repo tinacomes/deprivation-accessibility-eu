@@ -337,6 +337,12 @@ def run_cross_city(cfg: dict, root: Path, n_clusters: int | None = None) -> None
 
     run_inference(real, _region_lookup(cfg), derived)
 
+    # Cross-city vulnerability synthesis: the census-harmonised strata of
+    # every city's equity_vulnerability.csv pooled into one table + figure.
+    from depacc.equity.vulnerability_cross import run_vulnerability_synthesis
+
+    run_vulnerability_synthesis(derived, real, _region_lookup(cfg))
+
     _plot_cross_city(cfg, real, derived)
 
 
@@ -407,6 +413,39 @@ def _region_scatter(ax, vectors: pd.DataFrame, x: str, y: str,
                     xytext=(5, 3), fontsize=7.5, color="0.25", zorder=4)
 
 
+def _gini_envelopes(derived: Path) -> pd.DataFrame:
+    """Per-city min-max of the two Ginis across the deprivation CURVATURE
+    variants (from the persisted sensitivity tables) — the honest whisker
+    for the plane, given the curvature envelope spans ~0.2-0.35 per city."""
+    sens = derived / "sensitivity"
+    rows = []
+    for p in sorted(sens.glob("*_deprivation_sensitivity.csv")) if sens.exists() else []:
+        f = pd.read_csv(p)
+        cur = f[f.axis == "curvature"]
+        if cur.empty or "city" not in cur.columns:
+            continue
+        rows.append({
+            "city": str(cur.city.iloc[0]),
+            "ev_min": cur.gini_everyday.min(), "ev_max": cur.gini_everyday.max(),
+            "em_min": cur.gini_emergency.min(), "em_max": cur.gini_emergency.max(),
+        })
+    return pd.DataFrame(rows)
+
+
+def _provenance_footer(fig, vectors: pd.DataFrame) -> None:
+    """Provenance line on every cross-city figure (E.3 policy lesson: the
+    engine and the extraction era are part of the model, so they belong on
+    the figure, not only in the sidecars)."""
+    from datetime import date
+
+    fig.text(0.01, -0.015,
+             f"{len(vectors)} cities · routing: r5 (friction = declared "
+             f"sensitivity variant) · facilities: OSM/Overpass, "
+             f"expiry-refreshed extractions · generated {date.today()} · "
+             f"cross-sectional space-for-time",
+             fontsize=6.5, color="0.45", ha="left", va="top")
+
+
 def _plot_cross_city(cfg: dict, vectors: pd.DataFrame, derived: Path) -> None:
     if len(vectors) < 2:
         return
@@ -425,16 +464,33 @@ def _plot_cross_city(cfg: dict, vectors: pd.DataFrame, derived: Path) -> None:
     fig, ax = plt.subplots(figsize=(6.8, 6.2))
     lim = max(vectors.gini_everyday.max(), vectors.gini_emergency.max()) * 1.15 + 1e-9
     ax.plot([0, lim], [0, lim], color="0.75", lw=1, ls="--", zorder=1)
+    # Curvature-envelope whiskers behind the points (B.3): each city's
+    # Ginis under the deprivation-curvature sweep. Drawn faint — the point
+    # is that the envelopes are LARGE and shared, so the plane's geometry
+    # must not be over-read at point precision.
+    env = _gini_envelopes(derived)
+    has_env = not env.empty
+    if has_env:
+        env = env.merge(vectors[["city", "gini_everyday", "gini_emergency"]],
+                        on="city", how="inner")
+        for r in env.itertuples():
+            ax.plot([r.ev_min, r.ev_max], [r.gini_emergency] * 2,
+                    color="0.82", lw=0.8, alpha=0.7, zorder=1.5)
+            ax.plot([r.gini_everyday] * 2, [r.em_min, r.em_max],
+                    color="0.82", lw=0.8, alpha=0.7, zorder=1.5)
     _region_scatter(ax, vectors, "gini_everyday", "gini_emergency", region_of)
     ax.set_xlabel("Gini of everyday deprivation")
     ax.set_ylabel("Gini of emergency deprivation")
-    ax.set_title("Everyday-vs-emergency inequity plane (colour = macro-region)",
+    ax.set_title("Everyday-vs-emergency inequity plane (colour = macro-region"
+                 + ("; grey whisker = deprivation-curvature envelope" if has_env
+                    else "") + ")",
                  fontsize=10)
     ax.set_xlim(0, lim); ax.set_ylim(0, lim)
     ax.legend(frameon=False, fontsize=8, loc="lower right")
     for s in ("top", "right"):
         ax.spines[s].set_visible(False)
     ax.grid(True, lw=0.4, alpha=0.35); ax.set_axisbelow(True)
+    _provenance_footer(fig, vectors)
     fig.tight_layout(); fig.savefig(figdir / "cityplane.png", dpi=180, bbox_inches="tight")
     plt.close(fig)
 
@@ -462,6 +518,7 @@ def _plot_cross_city(cfg: dict, vectors: pd.DataFrame, derived: Path) -> None:
     for s in ("top", "right"):
         ax.spines[s].set_visible(False)
     ax.grid(True, lw=0.4, alpha=0.35); ax.set_axisbelow(True)
+    _provenance_footer(fig, vectors)
     fig.tight_layout(); fig.savefig(figdir / "size_gradient.png", dpi=180, bbox_inches="tight")
     plt.close(fig)
 
@@ -500,13 +557,88 @@ def _plot_cross_city(cfg: dict, vectors: pd.DataFrame, derived: Path) -> None:
     for s in ("top", "right"):
         ax.spines[s].set_visible(False)
     ax.grid(True, lw=0.4, alpha=0.35, which="both"); ax.set_axisbelow(True)
+    _provenance_footer(fig, vectors)
     fig.tight_layout()
     fig.savefig(figdir / "scaling_elasticity.png", dpi=180, bbox_inches="tight")
     plt.close(fig)
 
     _plot_region_strips(vectors, region_of, figdir)
     _plot_rho_ranked(vectors, region_of, figdir)
+    _plot_compounding_gallery(vectors, derived, figdir)
     print(f"cross-city figures: {figdir}")
+
+
+def _gallery_selection(vectors: pd.DataFrame) -> list[tuple[str, str]]:
+    """(city, reason) picks that span the sample's contrasts: the size
+    extremes, the coupling extremes, the divergence-gap extremes, the
+    strongest compounder, and an emergency-desert capital."""
+    v = vectors.dropna(subset=["spearman_rho", "divergence_gap"])
+    picks: list[tuple[str, str]] = []
+
+    def add(city: str | None, reason: str) -> None:
+        if city and city not in {c for c, _ in picks}:
+            picks.append((str(city), reason))
+
+    flagged = _outlier_group(vectors)
+    if flagged.any():
+        desert = vectors[flagged].sort_values("gini_emergency",
+                                              ascending=False)
+        add(desert.city.iloc[0], "emergency-desert capital")
+    if len(v):
+        add(v.loc[v.population.idxmax(), "city"], "largest FUA")
+        add(v.loc[v.spearman_rho.idxmax(), "city"], "strongest coupling ρ")
+        add(v.loc[v.spearman_rho.idxmin(), "city"], "weakest coupling ρ")
+        add(v.loc[v.divergence_gap.idxmax(), "city"],
+            "largest gap (emergency-side inequality)")
+        add(v.loc[v.divergence_gap.idxmin(), "city"],
+            "largest gap (everyday-side inequality)")
+        if "compounding_intensity" in v.columns and v.compounding_intensity.notna().any():
+            add(v.loc[v.compounding_intensity.idxmax(), "city"],
+                "strongest compounding")
+        add(v.loc[v.population.idxmin(), "city"], "smallest FUA")
+    return picks[:8]
+
+
+def _plot_compounding_gallery(vectors: pd.DataFrame, derived: Path,
+                              figdir: Path) -> None:
+    """Small multiples of the per-city compounding maps for a set of
+    contrasting cities. Composes the already-published per-city PNGs; the
+    caption carries the E.1 caveat — per-cell class assignment moves with
+    the routing engine (~24 % flip share), so these maps are for reading
+    PATTERNS (core-periphery structure, the commuter belt), not cells."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.image as mpimg
+    import matplotlib.pyplot as plt
+
+    panels = []
+    for city, reason in _gallery_selection(vectors):
+        p = derived / city / "figures" / "compounding_map_50.png"
+        if p.exists():
+            row = vectors[vectors.city == city]
+            name = row["name"].iloc[0] if len(row) and "name" in row else city
+            panels.append((name, reason, p))
+    if len(panels) < 4:
+        return
+    ncol = 4
+    nrow = int(np.ceil(len(panels) / ncol))
+    fig, axes = plt.subplots(nrow, ncol, figsize=(3.4 * ncol, 3.6 * nrow),
+                             squeeze=False)
+    for ax in axes.ravel():
+        ax.axis("off")
+    for ax, (name, reason, path) in zip(axes.ravel(), panels):
+        ax.imshow(mpimg.imread(path))
+        ax.set_title(f"{name}\n{reason}", fontsize=8.5)
+    fig.suptitle("Compounding deprivation, contrasting cities "
+                 "(everyday × emergency co-location at the median split)\n"
+                 "Per-cell class assignment is engine-sensitive (~24 % flip, "
+                 "E.1): read the spatial patterns, not individual cells.",
+                 fontsize=10, y=1.0)
+    _provenance_footer(fig, vectors)
+    fig.tight_layout()
+    fig.savefig(figdir / "compounding_gallery.png", dpi=160,
+                bbox_inches="tight")
+    plt.close(fig)
 
 
 # The four outcomes whose regional contrasts the ANOVA flags (Cohen f
@@ -552,6 +684,7 @@ def _plot_region_strips(vectors: pd.DataFrame, region_of: dict[str, str],
         ax.grid(True, axis="y", lw=0.4, alpha=0.35); ax.set_axisbelow(True)
     fig.suptitle("Deprivation structure by macro-region (bar = regional median)",
                  fontsize=11, y=1.02)
+    _provenance_footer(fig, vectors)
     fig.tight_layout()
     fig.savefig(figdir / "region_strips.png", dpi=180, bbox_inches="tight")
     plt.close(fig)
@@ -599,6 +732,7 @@ def _plot_rho_ranked(vectors: pd.DataFrame, region_of: dict[str, str],
         ax.spines[sp].set_visible(False)
     ax.grid(True, axis="x", lw=0.4, alpha=0.35); ax.set_axisbelow(True)
     ax.margins(y=0.01)
+    _provenance_footer(fig, vectors)
     fig.tight_layout()
     fig.savefig(figdir / "rho_ranked.png", dpi=180, bbox_inches="tight")
     plt.close(fig)

@@ -275,9 +275,16 @@ Missing for a paper:
    everyday-side inequality; plus the five emergency-desert capitals. No
    discrete city types (clustering as negative evidence).
 5. **Finding 3 — who carries it**: compounding above independence nearly
-   everywhere; vulnerability-stratified deprivation (census-harmonised
-   strata cross-city; Tier-2 national strata for depth: elderly 1.37×,
-   children 1.52×, low-rent 1.61× in Hamburg).
+   everywhere; and the cross-city vulnerability synthesis (now built —
+   `cross/vulnerability.csv` + `figures/vulnerability_strata.png`) splits
+   the strata: **children face more everyday deprivation than their
+   covered reference in 88 % of the 67 cities** (median ratio 1.27, HH
+   gap +0.14, worst in CEE and the North), while **the elderly do not
+   compound at the harmonised level** (median 0.96, > 1 in only 37 %,
+   below parity throughout CEE) — the sharp Hamburg elderly result
+   (1.37×) is the *national* fine-grid stratum, a different cut kept
+   strictly un-pooled. Tier-2 national/income strata remain the per-city
+   depth layer (low-rent 1.61× in Hamburg).
 6. **Robustness spine**: rank-invariance by construction → spec curve →
    threshold-axis dominance → continuous intensity → engine cross-check →
    completeness/external benchmarks.

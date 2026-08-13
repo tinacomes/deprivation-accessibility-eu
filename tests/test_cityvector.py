@@ -270,3 +270,46 @@ def test_peeled_clustering_none_without_flagged_group():
     v = _vectors(20, seed=2)
     v["cluster_kmeans"] = [0] * 10 + [1] * 10   # balanced: a partition, not a flag
     assert peeled_clustering(v, feature_columns(cfg)) is None
+
+
+def test_gini_envelopes_from_sensitivity_tables(tmp_path):
+    from depacc.cityvector.clustering import _gini_envelopes
+
+    sens = tmp_path / "sensitivity"
+    sens.mkdir()
+    pd.DataFrame([
+        {"city": "a", "axis": "curvature", "variant": "baseline",
+         "gini_everyday": 0.5, "gini_emergency": 0.4},
+        {"city": "a", "axis": "curvature", "variant": "k0.1",
+         "gini_everyday": 0.7, "gini_emergency": 0.3},
+        {"city": "a", "axis": "threshold", "variant": "threshold_0.75",
+         "gini_everyday": np.nan, "gini_emergency": np.nan},
+    ]).to_csv(sens / "a_deprivation_sensitivity.csv", index=False)
+    env = _gini_envelopes(tmp_path)
+    r = env.iloc[0]
+    assert (r.city, r.ev_min, r.ev_max, r.em_min, r.em_max) == \
+        ("a", 0.5, 0.7, 0.3, 0.4)
+
+
+def test_compounding_gallery_composes_existing_maps(tmp_path):
+    pytest.importorskip("matplotlib")
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    from depacc.cityvector.clustering import _plot_compounding_gallery
+
+    v = _vectors(8, seed=4)
+    v["cluster_kmeans"] = [1] + [0] * 7           # c0 = flagged outlier
+    v["compounding_intensity"] = np.linspace(0.2, 0.5, 8)
+    for city in v.city:
+        d = tmp_path / city / "figures"
+        d.mkdir(parents=True)
+        fig, ax = plt.subplots(figsize=(1, 1))
+        ax.plot([0, 1], [0, 1])
+        fig.savefig(d / "compounding_map_50.png", dpi=30)
+        plt.close(fig)
+    figdir = tmp_path / "figures"
+    figdir.mkdir()
+    _plot_compounding_gallery(v, tmp_path, figdir)
+    assert (figdir / "compounding_gallery.png").exists()

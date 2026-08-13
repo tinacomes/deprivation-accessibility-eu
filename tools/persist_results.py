@@ -78,6 +78,10 @@ CROSS_FILES = (
     # the silhouette criterion?
     "cityvector_clustered_peeled.csv",
     "cluster_null_peeled.csv",
+    # Cross-city vulnerability synthesis (equity/vulnerability_cross.py):
+    # the census-harmonised strata pooled over all cities.
+    "vulnerability.csv",
+    "vulnerability_summary.csv",
     "scaling.csv",
     "size_gradient.csv",
     "regime_slope_difference.csv",
