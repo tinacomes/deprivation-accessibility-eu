@@ -2,9 +2,9 @@
   {
     "workflow": "tier1-batch.yml",
     "ref": "main",
-    "nonce": "refresh-spec-curve-post-39",
+    "nonce": "paris-resume-round-9-plus-berlin-madrid-tables",
     "inputs": {
-      "cities": "[\"lomza\"]"
+      "cities": "[\"berlin\", \"madrid\", \"paris\"]"
     }
   }
 ]

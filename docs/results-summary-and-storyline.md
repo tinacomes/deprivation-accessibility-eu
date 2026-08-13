@@ -304,6 +304,39 @@ Hamburg anecdote into a European claim. Keep national/income strata
 (Tier-2) strictly out of the pooled figure (the three-level rule already in
 place). Never pool `age_census` with `age_national`.
 
+### 3.3a Status addendum (2026-08-13, after the full-sample regeneration)
+
+The corrected-estimator regeneration ran as two batches (the second after
+the 2026-08-06 GitHub Actions outage). Final state on `depacc-results` @
+`4c1c85d`: 64/67 sensitivity tables reproduce their published city rows to
+1e-9; `rank_agreement.csv` is real for the first time (67 cities, min ρ
+0.888/0.956/0.937 for gini_ev/gini_em/gap); the spec-curve baseline sits at
++0.0626 ≈ the published claim; `cluster_null.csv` (silhouette 0.63,
+p = 0.001, ARI 0.81), `inference_regime_paired.csv` and
+`inference_influence.csv` all exist.
+
+Three cities are still owed to the tables, all traced to one mechanism —
+a budget-stopped city job stages a PARTIAL dir whose presence shadowed the
+persisted summaries in `cmd_import`, silently dropping the city from the
+cross union (fixed in this branch, `tools/persist_results.py`):
+
+- **paris** stopped on its 130-min routing budget with 8 matrices left
+  (checkpointed; resume rounds queued). Until it completes, the cross and
+  inference tables are computed on **66 cities without Paris** — and Paris
+  is load-bearing: the paired Gini-slope difference reads wild-bootstrap
+  p = 0.0502 without it vs 0.025 with it. Do not quote the paired-Gini p
+  until Paris is back in.
+- **berlin** and **madrid** completed but fell out of batch 1's 62-row
+  union the same way, so their variant tables still carry the old
+  estimator (their published rows are unaffected); staged again in the
+  queued round, which regenerates them.
+
+One spec-curve reading to carry into the paper: the everyday-Gini size
+slope is positive under all 13 parameterisations but loses significance
+under the concave Box-Cox form swap (+0.022, p = 0.16) — the claim is
+curvature-robust and *nearly* form-robust, and that caveat should be
+stated rather than smoothed over.
+
 ### 3.4 Non-blocking loose ends (state or close)
 
 - **Registry verification before publication**: the DE hospital/pharmacy

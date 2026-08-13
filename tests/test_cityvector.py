@@ -230,3 +230,43 @@ def test_max_missing_share_is_configurable():
     # A deliberately permissive bound keeps it (and still names the imputations).
     assert "slope_ses_everyday" in scale_features(
         v, cols, max_missing_share=0.9).feature_names
+
+
+def test_peeled_clustering_reclusters_without_the_outlier_group():
+    """With the flagged group removed, the second pass re-scales and
+    reclusters the remainder, and reports the diagnostics needed to read a
+    peeled split honestly (null p, stability, ARI vs region)."""
+    from depacc.cityvector.clustering import peeled_clustering
+
+    cfg = load_config()
+    cols = feature_columns(cfg)
+    v = _vectors(30, seed=11)
+    # Main-pass result: cities 0-4 are the flagged outlier group.
+    v["cluster_kmeans"] = [1] * 5 + [0] * 25
+    v["country"] = ["LT"] * 5 + ["DE"] * 13 + ["PL"] * 12
+    # Hidden structure among the remaining 25: two well-separated blobs.
+    for c in cols[:4]:
+        v.loc[5:17, c] = v.loc[5:17, c] + 8.0
+    out = peeled_clustering(v, cols, bootstrap=8, n_sim=25,
+                            region_of={"DE": "West", "PL": "CEE",
+                                       "LT": "CEE"})
+    assert out is not None
+    peeled, diag = out
+    assert len(peeled) == 25 and diag["n_removed"] == 5
+    assert set(peeled.city).isdisjoint({f"c{i}" for i in range(5)})
+    assert diag["removed"] == ";".join(sorted(f"c{i}" for i in range(5)))
+    assert diag["k"] is not None and np.isfinite(diag["silhouette"])
+    assert "p_null_gaussian" in diag and "stability_ari" in diag
+    assert -1.0 <= diag["ari_vs_region"] <= 1.0
+    # The peeled labels are a fresh partition of the remainder, not the
+    # main-pass labels carried over.
+    assert set(peeled.cluster_kmeans) != {0}
+
+
+def test_peeled_clustering_none_without_flagged_group():
+    from depacc.cityvector.clustering import peeled_clustering
+
+    cfg = load_config()
+    v = _vectors(20, seed=2)
+    v["cluster_kmeans"] = [0] * 10 + [1] * 10   # balanced: a partition, not a flag
+    assert peeled_clustering(v, feature_columns(cfg)) is None
