@@ -72,6 +72,12 @@ CROSS_FILES = (
     "cityplane.csv",
     "cityvector.csv",
     "cityvector_clustered.csv",
+    # Second clustering pass with the flagged outlier group removed
+    # (clustering.py peeled_clustering): does any typology remain among
+    # ordinary cities once the emergency-desert capitals stop absorbing
+    # the silhouette criterion?
+    "cityvector_clustered_peeled.csv",
+    "cluster_null_peeled.csv",
     "scaling.csv",
     "size_gradient.csv",
     "regime_slope_difference.csv",

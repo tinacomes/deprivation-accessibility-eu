@@ -133,6 +133,76 @@ def silhouette_null(scaled: ScaledFeatures, observed_sil: float,
             "n_sim": n_sim}
 
 
+def peeled_clustering(vectors: pd.DataFrame, feature_cols: list[str],
+                      *, method: str = "robust",
+                      max_missing_share: float = 0.25,
+                      k_range=(2, 6), bootstrap: int = 50,
+                      random_state: int = 0, n_sim: int = 999,
+                      region_of: dict[str, str] | None = None
+                      ) -> tuple[pd.DataFrame, dict] | None:
+    """Second clustering pass with the flagged outlier group removed.
+
+    The k-selection maximises silhouette, and a small, strongly separated
+    group dominates that criterion: once the emergency-desert capitals
+    exist, the best split is always "them vs everyone", and weaker
+    sub-structure among the remaining cities is invisible. Peeling the
+    outlier group (the `_outlier_group` rule: smallest k-means cluster
+    under a quarter of the sample) and reclustering asks the follow-up
+    question directly — is there any typology among ordinary cities?
+
+    Everything is recomputed on the reduced sample: the scaling (the
+    scaler's median/IQR change once the outliers leave), the
+    silhouette-selected k, the bootstrap stability ARI, the Gaussian
+    null, and — because with ~24 countries any "cluster" may be a region
+    in costume — the ARI between the peeled labels and the macro-region
+    partition. A peeled split should be read as city types only if it
+    clears the null AND is bootstrap-stable AND is not the region
+    partition; a low silhouette here is itself the finding (regional
+    GRADIENTS, not discrete types).
+
+    Returns (labelled peeled frame, diagnostics dict), or None when
+    there is no flagged outlier group or too few cities remain.
+    """
+    flagged = _outlier_group(vectors)
+    if not flagged.any():
+        return None
+    peeled = vectors[~flagged].reset_index(drop=True)
+    if len(peeled) < MIN_CITIES:
+        return None
+    scaled = scale_features(
+        declump_tail_shares(peeled, feature_cols), feature_cols,
+        method=method, max_missing_share=max_missing_share)
+    result = choose_k_and_cluster(scaled, k_range=k_range,
+                                  bootstrap=bootstrap,
+                                  random_state=random_state)
+    peeled = peeled.copy()
+    peeled["cluster_kmeans"] = result["labels_kmeans"]
+    peeled["cluster_ward"] = result["labels_ward"]
+    diag = {
+        "n_cities": len(peeled),
+        "n_removed": int(flagged.sum()),
+        "removed": ";".join(sorted(vectors.loc[flagged, "city"].astype(str))),
+        "k": result.get("k"),
+        "silhouette": result.get("silhouette"),
+        "stability_ari": result.get("stability_ari"),
+    }
+    if result.get("k"):
+        null = silhouette_null(scaled, result["silhouette"], k_range=k_range,
+                               n_sim=n_sim, random_state=random_state)
+        diag["p_null_gaussian"] = null.get("p_null_gaussian")
+        diag["n_sim"] = null.get("n_sim")
+        if region_of and "country" in peeled.columns:
+            from sklearn.metrics import adjusted_rand_score
+
+            regions = peeled.country.map(region_of)
+            ok = regions.notna().to_numpy()
+            if ok.sum() >= MIN_CITIES and regions[ok].nunique() > 1:
+                diag["ari_vs_region"] = float(adjusted_rand_score(
+                    regions[ok].astype(str),
+                    np.asarray(result["labels_kmeans"])[ok]))
+    return peeled, diag
+
+
 def size_gradient(vectors: pd.DataFrame,
                   outcomes=("divergence_gap", "spearman_rho",
                             "compounding_pop_share_50")) -> pd.DataFrame:
@@ -212,6 +282,31 @@ def run_cross_city(cfg: dict, root: Path, n_clusters: int | None = None) -> None
                                         index=False)
             print(f"cluster null (gaussian, same covariance): "
                   f"p={null['p_null_gaussian']:.4f} over {null['n_sim']} sims")
+        # Peeled pass: recluster with the flagged outlier group removed, so
+        # the desert capitals stop absorbing the silhouette criterion. The
+        # labels live in their own files — nothing downstream switches
+        # sample silently.
+        peel = peeled_clustering(
+            real, feature_columns(cfg), method=method,
+            max_missing_share=float(cfg.get("cityvector", {})
+                                    .get("max_missing_share", 0.25)),
+            k_range=tuple(ccfg.get("k_range", [2, 6])),
+            bootstrap=int(ccfg.get("bootstrap", 50)),
+            random_state=int(ccfg.get("random_state", 0)),
+            region_of=_region_lookup(cfg),
+        )
+        if peel is not None:
+            peeled_df, diag = peel
+            peeled_df.to_csv(derived / "cityvector_clustered_peeled.csv",
+                             index=False)
+            pd.DataFrame([diag]).to_csv(derived / "cluster_null_peeled.csv",
+                                        index=False)
+            ari_r = diag.get("ari_vs_region")
+            print(f"peeled clustering (without {diag['removed']}): "
+                  f"k={diag['k']} silhouette={diag['silhouette']:.3f} "
+                  f"stability_ARI={diag['stability_ari']} "
+                  f"p_null={diag.get('p_null_gaussian')} "
+                  f"ARI_vs_region={ari_r if ari_r is not None else 'n/a'}")
     else:
         print(result.get("note", "clustering skipped"))
 
