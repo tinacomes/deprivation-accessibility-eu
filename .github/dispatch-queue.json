@@ -2,9 +2,9 @@
   {
     "workflow": "tier1-batch.yml",
     "ref": "main",
-    "nonce": "rerun-22-outage-cities-post-41",
+    "nonce": "paris-resume-round-9-plus-berlin-madrid-tables",
     "inputs": {
-      "cities": "[\"oslo\", \"palma_de_mallorca\", \"paris\", \"porto\", \"praha\", \"riga\", \"roma\", \"sittard_geleen\", \"sofia\", \"stavanger\", \"stockholm\", \"szeged\", \"talavera_de_la_reina\", \"tallinn\", \"toulon\", \"turku\", \"vasteras\", \"vicenza\", \"vilnius\", \"warszawa\", \"wroclaw\", \"zagreb\"]"
+      "cities": "[\"berlin\", \"madrid\", \"paris\"]"
     }
   }
 ]
