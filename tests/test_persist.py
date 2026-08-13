@@ -119,3 +119,31 @@ def test_import_does_not_overwrite_fresh_city(tmp_path):
     plane = pd.read_csv(run_b / "cityplane.csv")
     ham = plane[plane.city == "hamburg"].iloc[0]
     assert ham.gini_everyday == pytest.approx(0.99)  # fresh row wins
+
+
+def test_import_fills_partial_staged_city(tmp_path):
+    """A budget-stopped resume round stages a PARTIAL city dir (routing
+    progress, no cityplane_row.csv). It must not shadow the persisted
+    summaries: the city stays in the cross union with its last published
+    row, while everything the staged dir does carry is kept as-is."""
+    results = tmp_path / "r"
+    run_a = tmp_path / "a"
+    _make_city(run_a, "paris", 1.2e7, 0.62, 0.50)
+    _make_city(run_a, "hamburg", 3.2e6, 0.18, 0.11)
+    persist.cmd_export(results, run_a)
+
+    run_b = tmp_path / "b"
+    partial = run_b / "paris"
+    partial.mkdir(parents=True)
+    # The resume round produced only routing progress, no summaries.
+    (partial / "od_gp_walk.partial.marker").write_text("checkpoint")
+    persist.cmd_import(results, run_b)
+
+    plane = pd.read_csv(run_b / "cityplane.csv")
+    assert "paris" in set(plane.city)          # not dropped from the union
+    row = plane[plane.city == "paris"].iloc[0]
+    assert row.gini_everyday == pytest.approx(0.62)   # last published row
+    # The staged routing progress is untouched.
+    assert (partial / "od_gp_walk.partial.marker").read_text() == "checkpoint"
+    # And the persisted summary was restored into the partial dir.
+    assert (partial / "cityplane_row.csv").exists()

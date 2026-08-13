@@ -148,7 +148,29 @@ def cmd_import(results: Path, derived: Path) -> None:
         for cdir in sorted(cities.iterdir()):
             dest = derived / cdir.name
             if dest.exists():
-                continue  # freshly computed this run — always wins
+                # Freshly computed files always win — but a budget-stopped
+                # resume round stages a PARTIAL dir (ingest/access progress,
+                # no cityplane_row.csv yet), and letting it shadow the whole
+                # persisted city silently drops the city from the cross
+                # union (run 31181146117 lost paris this way: 66-row
+                # cityplane, every cross/inference table missing the largest
+                # city, no error anywhere). Fill in per-file: anything the
+                # staged dir already has is kept, anything persisted that it
+                # lacks is restored.
+                filled = 0
+                for src in cdir.rglob("*"):
+                    if src.is_dir():
+                        continue
+                    tgt = dest / src.relative_to(cdir)
+                    if not tgt.exists():
+                        tgt.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(src, tgt)
+                        filled += 1
+                if filled:
+                    print(f"  {cdir.name}: staged dir is partial — restored "
+                          f"{filled} persisted file(s) so the city stays in "
+                          f"the cross union")
+                continue
             shutil.copytree(cdir, dest)
             imported += 1
     print(f"imported {imported} previously persisted cities")
