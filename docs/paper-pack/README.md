@@ -5,10 +5,16 @@ Self-contained working materials for drafting the paper. Start with
 framing and phrasing rules, methods facts, limitations, skeleton) and
 tells you what order to read everything else in.
 
+House style: PNAS, after Musso et al. (2026) — see the style section and
+figure plan in `BRIEF.md`. The uploaded model paper is the arbiter for
+voice, figure grammar, and section order.
+
 ```
 paper-pack/
 ├── BRIEF.md          the master briefing — read first, rules are binding
+├── scripts/          figure generators (make_map.py, make_methods_fig.py)
 ├── data/             every table the claims cite (see BRIEF evidence map)
+│   ├── city_coordinates.csv        display-only FUA centroids for the map
 │   ├── cityplane.csv                the 67-city master table
 │   ├── cities_descriptives.csv     per-city appendix table (Table 1 / SI)
 │   ├── inference_*.csv             the citable statistical tests
@@ -18,7 +24,9 @@ paper-pack/
 │   │   scaling_by_grade.csv        the deprivation-vs-access contrast
 │   ├── specification_curve.csv, rank_agreement.csv, flip_cells.csv
 │   └── scaling.csv, size_gradient.csv, regime_slope_difference.csv
-└── figures/          the publication-shaped figure set (9 PNGs)
+└── figures/          the publication-shaped figure set (11 PNGs), incl.
+                      fig1_sample_map.png (Fig. 1: Europe map, Musso-1C
+                      grammar) and fig_methods_overview.png (M&M schematic)
 ```
 
 Companion documents in this repository:

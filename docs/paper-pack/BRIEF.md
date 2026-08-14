@@ -23,6 +23,62 @@ that may still refresh.
    `docs/evidence/depacc_results_evidence.docx` (the human-facing
    evidence document these materials condense).
 
+## House style: PNAS, after Musso et al. (2026)
+
+The model paper is **Musso, Rybski, Helbing & Neffke (2026), "Large
+cities lose their growth advantage as countries urbanize", PNAS 123(26)
+e2529430123, doi:10.1073/pnas.2529430123** — already this project's
+methodological anchor for space-for-time inference, and now the style
+template. Write to its conventions:
+
+- **Structure**: title (a finding, not a topic) → Abstract (~180 words,
+  numbers in it) → *Significance* box (~100 words, lay-readable) → short
+  framed Introduction (the two competing readings, then "we analyse
+  which") → numbered **Results** sections that carry the argument →
+  Discussion → Materials & Methods at the end (compressed; depth in SI).
+- **Voice**: short declarative sentences; the number immediately after
+  the claim ("The numbers speak clearly: …"); present tense for results;
+  every figure referenced in order and doing argumentative work; no
+  hedging where a bound exists (state the bound instead).
+- **Figures**: multi-panel composites lettered A–D; definitional insets
+  inside panels (their Fig. 1C carries the β-definition inset and a
+  density inset — our Fig. 1 mirrors this grammar); captions that
+  restate the finding, not just the encoding; methods details pushed to
+  captions and SI sections referenced as "Section X.Y".
+- **Tables**: few and small in the main text (their Table 1 = the
+  datasets, Table 2 = one regression); everything else SI.
+
+### Figure plan (main text)
+
+| Fig | Content | File(s) in `figures/` |
+|---|---|---|
+| 1 | The sample and the central quantity: Europe map of the 67 FUAs, colour = divergence gap, size = population, desert rings; definition inset (mini city plane) + density inset — Musso Fig. 1C grammar | `fig1_sample_map.png` (script: `scripts/make_map.py`) |
+| 2 | Regime-specific agglomeration: mean deprivation vs size by regime (A), everyday-vs-emergency inequality slopes with the spec-curve robustness inset (B) | `scaling_elasticity.png`, `specification_curve.png` |
+| 3 | The geography of divergence: regional strips (A), the coverage-grade scaling panels (B), desert access-contrast (C, table-in-figure) | `region_strips.png`, `scaling_by_coverage_grade.png`, `data/desert_access_contrast.csv` |
+| 4 | Compounding and its carriers: ranked coupling ρ (A), vulnerability strata (B), compounding-map gallery excerpt (C) | `rho_ranked.png`, `vulnerability_strata.png`, `compounding_gallery.png` |
+| M&M / SI | Methods overview schematic: places → travel times → anchored deprivation functions → typology and indicators | `fig_methods_overview.png` (script: `scripts/make_methods_fig.py`) |
+
+Main-text Table 1 = sample composition + key descriptives
+(`cities_descriptives.csv`); Table 2 = the country-clustered scaling
+elasticities (`inference_scaling_clustered.csv`). Everything else SI.
+The panel composites (Figs 2–4) are assembled from the listed singles at
+layout time; regenerate any single from `depacc-results` if numbers
+refresh.
+
+## Significance statement (seed, ~100 words)
+
+Cities are expected to bring services closer to people as they grow.
+Whether that promise covers *urgent* care as well as daily needs — and
+whether the same residents miss out on both — has been unmeasurable
+across countries. Comparing walking access to everyday services with
+driving access to emergency care in 67 European city regions, we find
+city size improves daily access but not emergency protection, and that
+the two deprivations concentrate in the same places, most strongly in
+Central-Eastern Europe and among families with children. Five capital
+regions are "emergency deserts" that standard access statistics cannot
+see. Where a city grows does not decide who is protected; national
+coverage does.
+
 ## The paper in one paragraph (abstract seed)
 
 Do cities deliver everyday services and emergency care together as they
@@ -176,28 +232,35 @@ locally; CI-generated versions land on `depacc-results` after the next
 collect and should replace them. DE registry counts carry
 verify-before-publication flags (`docs/validation.md`).
 
-## Suggested skeleton
+## Suggested skeleton (PNAS order)
 
-1. **Introduction** — 15-minute city vs emergency capability; the
-   compounding question; deprivation-not-access framing (RQ1–4).
-2. **Methods** — condensed from methods.md §§1–5 + §4.4; Table 1 =
-   sample composition + descriptives (cities_descriptives.csv).
-3. **Results**
-   3.1 Regime-specific agglomeration (H1, Fig scaling_elasticity).
-   3.2 Inequality scales with size only for the everyday regime (H2,
-       Fig specification_curve as robustness inset).
-   3.3 The geography of divergence (H3 + H4: Fig cityplane with
-       envelope whiskers, Fig region_strips; the severity gradient,
-       Fig scaling_by_coverage_grade; desert contrast table).
-   3.4 Compounding and its carriers (H6 + H5: Fig rho_ranked,
-       Fig vulnerability_strata, Fig compounding_gallery).
-   3.5 Deprivation vs access (H7 table; fold into 3.1–3.3 if tight).
-4. **Robustness** — the inventory block (spec curve, rank agreement,
-   engine check, threshold-vs-knob dominance) — most of it can live in
-   SI with one summarising paragraph.
-5. **Discussion** — regime-specific agglomeration meets national
-   emergency-system geography; policy: everyday inequality is a big-city
+1. **Title options** (a finding, not a topic): "Cities deliver everyday
+   access but not emergency protection as they grow" / "Urban growth
+   narrows daily-access gaps but leaves emergency deserts behind".
+2. **Abstract** (seed above) + **Significance** (seed above).
+3. **Introduction** (~5 short paragraphs): the 15-minute-city promise vs
+   emergency capability; the two-regime measurement gap; what we build
+   (two anchored deprivation measures, 67 FUAs/24 countries); the
+   findings preview in one paragraph with numbers; deprivation-not-access
+   framing stated up front (RQ1–4).
+4. **1. Results** (numbered subsections, one per figure)
+   1.1 The sample and the divergence landscape (Fig. 1 — the map).
+   1.2 City size buys everyday access, not emergency protection
+       (Fig. 2A; H1; TOST bound stated, not hedged).
+   1.3 Everyday inequality scales; emergency inequality does not
+       (Fig. 2B + spec-curve inset; H2).
+   1.4 The divergence is national, not size-driven: regions, the
+       coverage-severity gradient, deserts invisible to access averages
+       (Fig. 3; H3 + H4 + H7's desert contrast).
+   1.5 Compounding and who carries it (Fig. 4; H6 + H5).
+5. **2. Discussion** — regime-specific agglomeration meets national
+   emergency-system geography; everyday inequality is a big-city
    problem, emergency deprivation a national-coverage problem; children
-   as the systematic carriers.
-6. **SI** — per-city table, all sensitivity tables, validation (E.1–E.5),
-   the glossary and stats guide from docs/results-headlines.md.
+   as the systematic carriers; limitations paragraph (list above).
+6. **3. Materials and Methods** (compressed; `fig_methods_overview.png`
+   as the schematic) — condensed from methods.md §§1–5 + §4.4; point
+   every detail to SI.
+7. **SI** — per-city table, all sensitivity/robustness tables (spec
+   curve, rank agreement, engine check E.1, threshold-vs-knob), the
+   deprivation-vs-access full table, validation E.2–E.5, glossary and
+   stats guide from docs/results-headlines.md.
