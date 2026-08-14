@@ -2,7 +2,7 @@
   {
     "workflow": "tier1-batch.yml",
     "ref": "main",
-    "nonce": "paris-resume-round-12",
+    "nonce": "paris-resume-round-13-likely-final",
     "inputs": {
       "cities": "[\"paris\"]"
     }
