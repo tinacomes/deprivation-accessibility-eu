@@ -34,7 +34,7 @@ template. Write to its conventions:
 - **Structure**: title (a finding, not a topic) → Abstract (~180 words,
   numbers in it) → *Significance* box (~100 words, lay-readable) → short
   framed Introduction (the two competing readings, then "we analyse
-  which" + paceholder for Background and theories that might be relevant, e.g., deprivation cost theory and access metrics in cities) → numbered **Results** sections that carry the argument →
+  which" + placeholder for Background and theories that might be relevant, e.g., deprivation cost theory and access metrics in cities) → numbered **Results** sections that carry the argument →
   Discussion → Materials & Methods at the end (compressed; depth in SI).
 - **Voice**: short declarative sentences where possible, Avoid claude-ish jargon such as triplets or ---; the number immediately after
   the claim. Avoid figure explaining, rather make a statement and then point to the figure ("emergency deserts are problematic (see Fig x)" rather than "Fig x shows"); present tense for results; short proposition style headings for each sub-section if needed. 
@@ -65,19 +65,19 @@ The panel composites (Figs 2–4) are assembled from the listed singles at
 layout time; regenerate any single from `depacc-results` if numbers
 refresh.
 
-## Significance statement (seed, ~100 words)
+## Significance statement (seed, ~110 words)
 
-Cities are expected to bring services closer to people as they grow.
-Whether that promise covers *urgent* care as well as daily needs — and
-whether the same residents miss out on both — has been unmeasurable
-across countries. Comparing walking access to everyday services with
-driving access to emergency care in 67 European city regions, we find
-city size improves daily access but not emergency protection, and that
-the two deprivations concentrate in the same places, most strongly in
-Central-Eastern Europe and among families with children. Five capital
-regions are "emergency deserts" that standard access statistics cannot
-see. Where a city grows does not decide who is protected; national
-coverage does.
+Distance to services is usually measured as access: minutes to the
+nearest doctor, school, or hospital. But minutes are not burdens. A few
+extra minutes barely matter on the way to a pharmacy and can be fatal in
+an emergency. We therefore measure deprivation — the cost that distance
+imposes on people, using functions anchored to the 15-minute-city ideal
+for daily needs and to clinical time-to-care thresholds for urgent care —
+across 67 European city regions. This shift reveals what access
+statistics cannot: urban growth relieves everyday deprivation but not
+emergency deprivation; five capital regions are emergency deserts whose
+average access looks ordinary; and the double burden falls on the same
+neighbourhoods, and on families with children, almost everywhere.
 
 ## The paper in one paragraph (abstract seed)
 
@@ -234,9 +234,11 @@ verify-before-publication flags (`docs/validation.md`).
 
 ## Suggested skeleton (PNAS order)
 
-1. **Title options** (a finding, not a topic): "Cities deliver everyday
-   access but not emergency protection as they grow" / "Urban growth
-   narrows daily-access gaps but leaves emergency deserts behind".
+1. **Title options** (a finding, not a topic, in deprivation language):
+   "Urban growth relieves everyday deprivation but not emergency
+   deprivation" / "City size lowers the burden of distance for daily
+   needs, not for emergencies" / "Everyday deprivation shrinks as cities
+   grow; emergency deprivation does not".
 2. **Abstract** (seed above) + **Significance** (seed above).
 3. **Introduction** (~5 short paragraphs): the 15-minute-city promise vs
    emergency capability; the two-regime measurement gap; what we build
