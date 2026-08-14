@@ -118,13 +118,32 @@ cities:
 
 ```
 depacc-results
-├── cities/<city>/cityplane_row.csv      one-row city summary
-│                 typology_summary.csv    compounding population shares
-│                 equity_indices.csv      weighted mean / Gini / CI
-│                 equity_regressions.csv  density + SES gradients
-└── cross/        cityplane.csv, cityvector*, scaling.csv,
-                  regime_slope_difference.csv, size_gradient.csv, figures/
+├── cities/<city>/  cityplane_row.csv           one-row city summary
+│                   typology_summary_*.csv      compounding population shares
+│                   equity_*.csv                mean/Gini/CI, SES gradients,
+│                                               vulnerability strata, coverage
+│                   accessibility_by_*.csv      deprivation-free travel times
+│                   figures/                    percentile + compounding maps
+├── cross/          cityplane.csv, cityvector*.csv (+ _clustered, _peeled)
+│                   scaling.csv, size_gradient.csv, regime_slope_difference.csv
+│                   inference_*.csv             country-clustered/permutation/
+│                                               TOST/paired/influence tests
+│                   cluster_null*.csv           clustering diagnostics
+│                   vulnerability*.csv          cross-city strata synthesis
+│                   deprivation_vs_access.csv, desert_access_contrast.csv,
+│                   scaling_by_grade.csv        deprivation-vs-access contrast
+│                   figures/                    all cross-city figures
+├── sensitivity/    <city>_deprivation_sensitivity.csv, rank_agreement.csv,
+│                   specification_curve.csv/.png, flip_cells.csv, envelopes
+└── validation/     engine cross-check tables/figures (E.1), QQ curves (E.4)
 ```
+
+Browse it on GitHub:
+<https://github.com/tinacomes/deprivation-accessibility-eu/tree/depacc-results>
+— or locally: `git fetch origin depacc-results && git worktree add
+../depacc-results origin/depacc-results`. The headline numbers, the
+reading guide for every statistical test, and the glossary live in
+[`docs/results-headlines.md`](docs/results-headlines.md).
 
 On each run the collect step (batch) or the single-city job imports every
 previously persisted city, runs `depacc cross` over the **union**, and pushes

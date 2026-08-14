@@ -3,10 +3,9 @@
 A plain-language summary of the study's main results, with the exact
 numbers to quote and the caveat each one carries, followed by a glossary
 of every abbreviation and indicator used in the outputs on
-`depacc-results`. Numbers marked **[awaiting Paris]** were computed on 66
-cities while Paris's routing resume rounds complete and will shift
-slightly (final values land with the last collect; everything else is
-stable).
+`depacc-results`. All cross tables now cover the full 67 cities (Paris
+via its persisted row while its refreshed-extraction routing completes;
+its final run may shift numbers marginally, nothing more).
 
 Sample: **67 functional urban areas in 24 countries** (F.2 stratified
 draw: 4 macro-regions × 4 size strata, 100 k – 12.9 M inhabitants),
@@ -14,6 +13,17 @@ routed with r5 over OSM street networks, walk for everyday services and
 car for emergency care. All cross-city inference is cross-sectional
 space-for-time and is tested at the country level (cities nest in
 countries).
+
+**Where everything lives.** Every number and figure cited below is on the
+[`depacc-results` branch](https://github.com/tinacomes/deprivation-accessibility-eu/tree/depacc-results)
+of this repository (an orphan branch that every workflow run appends to):
+`cities/<city>/` holds the per-city tables and maps, `cross/` the
+cross-city tables, inference tests and figures, `sensitivity/` the
+robustness sweeps and specification curve, `validation/` the
+engine-check evidence. Locally:
+`git fetch origin depacc-results && git worktree add ../depacc-results
+origin/depacc-results`. Methods: [`methods.md`](../methods.md) (§4.4 for
+the cross-city analyses and inference).
 
 ---
 
@@ -41,9 +51,11 @@ care does not improve with size.
 
 The Gini of everyday deprivation rises with population (elasticity
 **+0.06**, wild p = 0.003), while the emergency Gini is size-flat
-(+0.00, p ≈ 0.94). The paired slope difference is −0.056 with wild
-p ≈ 0.05 **[awaiting Paris — 0.025 with Paris in; quote only the final
-value]**. Robustness: the everyday-Gini slope is positive under **all
+(+0.00, p ≈ 0.94). The paired slope difference is **−0.057 with wild
+p = 0.028** (67 cities, Paris included via its persisted row — the
+import fix keeps it in the union while its routing resumes; expect at
+most a marginal shift when its refreshed-extraction run completes).
+Robustness: the everyday-Gini slope is positive under **all
 13 deprivation parameterisations** of the specification curve (+0.02 to
 +0.08), significant in 12/13 — the exception is the concave Box-Cox
 form swap (p = 0.16), a caveat to state; the emergency-Gini slope is ~0
@@ -71,10 +83,19 @@ their beyond-threshold emergency travel-time tails. The split is real
 (silhouette 0.63–0.69, Gaussian-null p = 0.001, bootstrap ARI 0.81–0.91)
 but it is an **outlier group, not a typology** (agreement with the
 region partition ARI ≈ 0.07). The peeled re-clustering (outliers
-removed, everything recomputed) tests whether any typology remains among
-ordinary cities **[verdict lands with the final collect]** — the
-expected and citable outcome either way: European cities vary along
-regional gradients, not discrete types.
+removed, everything recomputed — `cluster_null_peeled.csv`) finds one
+further split, **along the same axis at lower intensity**: a 50/12 cut
+isolating the *partial-desert* cities (Oslo, Stockholm, Göteborg,
+Stavanger, Aalborg, Turku, Norrköping, Warszawa, Sofia, Zagreb,
+Palermo, Luxembourg — real emergency tails, ~13 % of population beyond
+30-minute care vs ~4 % elsewhere). It clears the null (p = 0.001, 999
+sims) and is not the region partition (ARI 0.06), but the separation is
+moderate (silhouette 0.38) and only borderline stable (bootstrap ARI
+0.77). The citable reading: European cities do not form
+multi-dimensional types — the only recoverable discrete structure is a
+**severity ordering on one axis**, emergency-periphery coverage
+(covered → partial desert → desert), presented as a gradient made
+visible, not as city types.
 
 ### H5 — Who carries it: children, almost everywhere
 

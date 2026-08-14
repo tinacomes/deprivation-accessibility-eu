@@ -394,6 +394,77 @@ they are city-level indicators in their own right.
 | per-infrastructure accessibility | `accessibility_by_service.csv`, `accessibility_by_regime.csv` |
 | deprivation-assumption sensitivity | `sensitivity/<city>_deprivation_sensitivity.csv` |
 
+### 4.4 Cross-city analyses and inference
+
+Everything in this subsection runs in the cross stage (`depacc cross`, the
+batch collect job) over the union of all persisted cities and writes to
+`cross/` on `depacc-results`. All estimation is cross-sectional
+space-for-time; a plain-language walkthrough of every test (question,
+mechanism, how to read the number) is in `docs/results-headlines.md` §2.
+
+**Scaling regressions and country-clustered inference**
+(`cityvector/scaling.py`, `cityvector/inference.py`). Log-log OLS of each
+outcome on population (the slope is an elasticity), reported three ways:
+HC1 (`scaling.csv`, reference), with country fixed effects
+(`scaling.csv`), and — the citable version — with country-clustered SEs
+plus a wild cluster bootstrap with the null imposed
+(`inference_scaling_clustered.csv`), because cities nest in ~24 countries
+and every outcome has a national component. Regional contrasts are tested
+by permuting whole countries across macro-regions
+(`inference_regional.csv`; the city-level ANOVA p is printed only as an
+anti-conservative reference), with a country-random-intercept mixed model
+as triangulation. The "emergency access does not scale" claim is
+additionally stated positively via TOST equivalence bounds
+(`inference_equivalence.csv`). The regime-slope difference is tested
+within cities (regime × ln pop interaction, country-clustered + wild
+bootstrap, `inference_regime_paired.csv`), and every headline elasticity
+carries influence diagnostics — leave-one-out envelope, Cook's-distance
+top city, Huber and median-regression re-estimates, desert-group
+exclusion (`inference_influence.csv`).
+
+**Clustering** (`cityvector/clustering.py`). k-means and Ward on the
+robust-scaled city-vector matrix (guarded: only a `ScaledFeatures` token
+is accepted; zero-inflated beyond-threshold tail shares are log1p-opened
+first so the scaler cannot manufacture outlier separation). k is selected
+by silhouette over 2–6; every reported partition carries three
+diagnostics: silhouette (separation), bootstrap ARI over resampled cities
+(stability), and a Gaussian silhouette null — same-covariance
+multivariate-normal draws pushed through the same k-selection
+(`cluster_null.csv`) — plus the ARI against the macro-region partition,
+since with country nesting a "cluster" can be a region in costume. When
+the winning split is a flagged outlier group (smallest cluster under a
+quarter of the sample), a **peeled second pass** re-scales and reclusters
+the remaining cities with the full diagnostic set
+(`cityvector_clustered_peeled.csv`, `cluster_null_peeled.csv`) — asking
+whether any typology remains once the outliers stop absorbing the
+silhouette criterion. On the full sample both passes cut along one axis
+(emergency-periphery coverage), which is reported as a severity ordering
+— **coverage grades**: covered / partial desert / desert — not as city
+types.
+
+**Vulnerability synthesis** (`equity/vulnerability_cross.py`). The
+census-harmonised age strata of every city's `equity_vulnerability.csv`
+(level `age_census` only — the three-level rule of §6.1 forbids pooling
+national or income strata) are stacked into `vulnerability.csv` with a
+coverage gate (stratum rows below 50 % population coverage are dropped),
+summarised per stratum (`vulnerability_summary.csv`: median
+covered-reference ratio, share of cities above parity) and drawn as
+by-region strips (`figures/vulnerability_strata.png`).
+
+**Deprivation vs pure access** (`cityvector/dep_vs_access.py`). The
+headline size regressions re-run on the deprivation-function-free
+travel-time indicators (median/mean/p90 minutes per regime from
+`accessibility_by_regime.csv`) next to the deprivation outcomes
+(`deprivation_vs_access.csv`), plus the deprivation-vs-time Gini
+correlations; the desert cities' access-vs-deprivation ratios
+(`desert_access_contrast.csv` — coverage deserts are invisible to access
+averages and exposed only by the anchored convex DCF); and the scaling
+scatter by coverage grade with a country-clustered slope-×-grade Wald
+test (`scaling_by_grade.csv`,
+`figures/scaling_by_coverage_grade.png`). Purpose: show which claims are
+robust to dropping the deprivation layer entirely, and where the
+deprivation calibration carries information access measures cannot.
+
 ## 5. Travel times
 
 Two engines, selected per city config (`routing.engine`):
