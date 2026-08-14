@@ -14,6 +14,17 @@ car for emergency care. All cross-city inference is cross-sectional
 space-for-time and is tested at the country level (cities nest in
 countries).
 
+**Where everything lives.** Every number and figure cited below is on the
+[`depacc-results` branch](https://github.com/tinacomes/deprivation-accessibility-eu/tree/depacc-results)
+of this repository (an orphan branch that every workflow run appends to):
+`cities/<city>/` holds the per-city tables and maps, `cross/` the
+cross-city tables, inference tests and figures, `sensitivity/` the
+robustness sweeps and specification curve, `validation/` the
+engine-check evidence. Locally:
+`git fetch origin depacc-results && git worktree add ../depacc-results
+origin/depacc-results`. Methods: [`methods.md`](../methods.md) (§4.4 for
+the cross-city analyses and inference).
+
 ---
 
 ## 1. The headlines
