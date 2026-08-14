@@ -34,10 +34,10 @@ template. Write to its conventions:
 - **Structure**: title (a finding, not a topic) → Abstract (~180 words,
   numbers in it) → *Significance* box (~100 words, lay-readable) → short
   framed Introduction (the two competing readings, then "we analyse
-  which") → numbered **Results** sections that carry the argument →
+  which" + paceholder for Background and theories that might be relevant, e.g., deprivation cost theory and access metrics in cities) → numbered **Results** sections that carry the argument →
   Discussion → Materials & Methods at the end (compressed; depth in SI).
-- **Voice**: short declarative sentences; the number immediately after
-  the claim ("The numbers speak clearly: …"); present tense for results;
+- **Voice**: short declarative sentences where possible, Avoid claude-ish jargon such as triplets or ---; the number immediately after
+  the claim. Avoid figure explaining, rather make a statement and then point to the figure ("emergency deserts are problematic (see Fig x)" rather than "Fig x shows"); present tense for results; short proposition style headings for each sub-section if needed. 
   every figure referenced in order and doing argumentative work; no
   hedging where a bound exists (state the bound instead).
 - **Figures**: multi-panel composites lettered A–D; definitional insets
@@ -45,7 +45,7 @@ template. Write to its conventions:
   density inset — our Fig. 1 mirrors this grammar); captions that
   restate the finding, not just the encoding; methods details pushed to
   captions and SI sections referenced as "Section X.Y".
-- **Tables**: few and small in the main text (their Table 1 = the
+- **Tables**: few  in the main text (their Table 1 = the
   datasets, Table 2 = one regression); everything else SI.
 
 ### Figure plan (main text)
