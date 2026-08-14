@@ -1,3 +1,3 @@
 measure,gradient_everyday,gradient_difference_emergency,se,p,n_cities,interpretation,inference
-gini,0.06197097554198444,-0.05735734497047746,0.025059178235258172,0.022086573554479353,67,emergency deprivation flattens relative to everyday along the size gradient,cross-sectional space-for-time
-mean,-0.19624348711092957,0.13792661398128947,0.04220691943378516,0.001083611401298774,67,emergency deprivation steepens relative to everyday along the size gradient,cross-sectional space-for-time
+gini,0.061969143237319765,-0.05740173145398773,0.025061303331188164,0.021995083899978677,67,emergency deprivation flattens relative to everyday along the size gradient,cross-sectional space-for-time
+mean,-0.19623201726931164,0.1379225809793928,0.04220727322693763,0.0010840821945886773,67,emergency deprivation steepens relative to everyday along the size gradient,cross-sectional space-for-time
