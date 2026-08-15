@@ -17,7 +17,10 @@ which file came from where.
 1. Read this brief end to end, then `docs/results-headlines.md`
    (headlines + the statistical-tests reading guide + glossary), then
    `methods.md` (authoritative methods; §4.4 covers the cross-city
-   analyses and inference).
+   analyses and inference). Cite from `references.bib` only — every entry
+   there is verified against the publisher's record, and `REFERENCES.md`
+   maps each entry to the claim it supports (plus the open citation
+   questions). Do not introduce citations from memory.
 2. Draft from the skeleton at the bottom. Every claim you write must
    trace to a file in `data/` or on `depacc-results`; the evidence map
    below gives the pairing. The phrasing rules are binding — they encode

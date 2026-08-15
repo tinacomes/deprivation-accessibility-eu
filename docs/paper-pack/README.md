@@ -8,6 +8,10 @@ tells you what order to read everything else in.
 ```
 paper-pack/
 ├── BRIEF.md          the master briefing — read first, rules are binding
+├── references.bib    verified bibliography (each entry checked against the
+│                     publisher's record — nothing from memory)
+├── REFERENCES.md     claim map: which entry supports which claim, and the
+│                     open citation questions for the PI
 ├── data/             every table the claims cite (see BRIEF evidence map)
 │   ├── cityplane.csv                the 67-city master table
 │   ├── cities_descriptives.csv     per-city appendix table (Table 1 / SI)
