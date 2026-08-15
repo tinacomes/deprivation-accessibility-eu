@@ -135,6 +135,8 @@ depacc-results
 │                   deprivation_vs_access.csv, desert_access_contrast.csv,
 │                   scaling_by_grade.csv        deprivation-vs-access contrast
 │                   cities_descriptives.csv     per-city appendix table
+│                   accessibility_by_service_pooled.csv / _cities.csv
+│                                               facilities + travel times
 │                   figures/                    all cross-city figures
 ├── sensitivity/    <city>_deprivation_sensitivity.csv, rank_agreement.csv,
 │                   specification_curve.csv/.png, flip_cells.csv, envelopes

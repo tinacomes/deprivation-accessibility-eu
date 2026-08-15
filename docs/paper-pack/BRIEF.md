@@ -96,6 +96,7 @@ RQ4. What does the deprivation framing add over pure access?
 | H7 | Deprivation ≠ access; claims survive both | ev median-time elasticity −0.237 (p 3.8e-5) but R² .16 vs .44; Gini corr .965/.977; Bucharest median time 0.71× sample vs deprivation 2.81×; grade sets the LEVEL (Wald p 1.8e-17), not the slope (interaction p .17) | deprivation_vs_access, desert_access_contrast, scaling_by_grade | scaling_by_coverage_grade.png |
 | — | Size gradient of divergence measures | gap slope −0.066/log10 (p .014); weak (R² .06) | size_gradient, regime_slope_difference | size_gradient.png |
 | — | Sample | 67 FUAs, 24 countries, 113.9 M people, 101 k–12.9 M | cities_descriptives, cityplane | (Table 1 material) |
+| — | Facilities routed to | median per FUA: 93 GPs, 227 pharmacies, 325 supermarkets, 411 schools, 636 green spaces, 6 EDs, 6 ambulance stations; median pop-weighted walk 4–8 min per everyday service, 12 min car to either emergency service | accessibility_by_service_pooled, accessibility_by_service_cities | (Methods table) |
 
 ## The deprivation layer's own robustness (the referee's first question)
 
@@ -222,13 +223,46 @@ grid; covered-cell reference. Inference conventions per §4.4.
 
 ## Limitations to state
 
-Cross-sectional space-for-time; OSM facility completeness
-(benchmarked in DE, ratio flags to re-verify before submission);
-census EMP missing for DE/FR (no harmonised SES slope there, by
-design); walk/car only (transit deliberately out of scope; say so);
-1 km census broadcast vs 100 m grid; engine sensitivity of per-cell
-classes; emergency-side external benchmark (INKAR) unavailable;
-finite-fill constant inside level indicators.
+Cross-sectional space-for-time; census EMP missing for DE/FR (no
+harmonised SES slope there, by design); walk/car only (transit
+deliberately out of scope; say so); 1 km census broadcast vs 100 m grid;
+engine sensitivity of per-cell classes; emergency-side external benchmark
+(INKAR) unavailable; finite-fill constant inside level indicators.
+
+**OSM facility completeness — two specifics, both from
+`accessibility_by_service_cities.csv`, both to state rather than
+smooth over.**
+
+*GP density varies by a factor of ~12 across countries in a way that is
+about tagging conventions, not health systems*: the median FUA has
+10.8 mapped GPs per 100 k, but the medians are 2.1 in SE, 2.3 in PT,
+2.6 in FI and 3.5 in IT against 24.5 across the West. In the Nordics and
+southern Europe primary care sits in health centres that OSM tags
+differently from `amenity=doctors`, so the GP layer under-counts there
+and those cities' everyday deprivation levels are correspondingly
+overstated. What this does **not** do is bias the size gradients: mapped
+GP density is uncorrelated with city size (log-log slope +0.09,
+country-clustered p = 0.29; −0.00 with country fixed effects), and every
+scaling claim is country-clustered. Treat it as a reason not to compare
+everyday *levels* across countries — and as one plausible reason the
+everyday-Gini regional contrast does not survive country-level testing
+(H3). The E.2 registry benchmark covers DE only and would not have caught
+this; the per-city facility counts do.
+
+*Eight cities have only one of the two emergency services mapped* —
+Athina, Brăila, Helsinki, Lahti, Norrköping, Szeged, Talavera de la Reina
+and Žilina (Szeged missing the ED hospital, the other seven missing
+ambulance stations). The composite renormalises its weights over the
+services present (methods §4), so their emergency surface measures
+proximity to the one mapped service. Their median mean-emergency
+deprivation is 0.197 against 0.169 for the rest — the expected direction
+and a modest size, and none of them is in the desert group, so no
+headline turns on it. `cities_descriptives.csv` carries
+`n_emergency_services` so Table 1 shows it; say it in the limitations and
+move on.
+
+Registry ratio flags (DE hospital/pharmacy) still to re-verify before
+submission (`docs/validation.md`).
 
 ## Provenance of the files in `data/` and `figures/`
 

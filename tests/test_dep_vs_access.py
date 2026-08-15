@@ -125,6 +125,72 @@ def test_scaling_by_grade_reports_level_and_slope_tests():
     assert float(inter.p.iloc[0]) > float(level.p.iloc[0])
 
 
+def _service_table(tmp_path, city, services):
+    (tmp_path / city).mkdir(exist_ok=True)
+    pd.DataFrame([
+        {"level": "service", "regime": regime, "service": name,
+         "n_facilities": n, "pop_median_time_min": t,
+         "pop_mean_time_min": t + 1, "pop_share_beyond_15min": 0.2,
+         "pop_share_beyond_30min": 0.1, "pop_service_deprived_share": 0.05,
+         "unreachable_pop_share": 0.001}
+        for regime, name, n, t in services
+    ] + [{"level": "everyday", "regime": "everyday", "service": "everyday",
+          "n_facilities": None, "pop_median_time_min": 4.0,
+          "pop_mean_time_min": 5.0, "pop_share_beyond_15min": 0.2,
+          "pop_share_beyond_30min": 0.1, "pop_service_deprived_share": 0.05,
+          "unreachable_pop_share": 0.001}]
+    ).to_csv(tmp_path / city / "accessibility_by_service.csv", index=False)
+
+
+def test_service_accessibility_pools_over_cities_and_finds_gaps(tmp_path):
+    from depacc.cityvector.dep_vs_access import service_accessibility
+
+    _service_table(tmp_path, "a", [("everyday", "gp", 100, 5.0),
+                                   ("emergency", "ed", 8, 10.0),
+                                   ("emergency", "ambulance", 4, 12.0)])
+    # City b never got ambulance stations out of OSM.
+    _service_table(tmp_path, "b", [("everyday", "gp", 200, 7.0),
+                                   ("emergency", "ed", 12, 14.0)])
+    cities = pd.DataFrame({"city": ["a", "b"], "name": ["A", "B"],
+                           "country": ["DE", "SE"]})
+    per_city, pooled = service_accessibility(tmp_path, cities)
+
+    # The regime-level rows are not services and must not be pooled as one.
+    assert set(per_city.service) == {"gp", "ed", "ambulance"}
+    assert len(per_city) == 5
+    p = pooled.set_index("service")
+    assert p.loc["gp", "n_cities"] == 2
+    assert p.loc["gp", "n_facilities_median"] == pytest.approx(150.0)
+    assert p.loc["gp", "pop_median_time_min_median"] == pytest.approx(6.0)
+    # The gap is visible as a city count below the sample, not as a zero.
+    assert p.loc["ambulance", "n_cities"] == 1
+    assert "ambulance" not in set(per_city[per_city.city == "b"].service)
+
+
+def test_descriptives_flag_cities_with_one_emergency_service(tmp_path):
+    from depacc.cityvector.dep_vs_access import service_accessibility
+
+    _service_table(tmp_path, "a", [("everyday", "gp", 100, 5.0),
+                                   ("emergency", "ed", 8, 10.0),
+                                   ("emergency", "ambulance", 4, 12.0)])
+    _service_table(tmp_path, "b", [("everyday", "gp", 200, 7.0),
+                                   ("emergency", "ed", 12, 14.0)])
+    v = _vectors(n=2)
+    v["city"] = ["a", "b"]
+    per_city, _ = service_accessibility(
+        tmp_path, pd.DataFrame({"city": ["a", "b"], "name": ["A", "B"],
+                                "country": ["DE", "SE"]}))
+    out = city_descriptives(v, {"DE": "West", "SE": "North"},
+                            [100000, 250000, 1000000, 5000000],
+                            per_service=per_city).set_index("city")
+    assert out.loc["a", "n_emergency_services"] == 2
+    assert out.loc["b", "n_emergency_services"] == 1
+    # Without the service table the column is simply absent, not zeroed.
+    assert "n_emergency_services" not in city_descriptives(
+        v, {"DE": "West", "SE": "North"},
+        [100000, 250000, 1000000, 5000000]).columns
+
+
 def test_size_stratum_labels_match_the_f2_bounds():
     bounds = [100000, 250000, 1000000, 5000000]
     assert _size_stratum(120_000, bounds) == "100-250k"

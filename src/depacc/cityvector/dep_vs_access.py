@@ -59,6 +59,7 @@ import numpy as np
 import pandas as pd
 
 ACCESS_TABLE = "accessibility_by_regime.csv"
+SERVICE_TABLE = "accessibility_by_service.csv"
 GRADE_ORDER = ("covered", "partial desert", "desert")
 INFERENCE_NOTE = ("log-log, country-clustered SE; "
                   "cross-sectional space-for-time")
@@ -90,6 +91,67 @@ def access_indicators(derived: Path, cities: list[str]) -> pd.DataFrame:
             row[f"{regime}_p90_time"] = float(r["pop_p90_time_min_reachable"])
         rows.append(row)
     return pd.DataFrame(rows)
+
+
+SERVICE_COLUMNS = ("n_facilities", "pop_median_time_min", "pop_mean_time_min",
+                   "pop_share_beyond_15min", "pop_share_beyond_30min",
+                   "pop_service_deprived_share", "unreachable_pop_share")
+
+
+def service_accessibility(derived: Path, cities: pd.DataFrame
+                          ) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Per-service travel times and facility counts, per city and pooled.
+
+    The methods section needs a sentence like "we found a median of 1 598
+    GPs per FUA, at a population-weighted median walk of 5.8 minutes", and a
+    referee will want the per-city version to check that no city's facility
+    extraction collapsed. Neither existed: `accessibility_by_service.csv` is
+    written per city and never pooled.
+
+    Returns ``(per_city, pooled)``. Pooling is over CITIES, not over cells:
+    each city contributes one observation per service, so a 12.9 M FUA and a
+    101 k one weigh the same. That is the right unit for "what does a
+    European city look like", and it is not a population-weighted European
+    average — do not report it as one.
+    """
+    frames = []
+    for city in cities["city"].astype(str):
+        path = Path(derived) / city / SERVICE_TABLE
+        if not path.exists():
+            continue
+        table = pd.read_csv(path)
+        table = table[table["level"].astype(str) == "service"]
+        if table.empty:
+            continue
+        frames.append(table.assign(city=city))
+    if not frames:
+        return pd.DataFrame(), pd.DataFrame()
+
+    keep = ["city", "regime", "service",
+            *[c for c in SERVICE_COLUMNS if c in frames[0].columns]]
+    per_city = pd.concat(frames, ignore_index=True)[keep]
+    meta = cities[["city", "name", "country"]] if "name" in cities.columns \
+        else cities[["city", "country"]]
+    per_city = meta.merge(per_city, on="city", how="right")
+    per_city = per_city.sort_values(["regime", "service", "city"]) \
+                       .reset_index(drop=True)
+
+    rows = []
+    for (regime, service), grp in per_city.groupby(["regime", "service"],
+                                                   sort=False):
+        row = {"regime": regime, "service": service,
+               "n_cities": int(grp["city"].nunique())}
+        for col in SERVICE_COLUMNS:
+            if col not in grp.columns:
+                continue
+            vals = pd.to_numeric(grp[col], errors="coerce").dropna()
+            if vals.empty:
+                continue
+            row[f"{col}_median"] = float(vals.median())
+            row[f"{col}_min"] = float(vals.min())
+            row[f"{col}_max"] = float(vals.max())
+        rows.append(row)
+    return per_city, pd.DataFrame(rows)
 
 
 # --------------------------------------------------------------------------
@@ -310,14 +372,31 @@ def _size_stratum(pop: float, bounds: list[float]) -> str:
 
 
 def city_descriptives(vectors: pd.DataFrame, region_of: dict[str, str],
-                      bounds: list[float], decimals: int = 4) -> pd.DataFrame:
+                      bounds: list[float], decimals: int = 4,
+                      per_service: pd.DataFrame | None = None
+                      ) -> pd.DataFrame:
     """The per-city appendix table (Table 1 / SI): sample composition next to
-    the headline indicators, largest city first."""
+    the headline indicators, largest city first.
+
+    ``n_emergency_services`` counts how many of the two emergency services
+    (ED hospital, ambulance station) OSM actually yielded for the city. It
+    belongs in Table 1 rather than a footnote: the composite renormalises
+    its weights over the services present (§4), so a city with one mapped
+    service has an emergency surface measuring proximity to that service
+    alone, and a reader comparing its level to a two-service city needs to
+    know that from the table.
+    """
     df = vectors.copy()
     df["region"] = df["country"].map(region_of)
     df["size_stratum"] = df["population"].map(
         lambda p: _size_stratum(float(p), bounds))
+    if per_service is not None and not per_service.empty:
+        counts = (per_service[per_service.regime == "emergency"]
+                  .groupby("city").service.nunique())
+        df["n_emergency_services"] = (df["city"].map(counts)
+                                      .fillna(0).astype(int))
     keep = ["city", "name", "country", "region", "population", "size_stratum",
+            *(["n_emergency_services"] if "n_emergency_services" in df else []),
             *[c for c in DESCRIPTIVE_COLUMNS if c in df.columns]]
     out = df[keep].sort_values("population", ascending=False)
     out["population"] = out["population"].round().astype("Int64")
@@ -447,8 +526,29 @@ def run_dep_vs_access(vectors: pd.DataFrame, derived: Path,
         except Exception as exc:                    # viz extra may be absent
             print(f"  NOTE: coverage-grade figure skipped ({exc})")
 
+    per_city, pooled = service_accessibility(derived, vectors)
+
     if bounds:
-        desc = city_descriptives(vectors, region_of, bounds)
+        desc = city_descriptives(vectors, region_of, bounds,
+                                 per_service=per_city)
         desc.to_csv(derived / "cities_descriptives.csv", index=False)
         print(f"  descriptives: {len(desc)} cities written to "
               "cities_descriptives.csv")
+        if "n_emergency_services" in desc.columns:
+            thin = desc[desc.n_emergency_services < 2]
+            if not thin.empty:
+                print(f"  NOTE: {len(thin)} cities have only one mapped "
+                      f"emergency service: "
+                      f"{', '.join(sorted(thin.city))}")
+
+    if not pooled.empty:
+        per_city.to_csv(derived / "accessibility_by_service_cities.csv",
+                        index=False)
+        pooled.to_csv(derived / "accessibility_by_service_pooled.csv",
+                      index=False)
+        print(f"  per-service accessibility: {len(pooled)} services over "
+              f"{int(pooled.n_cities.max())} cities")
+        for r in pooled.itertuples():
+            print(f"    {r.service:<24} facilities median "
+                  f"{r.n_facilities_median:>8.0f}  median time "
+                  f"{r.pop_median_time_min_median:>5.1f} min")

@@ -489,7 +489,36 @@ be theatre.
 
 The same module writes `cities_descriptives.csv`, the per-city appendix
 table (Table 1 / SI): sample composition (macro-region, F.2 size stratum)
-next to the headline indicators, largest FUA first.
+next to the headline indicators, largest FUA first, plus
+`accessibility_by_service_pooled.csv` and
+`accessibility_by_service_cities.csv` — the facility counts and
+deprivation-free travel times per service, pooled over cities and per
+city. Pooling is over CITIES, not cells: each city contributes one
+observation per service, which is the right unit for "what does a
+European FUA look like" and is not a population-weighted European
+average.
+
+Those per-service counts are also the completeness check the DE-only
+registry benchmark (§7, E.2) cannot give, and on the 67-city sample they
+surface two things that belong in the limitations rather than in a
+footnote. **GP mapping density is a country artefact**: a median 10.8
+mapped GPs per 100 k across the sample, but 2.1 (SE), 2.3 (PT), 2.6 (FI)
+and 3.5 (IT) against 24.5 across the West, because primary care in those
+countries sits in health centres OSM does not tag `amenity=doctors`.
+Everyday deprivation levels are correspondingly overstated there, so
+cross-country *level* comparisons of the everyday regime are not
+supported. The size gradients are unaffected: mapped GP density is
+uncorrelated with population (log-log +0.09, country-clustered p = 0.29;
+−0.00 under country fixed effects), and every scaling claim clusters on
+country. **Eight cities have only one of the two emergency services
+mapped** (Szeged no ED hospital; Athina, Brăila, Helsinki, Lahti,
+Norrköping, Talavera de la Reina and Žilina no ambulance station). The
+composite renormalises weights over the services actually present
+(`_weighted_row_mean`), so their emergency surface measures proximity to
+the one mapped service; their median mean-emergency deprivation is 0.197
+against 0.169 for the rest, and none is in the desert group.
+`cities_descriptives.csv` carries `n_emergency_services` so the reader
+sees it in Table 1.
 
 ## 5. Travel times
 

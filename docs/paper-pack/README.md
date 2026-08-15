@@ -11,6 +11,10 @@ paper-pack/
 ├── data/             every table the claims cite (see BRIEF evidence map)
 │   ├── cityplane.csv                the 67-city master table
 │   ├── cities_descriptives.csv     per-city appendix table (Table 1 / SI)
+│   ├── accessibility_by_service_pooled.csv,
+│   │   accessibility_by_service_cities.csv   facilities routed to and
+│   │                                deprivation-free travel times, per
+│   │                                service, pooled and per city
 │   ├── inference_*.csv             the citable statistical tests
 │   ├── cluster_null*.csv, cityvector_clustered*.csv   clustering
 │   ├── vulnerability*.csv          who-carries-it synthesis

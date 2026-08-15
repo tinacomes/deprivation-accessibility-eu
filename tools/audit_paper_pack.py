@@ -91,6 +91,75 @@ def run(data: Path) -> int:
     desc = a.table("cities_descriptives")
     a.check("descriptives rows", "cities_descriptives", len(desc), 67)
 
+    # ---- facilities and travel times (methods table) ----------------------
+    pooled = a.table("accessibility_by_service_pooled").set_index("service")
+    for service, facilities, minutes in (("gp", 93, 7.9),
+                                         ("pharmacy", 227, 4.9),
+                                         ("supermarket", 325, 4.7),
+                                         ("school_primary", 411, 4.4),
+                                         ("green_space_local", 636, 3.8),
+                                         ("emergency_dept_hospital", 6, 12.0),
+                                         ("ambulance_station", 6, 12.0)):
+        a.check(f"facilities per FUA: {service}",
+                "accessibility_by_service_pooled",
+                round(float(pooled.loc[service, "n_facilities_median"])),
+                facilities, 0.5)
+        a.check(f"median travel time: {service}",
+                "accessibility_by_service_pooled",
+                round(float(pooled.loc[service,
+                                       "pop_median_time_min_median"]), 1),
+                minutes, 0.05)
+    a.check("single-emergency-service cities", "cities_descriptives",
+            int((desc.n_emergency_services < 2).sum()), 8)
+    a.check("single-emergency-service cities named", "cities_descriptives",
+            sorted(desc.loc[desc.n_emergency_services < 2, "city"]),
+            ["athina", "braila", "helsinki", "lahti", "norrkoping", "szeged",
+             "talavera_de_la_reina", "zilina"])
+    a.check("no city missing an everyday service",
+            "accessibility_by_service_pooled",
+            int(pooled.loc[pooled.regime == "everyday", "n_cities"].min()), 67)
+    svc = a.table("accessibility_by_service_cities")
+    gp = svc[svc.service == "gp"].merge(plane[["city", "population"]],
+                                        on="city")
+    gp = gp.assign(per100k=gp.n_facilities / (gp.population / 1e5))
+    a.check("GP per 100k: sample median",
+            "accessibility_by_service_cities",
+            round(float(gp.per100k.median()), 1), 10.8, 0.05)
+    by_country = gp.groupby("country").per100k.median().round(1)
+    for country, expected in (("SE", 2.1), ("PT", 2.3), ("FI", 2.6),
+                              ("IT", 3.5)):
+        a.check(f"GP per 100k: {country} median",
+                "accessibility_by_service_cities",
+                float(by_country[country]), expected, 0.05)
+    # The regional lookup is defined further down for H3; build it here too
+    # so the completeness limitation is checked in one place.
+    _regions = {"North": ["SE", "NO", "DK", "FI"],
+                "West": ["DE", "NL", "FR", "BE", "AT", "LU"],
+                "South": ["ES", "IT", "PT", "EL"],
+                "CEE": ["PL", "CZ", "SK", "HU", "RO", "BG", "SI", "HR",
+                        "EE", "LV", "LT"]}
+    _lookup = {c: r for r, cs in _regions.items() for c in cs}
+    a.check("GP per 100k: West median", "accessibility_by_service_cities",
+            round(float(gp[gp.country.map(_lookup) == "West"]
+                        .per100k.median()), 1), 24.5, 0.05)
+    thin = desc.n_emergency_services < 2
+    em = desc.set_index("city").mean_emergency
+    a.check("single-service cities: median mean_emergency",
+            "cities_descriptives",
+            round(float(em[desc.loc[thin, "city"]].median()), 4), 0.1965,
+            5e-4)
+    a.check("two-service cities: median mean_emergency",
+            "cities_descriptives",
+            round(float(em[desc.loc[~thin, "city"]].median()), 4), 0.1687,
+            5e-4)
+    a.check("no single-service city is a desert",
+            "cities_descriptives vs cityvector_clustered",
+            bool(set(desc.loc[thin, "city"]).isdisjoint(
+                set(a.table("cityvector_clustered")
+                    .pipe(lambda d: d.loc[d.cluster_kmeans
+                          == d.cluster_kmeans.value_counts().idxmin(),
+                          "city"])))), True)
+
     # ---- H1: regime-specific agglomeration --------------------------------
     sc = {"table": "inference_scaling_clustered", "where_key": "outcome"}
     a.check("H1 everyday elasticity", sc["table"],
