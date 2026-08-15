@@ -397,6 +397,26 @@ def _rank_agreement(baseline: pd.Series, variant: pd.Series) -> tuple[float, flo
 RANK_TARGETS = ("divergence_gap", "gini_emergency", "gini_everyday")
 
 
+def _merge_persisted(path: Path, fresh: pd.DataFrame,
+                     keys: list[str]) -> pd.DataFrame:
+    """Union a freshly computed per-city table with the one already on disk,
+    the fresh rows winning on the shared keys. Accumulating tables must not
+    shrink to whatever subset of cities a single batch happened to stage."""
+    if not path.exists():
+        return fresh
+    try:
+        old = pd.read_csv(path)
+    except Exception:
+        return fresh
+    if not set(keys) <= set(old.columns):
+        return fresh
+    keep = old.merge(fresh[keys].drop_duplicates(), on=keys, how="left",
+                     indicator=True)
+    keep = keep[keep["_merge"] == "left_only"].drop(columns="_merge")
+    return pd.concat([keep, fresh], ignore_index=True) \
+             .sort_values(keys).reset_index(drop=True)
+
+
 def rank_agreement_from_tables(sens_dir: Path) -> pd.DataFrame:
     """Cross-city rank agreement vs baseline from the persisted per-city
     variant tables (``<city>_deprivation_sensitivity.csv``). Reading the
@@ -541,11 +561,21 @@ def run_sensitivity(cfg: dict, grid: dict, root: Path) -> None:
             print(f"  {target}: min rho={g.spearman_rho.min():.3f} "
                   f"min tau={g.kendall_tau.min():.3f}")
 
+    # These two tables are built ONLY from the cities whose surfaces were
+    # staged in this run (they need the cell-level surfaces, which are not
+    # persisted). Writing them straight out would shrink the accumulated
+    # table to the current batch — how a 67-city flip-cell table became a
+    # one-city table after a paris-only resume round. Merge instead: keep
+    # every persisted city, let this run's rows win for the cities it
+    # recomputed. Same union guarantee the rank-agreement table gets from
+    # reading the persisted per-city variant tables.
     if flip_records:
-        flip_df = pd.DataFrame(flip_records)
+        flip_df = _merge_persisted(out / "flip_cells.csv",
+                                   pd.DataFrame(flip_records), ["city"])
         flip_df.to_csv(out / "flip_cells.csv", index=False)
         print(f"flip-cells: mean sensitive pop share "
-              f"{flip_df.sensitive_pop_share.mean():.1%} across {len(flip_df)} cities")
+              f"{flip_df.sensitive_pop_share.mean():.1%} across "
+              f"{len(flip_df)} cities")
 
     # Typology-share envelope per city (min/max across variants).
     share_rows = []
@@ -556,7 +586,10 @@ def run_sensitivity(cfg: dict, grid: dict, root: Path) -> None:
             share_rows.append({"city": city, "class": cls,
                                "baseline": base.loc[city, f"share_{cls}"],
                                "min": np.nanmin(vals), "max": np.nanmax(vals)})
-    pd.DataFrame(share_rows).to_csv(out / "typology_share_envelope.csv", index=False)
+    if share_rows:
+        _merge_persisted(out / "typology_share_envelope.csv",
+                         pd.DataFrame(share_rows), ["city", "class"]) \
+            .to_csv(out / "typology_share_envelope.csv", index=False)
 
     # Specification curve: the cross-city Gini claims re-estimated under
     # every variant. Reads the per-city variant TABLES (unioned across runs

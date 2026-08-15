@@ -61,6 +61,8 @@ depacc run --city hamburg --stage access
 depacc make-city --fua-code DE002F --name Hamburg --country DE   # codes from `depacc list-fuas`
                                         # generate a Tier-1 fast-path config
 depacc cross                            # cross-city clustering + size gradient
+                                        # + inference, vulnerability synthesis,
+                                        # deprivation-vs-access contrast
 depacc sensitivity                      # deprivation-assumption robustness sweep (Layers 1/2)
 depacc sensitivity --layer access --city hamburg   # accessibility sweep (Layer 3) from cached OD
 pytest                                  # unit tests (no downloads needed)
@@ -132,6 +134,7 @@ depacc-results
 │                   vulnerability*.csv          cross-city strata synthesis
 │                   deprivation_vs_access.csv, desert_access_contrast.csv,
 │                   scaling_by_grade.csv        deprivation-vs-access contrast
+│                   cities_descriptives.csv     per-city appendix table
 │                   figures/                    all cross-city figures
 ├── sensitivity/    <city>_deprivation_sensitivity.csv, rank_agreement.csv,
 │                   specification_curve.csv/.png, flip_cells.csv, envelopes

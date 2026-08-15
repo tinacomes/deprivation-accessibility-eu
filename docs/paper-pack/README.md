@@ -16,7 +16,8 @@ paper-pack/
 │   ├── vulnerability*.csv          who-carries-it synthesis
 │   ├── deprivation_vs_access.csv, desert_access_contrast.csv,
 │   │   scaling_by_grade.csv        the deprivation-vs-access contrast
-│   ├── specification_curve.csv, rank_agreement.csv, flip_cells.csv
+│   ├── specification_curve.csv, rank_agreement.csv, flip_cells.csv,
+│   │   typology_share_envelope.csv                    robustness
 │   └── scaling.csv, size_gradient.csv, regime_slope_difference.csv
 └── figures/          the publication-shaped figure set (9 PNGs)
 ```
@@ -33,5 +34,7 @@ Companion documents in this repository:
   (per-city compounding maps for figure remakes live under
   `cities/<city>/figures/`).
 
-Freshness: see `BRIEF.md § Pending` — a handful of numbers refresh once
-Paris's final routing run lands; everything else is final.
+Freshness: **final**. All 67 cities have completed routing (Paris last,
+2026-08-14) and everything here was refreshed from that state — see
+`BRIEF.md § Provenance` for which file came from CI, which was
+recomputed locally, and which was reconstructed as a 67-city union.

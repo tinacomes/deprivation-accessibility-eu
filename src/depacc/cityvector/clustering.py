@@ -343,6 +343,17 @@ def run_cross_city(cfg: dict, root: Path, n_clusters: int | None = None) -> None
 
     run_vulnerability_synthesis(derived, real, _region_lookup(cfg))
 
+    # Deprivation vs pure access: the same claims on plain minutes, the
+    # deserts' access-vs-deprivation contrast, and the coverage-graded
+    # scaling — plus the per-city descriptives table (Table 1 material).
+    from depacc.cityvector.dep_vs_access import run_dep_vs_access
+
+    run_dep_vs_access(
+        real, derived, _region_lookup(cfg),
+        bounds=(cfg.get("city_definition", {}).get("region_strata", {}) or {})
+        .get("strata_bounds"),
+    )
+
     _plot_cross_city(cfg, real, derived)
 
 

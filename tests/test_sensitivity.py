@@ -300,6 +300,41 @@ def test_rank_agreement_from_tables_empty_dir(tmp_path):
     assert rank_agreement_from_tables(tmp_path).empty
 
 
+def test_merge_persisted_keeps_cities_this_run_did_not_recompute(tmp_path):
+    """A one-city resume round must not shrink an accumulated table."""
+    from depacc.sensitivity.harness import _merge_persisted
+
+    path = tmp_path / "flip_cells.csv"
+    pd.DataFrame({"city": ["berlin", "madrid", "paris"],
+                  "sensitive_pop_share": [0.09, 0.16, 0.50]}).to_csv(
+        path, index=False)
+    fresh = pd.DataFrame({"city": ["paris"], "sensitive_pop_share": [0.12]})
+    out = _merge_persisted(path, fresh, ["city"])
+    assert sorted(out.city) == ["berlin", "madrid", "paris"]
+    # The rerun city takes this run's value, the others keep theirs.
+    assert out.set_index("city").sensitive_pop_share["paris"] == 0.12
+    assert out.set_index("city").sensitive_pop_share["berlin"] == 0.09
+    # Nothing on disk yet, or an unusable file: the fresh table stands alone.
+    assert _merge_persisted(tmp_path / "absent.csv", fresh,
+                            ["city"]).equals(fresh)
+
+
+def test_merge_persisted_uses_every_key_column(tmp_path):
+    from depacc.sensitivity.harness import _merge_persisted
+
+    path = tmp_path / "envelope.csv"
+    pd.DataFrame({"city": ["berlin", "berlin", "paris"],
+                  "class": ["HH", "LL", "HH"],
+                  "baseline": [0.3, 0.2, 0.33]}).to_csv(path, index=False)
+    fresh = pd.DataFrame({"city": ["paris"], "class": ["HH"],
+                          "baseline": [0.34]})
+    out = _merge_persisted(path, fresh, ["city", "class"])
+    assert len(out) == 3
+    assert out[(out.city == "paris") & (out["class"] == "HH")] \
+        .baseline.iloc[0] == 0.34
+    assert set(out[out.city == "berlin"]["class"]) == {"HH", "LL"}
+
+
 def test_flip_cells():
     base = np.array(["LL", "HH", "HL", "LH"], dtype=object)
     v1 = np.array(["LL", "HH", "HH", "LH"], dtype=object)   # cell 2 flips

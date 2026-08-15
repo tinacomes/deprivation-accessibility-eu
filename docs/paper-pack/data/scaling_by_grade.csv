@@ -1,5 +1,6 @@
 grade,n_cities,elasticity,se,p,note
-covered,48,-0.0832235100297882,0.038042478820006144,0.03381449429792418,plain OLS within grade (small n)
-partial desert,14,0.12818462659956048,0.07523124958932283,0.11413725653159723,plain OLS within grade (small n)
-desert,5,-0.1049763141696157,0.2875616543475181,0.7392873350198945,plain OLS within grade (small n)
-interaction (slope x grade),67,,,0.009894956947235158,"Wald on interaction terms, country-clustered"
+covered,50,-0.08150474196536543,0.035947797368170116,0.027912927632162916,plain OLS within grade (small n)
+partial desert,12,0.017496000658433958,0.0821398309445239,0.8356044617062335,plain OLS within grade (small n)
+desert,5,-0.10497631416961747,0.2875616543475208,0.7392873350198925,plain OLS within grade (small n)
+grade level shift (at mean size),67,,,1.7677417261645022e-17,"Wald on grade dummies at centred ln pop, country-clustered"
+interaction (slope x grade),67,,,0.16651877945605448,"Wald on interaction terms, country-clustered"

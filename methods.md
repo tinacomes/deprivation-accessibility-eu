@@ -451,19 +451,45 @@ summarised per stratum (`vulnerability_summary.csv`: median
 covered-reference ratio, share of cities above parity) and drawn as
 by-region strips (`figures/vulnerability_strata.png`).
 
-**Deprivation vs pure access** (`cityvector/dep_vs_access.py`). The
-headline size regressions re-run on the deprivation-function-free
-travel-time indicators (median/mean/p90 minutes per regime from
-`accessibility_by_regime.csv`) next to the deprivation outcomes
+**Deprivation vs pure access** (`cityvector/dep_vs_access.py`, run as
+the last step of `depacc cross`). The headline size regressions re-run on
+the deprivation-function-free travel-time indicators (median/mean minutes
+per regime from `accessibility_by_regime.csv`, plus the p90 for the
+emergency regime) next to the deprivation outcomes
 (`deprivation_vs_access.csv`), plus the deprivation-vs-time Gini
 correlations; the desert cities' access-vs-deprivation ratios
 (`desert_access_contrast.csv` — coverage deserts are invisible to access
 averages and exposed only by the anchored convex DCF); and the scaling
-scatter by coverage grade with a country-clustered slope-×-grade Wald
-test (`scaling_by_grade.csv`,
-`figures/scaling_by_coverage_grade.png`). Purpose: show which claims are
-robust to dropping the deprivation layer entirely, and where the
-deprivation calibration carries information access measures cannot.
+scatter by coverage grade (`scaling_by_grade.csv`,
+`figures/scaling_by_coverage_grade.png`). The everyday p90 is
+deliberately not regressed: above the walk cutoff the everyday composite
+time behaves as a count of unmet service categories rather than a travel
+time (§4.2), and the published p90 is conditional on reachability.
+Purpose: show which claims are robust to dropping the deprivation layer
+entirely, and where the deprivation calibration carries information
+access measures cannot.
+
+The **coverage grade** is read off the two clustering passes above, never
+from a hand-set threshold on a beyond-30-minute share: `desert` is the
+main pass's flagged outlier group, `partial desert` is the peeled pass's
+smaller cluster (the same axis at lower intensity), `covered` is the
+rest — so the grades change only when the clustering does. The graded
+scaling table reports **both** halves of the contrast on
+`mean_emergency`, from one country-clustered model with ln population
+centred at the sample mean: a Wald test on the grade dummies (does the
+grade shift the LEVEL at a typical city size?) and a Wald test on the
+grade × ln-population terms (does it change the SLOPE?). Centring is what
+makes the first test a contrast between grades rather than an
+extrapolation to a population of one. On the 67-city sample the level
+test is decisive and the slope test is not, which is the citable reading:
+coverage class, not city size, sets emergency deprivation. Within-grade
+elasticities are reported as plain OLS and flagged as such — with 5–50
+cities in a grade a cluster-robust SE over a handful of countries would
+be theatre.
+
+The same module writes `cities_descriptives.csv`, the per-city appendix
+table (Table 1 / SI): sample composition (macro-region, F.2 size stratum)
+next to the headline indicators, largest FUA first.
 
 ## 5. Travel times
 
@@ -829,6 +855,17 @@ whose typology class changes across the sweep,
 reported as a stable-vs-sensitive population share and mapped. Reported as
 rank-agreement (Spearman/Kendall of city orderings) and cluster agreement
 (adjusted Rand) versus baseline.
+
+**Which cities each cross-city sensitivity table covers.** The
+rank-agreement table and the specification curve are rebuilt from the
+*persisted per-city variant tables*, so they always span every city on
+`depacc-results`. The flip-cell and typology-share-envelope tables cannot
+be: they need the cell-level surfaces, which are not persisted, so a run
+can only recompute them for the cities it staged. They are therefore
+**merged** into the accumulated table (this run's rows win for the cities
+it recomputed, every other city is kept) rather than replacing it —
+without that, a single-city resume round silently shrinks a 67-city
+robustness table to one row.
 
 **Layer 2 (form swap) is ACTIVE, and it is calibrated the honest way — form
 transferred, *anchors* held fixed.** Where Layer 1 varies curvature within a

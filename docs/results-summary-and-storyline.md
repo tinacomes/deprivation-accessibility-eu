@@ -322,27 +322,33 @@ the 2026-08-06 GitHub Actions outage). Final state on `depacc-results` @
 p = 0.001, ARI 0.81), `inference_regime_paired.csv` and
 `inference_influence.csv` all exist.
 
-Three cities are still owed to the tables, all traced to one mechanism —
-a budget-stopped city job stages a PARTIAL dir whose presence shadowed the
-persisted summaries in `cmd_import`, silently dropping the city from the
-cross union (fixed in this branch, `tools/persist_results.py`):
+**CLOSED (2026-08-15).** Three cities were owed to the tables, all traced
+to one mechanism — a budget-stopped city job stages a PARTIAL dir whose
+presence shadowed the persisted summaries in `cmd_import`, silently
+dropping the city from the cross union (fixed in
+`tools/persist_results.py`). All three have since landed:
 
-- **paris** stopped on its 130-min routing budget with 8 matrices left
-  (checkpointed; resume rounds queued). Until it completes, the cross and
-  inference tables are computed on **66 cities without Paris** — and Paris
-  is load-bearing: the paired Gini-slope difference reads wild-bootstrap
-  p = 0.0502 without it vs 0.025 with it. Do not quote the paired-Gini p
-  until Paris is back in.
-- **berlin** and **madrid** completed but fell out of batch 1's 62-row
-  union the same way, so their variant tables still carry the old
-  estimator (their published rows are unaffected); staged again in the
-  queued round, which regenerates them.
+- **berlin** and **madrid** — batch run 31721976666 (2026-08-13), which
+  regenerated their variant tables on the corrected estimator.
+- **paris** — resume round 13, batch run 31816777776 (2026-08-14): the
+  pipeline step ran to completion inside its budget (96 min of the 130),
+  so the full stack (surfaces → typology → equity → sensitivity) ran and
+  the cross tables were rebuilt over all 67 cities. Its final row moved
+  the fourth decimal at most (mean_everyday 0.13511 → 0.13516,
+  gini_emergency 0.4978 → 0.4970), and no headline number changed at the
+  precision it is quoted: the paired Gini-slope difference holds at
+  −0.057, wild p = 0.028.
+
+Verification of that final state (2026-08-15): a local `depacc cross`
+over the persisted 67-city union reproduces every CI cross and inference
+table to ~1e-13, so the published tables are exactly what the code
+produces from the persisted inputs.
 
 One spec-curve reading to carry into the paper: the everyday-Gini size
 slope is positive under all 13 parameterisations but loses significance
-under the concave Box-Cox form swap (+0.022, p = 0.16) — the claim is
-curvature-robust and *nearly* form-robust, and that caveat should be
-stated rather than smoothed over.
+under the concave Box-Cox form swap (+0.026, p = 0.083 on the final
+67-city curve) — the claim is curvature-robust and *nearly* form-robust,
+and that caveat should be stated rather than smoothed over.
 
 ### 3.4 Non-blocking loose ends (state or close)
 
