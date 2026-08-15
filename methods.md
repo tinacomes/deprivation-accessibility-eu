@@ -856,6 +856,28 @@ reported as a stable-vs-sensitive population share and mapped. Reported as
 rank-agreement (Spearman/Kendall of city orderings) and cluster agreement
 (adjusted Rand) versus baseline.
 
+**Reporting the deprivation sweep.** Two artefacts accompany the rank
+agreement and the specification curve.
+`sensitivity/deprivation_sensitivity_summary.csv` gives, per city ×
+sweep axis × target, the baseline value and the min/max the target takes
+over that axis's variants. The axes are kept apart deliberately: a
+curvature envelope and a "how high is high" threshold envelope are
+different claims, and pooling them would hide that curvature dominates
+the Ginis while the threshold dominates the class shares. On the 67-city
+sample the median envelope widths are 0.244 (everyday Gini) and 0.166
+(emergency Gini) under curvature against 0.014 for the compounding
+share, and 0.299 for the compounding share under the threshold axis —
+the quantitative form of "robust-to-g, meaning-from-g".
+`sensitivity/deprivation_curves.png` draws the functions being varied —
+baseline, the Layer-1 grid and the Layer-2 anchor-calibrated swaps —
+together with the **linear loss implied by a pure-access minutes
+average**, matched to the baseline at the 45-minute anchor. Each panel
+stays on its own reporting scale (everyday raw on the Lmax = 1 scale,
+emergency in multiples of g(45); §3), so the figure never invites the
+cross-regime magnitude comparison the standardisation layer forbids. The
+figure is built from the same `expand_variants` the harness sweeps, so it
+cannot drift from what was actually run.
+
 **Which cities each cross-city sensitivity table covers.** The
 rank-agreement table and the specification curve are rebuilt from the
 *persisted per-city variant tables*, so they always span every city on

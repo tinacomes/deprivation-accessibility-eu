@@ -60,7 +60,13 @@ is positive under **all 13 deprivation parameterisations** of the
 specification curve (+0.026 to +0.075), significant in 12/13 — the
 exception is the concave Box-Cox form swap (+0.026, p = 0.083), a caveat
 to state; the emergency-Gini slope stays within −0.006 to +0.015 and is
-non-significant under every parameterisation.
+non-significant under every parameterisation. Note what this robustness
+is *not*: the Gini **levels** move a great deal under the same sweep
+(median envelope width 0.24 everyday, 0.17 emergency), which is the point
+— the calibration carries information, and the slope claim is defended by
+the whole curve rather than by any one parameterisation. The curves being
+swept, and the linear loss a pure-access measure would use instead, are
+drawn in `figures/deprivation_curves.png`.
 
 ### H3 — The divergence has a geography, and it is country-level
 
@@ -126,7 +132,11 @@ The population sharing both high-everyday and high-emergency deprivation
 independence benchmark and exceeds it in **66 of 67 cities**; coupling ρ
 spans −0.02 to 0.74. The continuous `compounding_intensity` (which
 removes the threshold's leverage) shows the same regional pattern
-(p_perm = 0.0023). Per-city assumption
+(p_perm = 0.0023). The class shares barely notice the deprivation
+function — median envelope width across the 67 cities is 1.4 pp under the
+curvature grid and 0.6 pp under the form swap, against **29.9 pp for the
+"how high is high" threshold**, a ~21× dominance
+(`deprivation_sensitivity_summary.csv`). Per-city assumption
 robustness: the "how high is high" threshold moves the HH share ~6×
 more than any accessibility-model knob — which is exactly why the
 continuous measure is the headline and the class shares carry a

@@ -335,6 +335,65 @@ def test_merge_persisted_uses_every_key_column(tmp_path):
     assert set(out[out.city == "berlin"]["class"]) == {"HH", "LL"}
 
 
+def test_deprivation_sensitivity_summary_keeps_axes_apart(tmp_path):
+    from depacc.sensitivity.harness import deprivation_sensitivity_summary
+
+    rows = []
+    for city, g in (("a", 0.50), ("b", 0.60)):
+        rows += [
+            {"city": city, "axis": "curvature", "variant": "baseline",
+             "gini_everyday": g, "share_HH": 0.32},
+            {"city": city, "axis": "curvature", "variant": "k0.3",
+             "gini_everyday": g + 0.20, "share_HH": 0.33},
+            {"city": city, "axis": "threshold", "variant": "threshold_0.75",
+             "gini_everyday": np.nan, "share_HH": 0.14},
+        ]
+    pd.DataFrame(rows).to_csv(
+        tmp_path / "a_deprivation_sensitivity.csv", index=False)
+    out = deprivation_sensitivity_summary(tmp_path)
+
+    curv = out[(out.city == "a") & (out.axis == "curvature")
+               & (out.target == "gini_everyday")].iloc[0]
+    assert curv.baseline == pytest.approx(0.50)
+    assert curv.width == pytest.approx(0.20)
+    assert curv.n_variants == 2
+    # The threshold axis is its own envelope, never pooled with curvature.
+    thr = out[(out.city == "a") & (out.axis == "threshold")
+              & (out.target == "share_HH")].iloc[0]
+    assert thr.width == pytest.approx(0.0)
+    assert set(out.axis) == {"curvature", "threshold"}
+    # An all-NaN target on an axis produces no row rather than a NaN row.
+    assert out[(out.axis == "threshold")
+               & (out.target == "gini_everyday")].empty
+
+
+def test_deprivation_curves_figure_covers_both_layers(tmp_path):
+    pytest.importorskip("matplotlib")
+    from depacc.viz.deprivation_curves import plot_deprivation_curves
+
+    cfg = load_config()
+    grid = {"everyday": {"k": [0.1, 0.2, 0.3]},
+            "emergency": {"lam": [1.4, 1.8, 2.2]},
+            "form_swap": {"everyday": [{"alternative": "everyday_box_cox"}],
+                          "emergency": [{"alternative":
+                                         "emergency_exponential"}]}}
+    out = plot_deprivation_curves(cfg, grid, tmp_path / "curves.png")
+    assert out.exists() and out.stat().st_size > 0
+
+
+def test_deprivation_curve_helper_uses_the_reporting_anchor():
+    from depacc.viz.deprivation_curves import _curve
+
+    cfg = load_config()
+    spec = cfg["deprivation"]["emergency"]
+    t = np.array([45.0, 60.0])
+    anchored = _curve(spec, t, 45.0)
+    raw = _curve(spec, t, None)
+    assert anchored[0] == pytest.approx(1.0)          # g(45) = 1 by anchor
+    assert anchored[1] == pytest.approx(raw[1] / raw[0])
+    assert anchored[1] > 1.0                          # escalating past 45 min
+
+
 def test_flip_cells():
     base = np.array(["LL", "HH", "HL", "LH"], dtype=object)
     v1 = np.array(["LL", "HH", "HH", "LH"], dtype=object)   # cell 2 flips

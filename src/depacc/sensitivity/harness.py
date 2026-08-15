@@ -448,6 +448,48 @@ def rank_agreement_from_tables(sens_dir: Path) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+SUMMARY_TARGETS = ("gini_everyday", "gini_emergency", "divergence_gap",
+                   "share_HH")
+
+
+def deprivation_sensitivity_summary(sens_dir: Path) -> pd.DataFrame:
+    """Per-city envelope of every tracked target across the deprivation
+    sweep, read from the persisted per-city variant tables so it covers
+    every city on the results branch.
+
+    One row per (city, target, axis): the baseline value and the min/max the
+    target takes over that axis's variants, plus the width. The axes are kept
+    apart on purpose — a curvature envelope and a "how high is high"
+    threshold envelope are different claims, and pooling them would hide
+    that the threshold axis dominates the class shares while curvature
+    dominates the Ginis (methods §7a).
+    """
+    frames = []
+    for p in sorted(sens_dir.glob("*_deprivation_sensitivity.csv")):
+        frames.append(pd.read_csv(p))
+    if not frames:
+        return pd.DataFrame()
+    stacked = pd.concat(frames, ignore_index=True)
+    base = stacked[stacked.variant == "baseline"].set_index("city")
+    rows = []
+    for (city, axis), grp in stacked.groupby(["city", "axis"], sort=True):
+        for target in SUMMARY_TARGETS:
+            if target not in grp.columns:
+                continue
+            vals = pd.to_numeric(grp[target], errors="coerce").dropna()
+            if vals.empty:
+                continue
+            b = (float(base.loc[city, target])
+                 if city in base.index and pd.notna(base.loc[city, target])
+                 else float("nan"))
+            rows.append({"city": city, "axis": axis, "target": target,
+                         "baseline": b, "min": float(vals.min()),
+                         "max": float(vals.max()),
+                         "width": float(vals.max() - vals.min()),
+                         "n_variants": int(len(vals))})
+    return pd.DataFrame(rows)
+
+
 def run_sensitivity(cfg: dict, grid: dict, root: Path) -> None:
     """Run Layers 1/2 across all cities in cityplane and write the rank-agreement
     table, typology-share drift, and flip-cell shares."""
@@ -590,6 +632,32 @@ def run_sensitivity(cfg: dict, grid: dict, root: Path) -> None:
         _merge_persisted(out / "typology_share_envelope.csv",
                          pd.DataFrame(share_rows), ["city", "class"]) \
             .to_csv(out / "typology_share_envelope.csv", index=False)
+
+    # Per-city envelope of every tracked target, per sweep axis — the
+    # single table that answers "how far does each city's result move when
+    # the deprivation function moves?". Same persisted-table source as the
+    # rank agreement, so it spans every city, not this run's subset.
+    summary = deprivation_sensitivity_summary(out)
+    if not summary.empty:
+        summary.to_csv(out / "deprivation_sensitivity_summary.csv",
+                       index=False)
+        for target in ("gini_everyday", "gini_emergency", "share_HH"):
+            for axis in ("curvature", "form_swap", "threshold"):
+                sel = summary[(summary.target == target)
+                              & (summary.axis == axis)]
+                if not sel.empty:
+                    print(f"  envelope [{axis}] {target}: median width "
+                          f"{sel.width.median():.4f}, max {sel.width.max():.4f} "
+                          f"over {sel.city.nunique()} cities")
+
+    # The curves themselves: what Layers 1/2 vary, against the linear loss a
+    # pure-access measure implies. Config-only, so it never goes stale.
+    try:
+        from depacc.viz.deprivation_curves import plot_deprivation_curves
+
+        plot_deprivation_curves(cfg, grid, out / "deprivation_curves.png")
+    except Exception as exc:                    # viz extra may be absent
+        print(f"  NOTE: deprivation-curve figure skipped ({exc})")
 
     # Specification curve: the cross-city Gini claims re-estimated under
     # every variant. Reads the per-city variant TABLES (unioned across runs

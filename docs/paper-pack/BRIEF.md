@@ -97,6 +97,50 @@ RQ4. What does the deprivation framing add over pure access?
 | — | Size gradient of divergence measures | gap slope −0.066/log10 (p .014); weak (R² .06) | size_gradient, regime_slope_difference | size_gradient.png |
 | — | Sample | 67 FUAs, 24 countries, 113.9 M people, 101 k–12.9 M | cities_descriptives, cityplane | (Table 1 material) |
 
+## The deprivation layer's own robustness (the referee's first question)
+
+The paper measures deprivation, not access, so the loss functions are the
+thing to attack. Three artefacts answer that attack directly, and the
+answer has two halves that must both be stated.
+
+**What is varied** — `figures/deprivation_curves.png` draws the functions
+themselves: the baseline everyday DLF and emergency DCF, the Layer-1
+curvature grid (`k` ∈ {0.1, 0.2, 0.3} × `t0` ∈ {10, 15, 20} minutes;
+λ ∈ {1.4, 1.8, 2.2}), the Layer-2 form swaps calibrated to the *same*
+domain anchors (concave Box-Cox DLF; exponential DCF), and — the
+comparison the framing rests on — the **linear loss that a pure-access
+minutes average implies**, matched to the baseline at 45 minutes. The gap
+between that straight line and the calibrated curves is the paper's
+methodological claim in one picture: near the clinical threshold the DCF
+prices a marginal minute far more heavily than any average can, and past
+the 15-minute anchor the saturated DLF prices it far less.
+
+**How far the results move** — `data/deprivation_sensitivity_summary.csv`,
+per city × sweep axis, baseline / min / max / width:
+
+| axis | gini_everyday | gini_emergency | HH share |
+|---|---:|---:|---:|
+| curvature (Layer 1) | 0.244 | 0.166 | 0.014 |
+| form swap (Layer 2) | 0.035 | 0.096 | 0.006 |
+| "how high is high" threshold | — | — | 0.299 |
+
+(median envelope width across the 67 cities.) Read it as the two-sided
+claim the framing rules demand. **Levels are not robust and are not meant
+to be**: curvature moves a city's everyday Gini by a quarter of a Gini
+point, which is exactly why the calibration carries information and why
+the *slope* claims are defended by the specification curve rather than by
+any single parameterisation. **Ranks and classes are robust**: the same
+curvature moves the compounding share by 1.4 pp, the form swap by 0.6 pp,
+against 29.9 pp for the threshold choice — the threshold dominates
+curvature by ~21×, which is why the continuous `compounding_intensity` is
+the headline and the class shares always travel with a threshold sweep.
+
+**What survives dropping the layer entirely** — H7 above
+(`deprivation_vs_access.csv`): the everyday gradient and the emergency
+non-gradient are both there in plain minutes, so no headline depends on
+the deprivation functions; what the functions add is a better-behaved
+outcome (R² 0.44 vs 0.16) and the deserts, which access averages hide.
+
 Robustness inventory (cite as a block): rank agreement min ρ
 .90/.94/.96 for gini_everyday / divergence_gap / gini_emergency
 (rank_agreement.csv, 67 cities, 12 variants); deprivation-variant
@@ -198,18 +242,28 @@ is awaiting a rerun.
   `regime_slope_difference`, `vulnerability(_summary)`,
   `specification_curve`, `rank_agreement`, and every figure except
   `scaling_by_coverage_grade.png`.
-- **Recomputed locally over that same state** (`depacc cross`, which now
-  emits them — earlier packs predated the code):
-  `deprivation_vs_access`, `desert_access_contrast`, `scaling_by_grade`,
-  `cities_descriptives`, and `scaling_by_coverage_grade.png`. A local
+- **Recomputed locally over that same state** (`depacc cross` /
+  `depacc sensitivity`, which now emit them — earlier packs predated the
+  code): `deprivation_vs_access`, `desert_access_contrast`,
+  `scaling_by_grade`, `cities_descriptives`,
+  `deprivation_sensitivity_summary`, `scaling_by_coverage_grade.png` and
+  `deprivation_curves.png` (config-only, so it cannot go stale). A local
   `depacc cross` reproduces every CI cross table to ~1e-13, so the two
   sources are one state.
+- **Copied per city from `depacc-results`**: `figures/cities/<city>.png`,
+  the median-split compounding map of each of the 67 cities, with an
+  index in `figures/cities/README.md`. The percentile surfaces, the p75
+  maps and the core zooms stay on the branch (~30 MB).
 - **Reconstructed as the 67-city union**: `flip_cells` and
   `typology_share_envelope`. Both are built only from the cities whose
   cell-level surfaces are staged in a run, and the persisted copies had
   been overwritten down to the last batch's cities; the union was
   recovered from the `depacc-results` history and the harness now merges
   instead of replacing.
+
+Every number this brief and `docs/results-headlines.md` quote is checked
+against its source table by `tools/audit_paper_pack.py` (107 checks, run
+in CI). Re-run it after editing any claim or refreshing any table.
 
 Still open, and outside the results: the DE registry counts carry
 verify-before-publication flags (`docs/validation.md`).
@@ -230,12 +284,18 @@ verify-before-publication flags (`docs/validation.md`).
    3.4 Compounding and its carriers (H6 + H5: Fig rho_ranked,
        Fig vulnerability_strata, Fig compounding_gallery).
    3.5 Deprivation vs access (H7 table; fold into 3.1–3.3 if tight).
-4. **Robustness** — the inventory block (spec curve, rank agreement,
-   engine check, threshold-vs-knob dominance) — most of it can live in
-   SI with one summarising paragraph.
+4. **Robustness** — lead with the deprivation layer itself (Fig
+   deprivation_curves: what is varied, and the pure-access line it is
+   varied against; the envelope table: levels move, ranks do not), then
+   the inventory block (spec curve, rank agreement, engine check,
+   threshold-vs-knob dominance). Most of it can live in SI with one
+   summarising paragraph, but the curve figure earns a main-text slot in
+   a paper whose contribution is the deprivation framing.
 5. **Discussion** — regime-specific agglomeration meets national
    emergency-system geography; policy: everyday inequality is a big-city
    problem, emergency deprivation a national-coverage problem; children
    as the systematic carriers.
-6. **SI** — per-city table, all sensitivity tables, validation (E.1–E.5),
-   the glossary and stats guide from docs/results-headlines.md.
+6. **SI** — per-city table (cities_descriptives), the 67 per-city
+   compounding maps (`figures/cities/`, indexed in its README), all
+   sensitivity tables, validation (E.1–E.5), the glossary and stats guide
+   from docs/results-headlines.md.

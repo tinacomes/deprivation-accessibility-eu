@@ -138,6 +138,8 @@ depacc-results
 │                   figures/                    all cross-city figures
 ├── sensitivity/    <city>_deprivation_sensitivity.csv, rank_agreement.csv,
 │                   specification_curve.csv/.png, flip_cells.csv, envelopes
+│                   deprivation_sensitivity_summary.csv  per-city envelope
+│                   deprivation_curves.png    the cost curves + pure access
 └── validation/     engine cross-check tables/figures (E.1), QQ curves (E.4)
 ```
 
