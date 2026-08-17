@@ -2,9 +2,10 @@
   {
     "workflow": "tier1-batch.yml",
     "ref": "claude/paper-readiness-verification-uknfe2",
-    "nonce": "re-anchor-g15-all-67",
+    "nonce": "re-anchor-seed-big3",
     "inputs": {
-      "cities": "[\"aalborg\", \"aarhus\", \"alicante\", \"amersfoort\", \"amsterdam\", \"antwerpen\", \"apeldoorn\", \"arezzo\", \"athina\", \"barcelona\", \"berlin\", \"bilbao\", \"braila\", \"bratislava\", \"brno\", \"bruxelles\", \"bucuresti\", \"budapest\", \"caserta\", \"chemnitz\", \"cosenza\", \"goteborg\", \"grenoble\", \"hamburg\", \"helsingborg\", \"helsinki\", \"jaen\", \"katowice\", \"kobenhavn\", \"koeln\", \"krakow\", \"lahti\", \"landshut\", \"lisboa\", \"ljubljana\", \"lodz\", \"lomza\", \"luxembourg\", \"madrid\", \"milano\", \"munchen\", \"napoli\", \"norrkoping\", \"oslo\", \"palermo\", \"palma_de_mallorca\", \"paris\", \"porto\", \"praha\", \"riga\", \"roma\", \"sittard_geleen\", \"sofia\", \"stavanger\", \"stockholm\", \"szeged\", \"talavera_de_la_reina\", \"tallinn\", \"toulon\", \"turku\", \"vasteras\", \"vicenza\", \"vilnius\", \"warszawa\", \"wroclaw\", \"zagreb\", \"zilina\"]"
+      "cities": "[\"berlin\", \"madrid\", \"paris\"]",
+      "seed_map": "{\"paris\": \"31816777776\", \"berlin\": \"31721976666\", \"madrid\": \"31721976666\"}"
     }
   }
 ]

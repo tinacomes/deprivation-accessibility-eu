@@ -94,6 +94,14 @@ CROSS_FILES = (
     "inference_regime_paired.csv",
     "inference_influence.csv",
     "cluster_null.csv",
+    # Deprivation-vs-access contrast + Table-1 material
+    # (cityvector/dep_vs_access.py, run by `depacc cross`).
+    "deprivation_vs_access.csv",
+    "desert_access_contrast.csv",
+    "scaling_by_grade.csv",
+    "cities_descriptives.csv",
+    "accessibility_by_service_pooled.csv",
+    "accessibility_by_service_cities.csv",
 )
 # Robustness-harness outputs (data/derived/sensitivity/*), passed through
 # verbatim into results/sensitivity/. The per-city deprivation-sensitivity
@@ -106,6 +114,11 @@ SENSITIVITY_FILES = (
     # (cityvector/spec_curve.py).
     "specification_curve.csv",
     "specification_curve.png",
+    # Per-city envelope of every target per sweep axis + the cost curves
+    # themselves (harness deprivation_sensitivity_summary /
+    # viz/deprivation_curves) — the deprivation layer's own evidence.
+    "deprivation_sensitivity_summary.csv",
+    "deprivation_curves.png",
 )
 # Workstream E outputs, passed through verbatim (see _export_validation).
 VALIDATION_GLOBS = (
