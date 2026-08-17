@@ -70,7 +70,8 @@ RQ4. What does the deprivation framing add over pure access?
 1. A two-regime *deprivation* (not access) framework: functional forms
    transferred from literature, curvature calibrated to anchors
    (15-minute-city inflection; the EMS response benchmarks — negligible
-   below the 3-4 min ideal, WHO-recommended 8 min urban, 10-15 min upper
+   below the 3-4 min ideal, the contested 8-min urban response
+   standard, 10-15 min upper
    target), substitution (soft-min), congestion (2SFCA), on a 100 m grid,
    comparably across 67 FUAs / 24 countries.
 2. Regime-specific agglomeration: size buys everyday access, not
@@ -221,7 +222,8 @@ congestion-adjusted (2SFCA) soft-min effective time, t0 = 15 min anchor;
 composite = weighted mean of per-service deprivations. Emergency:
 convex Box-Cox DCF of nearest time, λ = 1.8 (transferred; anchor-solved
 1.89–1.95 coincides), anchored on the EMS response benchmarks — negligible
-below the 3–4 min ideal, WHO-recommended 8 min urban, 10–15 min upper
+below the 3–4 min ideal, the contested 8-min urban response standard,
+10–15 min upper
 target — and reported in multiples of g(15 min). The 8-min mark is NOT a
 half-max (convexity caps g(8)/g(15) at 0.427): state the two regimes'
 anchor structures as genuinely different. Typology: population-weighted percentile split per regime at

@@ -14,7 +14,7 @@ to judge whether the envelope is defensible:
   curvature calibrated" is visible rather than asserted (everyday: the
   15-minute-city inflection and the 45-min ceiling; emergency: the EMS
   response benchmarks — negligible below the 3-4 min ideal, the
-  WHO-recommended 8 min, the 15-min upper-bound target);
+  8-min urban response standard, the 15-min upper-bound target);
 * a **pure-access reference**: deprivation proportional to travel time,
   normalised at the same anchor. This is the implicit loss function of
   every "average minutes to the nearest X" accessibility measure. The gap
@@ -43,12 +43,12 @@ MAX_MINUTES = 60.0
 EVERYDAY_ANCHORS = ((15.0, "15-min city\n(inflection / half-max)"),
                     (45.0, "45 min (ceiling)"))
 # EMS response benchmarks (Pons et al. 2005; Vo et al. 2020; Khan et al.
-# 2026): negligible below the 3-4 min ideal, WHO-recommended 8 min in dense
-# urban cores, 10-15 min upper-bound target. NOT a half-max structure — see
+# 2026): negligible below the 3-4 min ideal, widely used 8-min urban response standard (contested:
+# Pons 2005 vs Blanchard 2012), 10-15 min upper-bound target. NOT a half-max structure — see
 # config/deprivation.yaml: convexity caps g(8)/g(15) at 0.427, so 8 min is
 # an intermediate mark (~1/3), unlike the everyday DLF's 15-min half-max.
 EMERGENCY_ANCHORS = ((4.0, "3-4 min\n(negligible)"),
-                     (8.0, "8 min\n(WHO recommended)"),
+                     (8.0, "8 min\n(response standard,\ncontested)"),
                      (15.0, "15 min\n(upper target)"))
 BASELINE_STYLE = {"color": "#1a1a1a", "lw": 2.6, "zorder": 5}
 CURVATURE_STYLE = {"color": "#eb6834", "lw": 1.1, "alpha": 0.75, "zorder": 3}

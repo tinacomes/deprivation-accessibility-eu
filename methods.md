@@ -138,16 +138,26 @@ positive baseline (= Lmax/(1+e^{k·t0}) ≈ 0.05) rather than exactly 0.
 the convex Box-Cox (λ > 1) rises ever more steeply. Its anchors are the EMS
 response-time benchmarks (Pons et al. 2005; Vo et al. 2020; Khan et al.
 2026, citing WHO 2020): deprivation negligible below the ~3–4-minute ideal,
-an intermediate cost at the WHO-recommended 8 minutes for dense urban
-cores, and the full threshold cost at the realistic 10–15-minute
+an intermediate cost at the widely used 8-minute urban response
+standard (WHO as cited in Khan et al. 2026 — its own reference is an
+unpinnable who.int URL, so the standard is attributed via Khan and the
+primary literature; empirically *contested*: Pons et al. 2005 found no
+survival effect for most patients while response within 4 minutes was
+beneficial for intermediate/high-risk ones, Blanchard et al. 2012
+supports the criterion), and the full threshold cost at the realistic 10–15-minute
 upper-bound target. Under λ = 1.8 the curve reads g(3)/g(15) = 0.08,
-g(4)/g(15) = 0.12, g(8)/g(15) = 0.35, 1.0 at 15 min, escalating convexly
+g(4)/g(15) = 0.12, g(8)/g(15) = 0.35, 1.0 at the 15-minute mark
+(acceptable for low-risk response, Peleg & Pliskin 2004), escalating convexly
 beyond (3.3× at 30 min, 6.7× at 45). g(0) = 0. Two structural notes.
 *First*, the 8-minute mark cannot play the half-max role the 15-minute
 inflection plays for the everyday DLF: any curve through
 g(4)/g(15) = 0.1 and g(8)/g(15) = 0.5 is concave between 8 and 15 min
 (convexity caps g(8)/g(15) at 0.427 there), so the benchmark structure of
-the two regimes is genuinely different — a threshold-with-half-max for
+the two regimes is genuinely different — and the clinical literature
+agrees from its own side: the 8-minute criterion is empirically
+contested (Pons vs Blanchard), while the solid anchors are the ends
+(4-min benefit for high-risk; 15-min acceptability for low-risk),
+exactly the two the curvature is solved from — a threshold-with-half-max for
 substitutable services, a convex escalation through an intermediate
 benchmark for time-critical care. *Second*, λ solved *from* these anchors
 (g(4)/g(15) = 0.10 → λ = 1.945; g(8)/g(15) = 1/3 → λ = 1.891) coincides

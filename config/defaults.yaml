@@ -400,7 +400,7 @@ cityvector:
     emergency: [30, 45, 60]
   # REPORTING-ONLY thresholds for the per-city accessibility summary
   # (accessibility_by_regime/service.csv): a superset of the above that adds
-  # the EMS response benchmarks (<=8 min WHO-recommended urban ideal,
+  # the EMS response benchmarks (<=8 min urban response standard,
   # 10-15 min upper target — Pons et al. 2005; Vo et al. 2020; Khan et al.
   # 2026) without touching the clustering features. Falls back to
   # access_thresholds_min when absent.

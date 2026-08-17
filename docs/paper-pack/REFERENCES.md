@@ -52,14 +52,43 @@ the open questions to settle with the PI before submission.
 | `fan2022equality` | Equality of access and network resilience move together in population–facility networks — the compounding result (the same people deprived in both regimes) is the pathological case of this interplay. |
 | `meerow2016defining` | Urban-resilience definitional anchor for the emergency-capability framing. |
 
-### Emergency time-to-care benchmarks (the DCF anchors — PI direction: lower than the config's 45–60 min)
+### Emergency time-to-care benchmarks (the DCF anchors)
+
+Both anchor papers verified against their PDFs (uploaded 2026-08-17);
+exact statements below.
 
 | cite | supports |
 |---|---|
-| `pons2005response` | The 8-minute EMS response-time criterion (urban cores) — the benchmark the ideal-urban anchor rests on. |
-| `khan2026melbourne` | States the adopted framing verbatim: ideal 8-min response in dense urban cores vs realistic 10–15-min targets peri-urban/rural (citing Pons 2005 and WHO 2020). |
-| `vo2020vulnerable` | Persistent low emergency-care accessibility concentrates in socially vulnerable regions — supports both the lower thresholds and the H5 vulnerability lens. |
+| `vo2020vulnerable` | **The 4/8/15-minute window structure itself.** Vo et al. measure 2SFCA/E2SFCA accessibility at exactly three response windows — 0–4 ("great"), 4–8 ("good"), 8–15 min ("adequate") — sourcing each: "response within 4 minutes is considered beneficial for patients with an intermediate or high risk of mortality" (their reading of Pons 2005); the 8-minute guideline is *contested* (Pons: "not supported" for most patients; Eisenberg 1979 and Blanchard 2012: supported); "a 15-minute response time seems acceptable for low-risk emergency response" (Peleg & Pliskin 2004). Also the H5 vulnerability lens (SVI × low access). |
+| `khan2026melbourne` | The peri-urban framing, verbatim: "ideal 8-minute response times in dense urban cores and more realistic 10–15-minute targets in peri-urban and rural environments (Pons et al., 2005; World Health Organization, 2020)"; uses a 15 km / 15 min buffer (60 km/h × 0.25 h) as the upper-bound target. |
+| `pons2005response` | The empirical base of the 4-min mark (beneficial for intermediate/high-risk patients) and the empirical *challenge* to the 8-min criterion (no survival effect for most patients). |
+| `blanchard2012response` | The supporting side of the contested 8-min criterion — cite with Pons whenever the 8-min mark is discussed, never one side alone. |
+| `peleg2004ems` | The 15-minute acceptability for low-risk response — the source under the DCF's g(15) = 1 reporting anchor. |
 | `nicholl2007distance` | Mortality rises with distance/time to emergency care — evidence for the DCF's *convexity*, independent of any specific threshold. |
+
+**WHO 2020 — resolved: do not cite it directly.** Khan et al.'s
+reference is "World Health Organization (2020). *Emergency response
+standards*", given as a bare `who.int` URL (accessed 2025-06-16) — there
+is no locatable document of that title. Attribute the ≤8-minute standard
+via `khan2026melbourne` (phrase as "the widely used 8-minute urban
+response standard, WHO as cited in Khan et al. 2026") and via the
+primary empirical literature (`pons2005response`,
+`blanchard2012response`). Propagating an unpinnable citation would be
+exactly the from-memory citing this bibliography forbids.
+
+**A nuance that helps us.** The 8-minute criterion being empirically
+contested (Pons vs Eisenberg/Blanchard) *supports* the DCF's anchor
+structure: the convexity analysis already showed 8 min cannot carry a
+half-max anchor (cap 0.427), and the literature independently declines
+to give it a sharp clinical meaning — the solid anchors are the ends
+(4-min benefit for high-risk patients; 15-min acceptability for
+low-risk), which are precisely the two the curvature was solved from
+(λ = 1.89–1.95 ≈ the transferred 1.8). Vo et al.'s combined index also
+weights its three windows 1.00 / 0.42 / 0.03 (after W. Luo 2011) — a
+steeper devaluation of the 8–15-min window than our curve implies; if a
+referee asks for an alternative anchoring, that weight profile is the
+natural comparator (it would push λ *higher*, i.e. our calibration is
+the conservative one).
 
 ### Statistics
 
@@ -108,7 +137,7 @@ attributions rather than bibliography entries.
 ## The emergency anchor recalibration (analysis, 2026-08-15)
 
 The PI's three-window reading — deprivation negligible below ~3–4 min
-(`vo2020vulnerable`), the WHO-recommended 8-min response as an
+(`vo2020vulnerable`), the widely used (and contested) 8-min response standard as an
 intermediate mark, 15 min as the realistic upper threshold
 (`khan2026melbourne`, `pons2005response`) — was checked against the DCF
 mathematics. Three findings, exactly reproducible from
@@ -127,7 +156,7 @@ mathematics. Three findings, exactly reproducible from
    feasible three-window structure.** With λ = 1.8:
    g(3)/g(15) = 0.076, g(4)/g(15) = 0.117, g(8)/g(15) = 0.351 —
    negligible-to-small below 3–4 min, about a third of the threshold
-   cost at the WHO-recommended 8, 1.0 at 15, convex escalation beyond
+   cost at the 8-min standard, 1.0 at 15, convex escalation beyond
    (3.3× at 30 min, 6.7× at 45).
 3. **Calibrating λ *from* the new anchors lands where the curve already
    is.** Solving g(4)/g(15) = 0.10 gives λ = 1.945; solving
@@ -177,9 +206,11 @@ predictions.
    with the three-window consistency stated in methods; optionally
    present λ = 1.9 as "anchor-solved" in the SI since it is
    within-sweep).
-2. **Please upload `vo2020vulnerable` and `khan2026melbourne`** (the
-   publisher sites are blocked from this environment): needed to quote
-   the exact 3–4-min statement and window definitions, to identify
-   which **WHO 2020** document the benchmark sentence cites (absent from
-   the .bib until identified, not guessed), and to complete the Khan
-   author list (currently "and others" past the first three).
+2. ~~Upload `vo2020vulnerable` and `khan2026melbourne`~~ — **done
+   (2026-08-17)**: both PDFs received and processed. Author lists
+   corrected against the PDFs (Vo, **Au** — the publisher's metadata had
+   it wrong; Khan's six authors completed), the exact window statements
+   quoted above, the WHO 2020 question resolved (unpinnable bare-URL
+   reference; attributed via Khan + primary literature), and the two
+   window-anchor sources added (`peleg2004ems`,
+   `blanchard2012response`).

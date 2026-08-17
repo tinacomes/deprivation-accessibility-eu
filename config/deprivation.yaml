@@ -152,13 +152,14 @@ deprivation:
     # move. Set to null to report the raw relative units instead.
     #
     # t_ref = 15 is the EMS upper-bound response target — the benchmark
-    # structure is ideal <= 8 min in dense urban cores (WHO-recommended),
+    # structure is ideal <= 8 min in dense urban cores (the widely used
+    # response standard — WHO as cited in Khan et al. 2026; empirically
+    # contested, Pons 2005 vs Blanchard 2012),
     # 10-15 min realistic peri-urban/rural targets (Pons et al. 2005; Vo et
     # al. 2020; Khan et al. 2026, citing WHO 2020 — see
     # docs/paper-pack/references.bib). Under this anchor the lam=1.8 curve
     # reads: g(3)/g(15)=0.08, g(4)/g(15)=0.12 (negligible below the 3-4 min
-    # ideal), g(8)/g(15)=0.35 (~a third of threshold cost at the recommended
-    # 8), 1.0 at 15, escalating convexly beyond (3.3x at 30, 6.7x at 45).
+    # ideal), g(8)/g(15)=0.35 (~a third of threshold cost at the 8-min standard), 1.0 at 15, escalating convexly beyond (3.3x at 30, 6.7x at 45).
     # NOTE (do not "fix"): the 8-min mark CANNOT be a half-max anchor — any
     # curve with g(4)/g(15)=0.1 and g(8)/g(15)=0.5 is concave between 8 and
     # 15 (convexity caps g(8)/g(15) at 0.427 there), so 8 min enters as an
@@ -171,8 +172,9 @@ deprivation:
       Form: Cantillo et al. 2018; Delgado-Lindeman 2019 (ambulance/time-to-care
       DCF) — convex Box-Cox TRANSFERRED. Curvature: lam=1.8 transferred from
       that line and CONSISTENT with the EMS response benchmarks (<=8 min
-      urban ideal per WHO, 10-15 min upper target: Pons et al. 2005, Vo et
-      al. 2020, Khan et al. 2026) — solving lam from g(4)/g(15)=0.10 or
+      urban standard — WHO as cited in Khan et al. 2026, contested per Pons
+      2005 vs Blanchard 2012 — and the 10-15 min upper target per Peleg &
+      Pliskin 2004 / Khan et al. 2026; window structure per Vo et al. 2020) — solving lam from g(4)/g(15)=0.10 or
       g(8)/g(15)=1/3 gives 1.89-1.95, within the sensitivity sweep
       (1.4-2.2). See methods.md §3.
     note: >-
@@ -210,7 +212,7 @@ deprivation:
     emergency_exponential:
       # Convex Box-Cox DCF -> exponential DCF, same EMS-benchmark anchors:
       # passes through the baseline Box-Cox at BOTH 8 and 15 min (the
-      # WHO-recommended urban response mark and the upper-bound target), so
+      # 8-min urban response standard and the upper-bound target), so
       # the g(15)/g(8) escalation across the benchmark window is identical.
       # Beyond the anchors the exponential diverges hard (1.7x the Box-Cox
       # at 30 min, 3.9x at 45) — deliberately so: the swap now tests whether
