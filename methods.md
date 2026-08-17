@@ -492,13 +492,18 @@ control is only honest if the feature-set choice is itself tested:
 `tools/cluster_feature_robustness.py` re-runs the full clustering
 pipeline (scaling, k-selection, bootstrap, Gaussian null, peeled pass) on
 the extended set with the 8/15-min shares included and reports the ARI
-against the published partition — with the outcome reported either way,
-and both specifications reported side by side if they disagree. Note the
-mechanical direction: the added shares are nested versions of the tails
-the desert group already separates on, so including them up-weights that
-axis and would, if anything, *strengthen* the 62/5 split — the published
-specification is the conservative one, and the check verifies rather
-than asserts this.
+against the published partition. **Run on the final 67-city state
+(`cluster_feature_robustness.csv`): the main partition is identical
+(ARI 1.00, the same five desert capitals, silhouette 0.63, Gaussian-null
+p = 0.001) and the peeled partition is reproduced at ARI 0.97**, with
+the extended features preferring k = 3 — splitting Brăila and Łomża into
+a micro-group, the same two cities the extraction refresh moved across
+the covered/partial boundary. H4 survives its own feature-set choice;
+the boundary cities are boundary cities under every specification. Note
+the mechanical direction: the added shares are nested versions of the
+tails the desert group already separates on, so including them
+up-weights that axis — the published specification is the conservative
+one, and the check verifies rather than asserts this.
 
 **Vulnerability synthesis** (`equity/vulnerability_cross.py`). The
 census-harmonised age strata of every city's `equity_vulnerability.csv`
@@ -951,10 +956,13 @@ over that axis's variants. The axes are kept apart deliberately: a
 curvature envelope and a "how high is high" threshold envelope are
 different claims, and pooling them would hide that curvature dominates
 the Ginis while the threshold dominates the class shares. On the 67-city
-sample the median envelope widths are 0.244 (everyday Gini) and 0.166
+sample the median envelope widths are 0.244 (everyday Gini) and 0.170
 (emergency Gini) under curvature against 0.014 for the compounding
-share, and 0.299 for the compounding share under the threshold axis —
-the quantitative form of "robust-to-g, meaning-from-g".
+share, and 0.298 for the compounding share under the threshold axis —
+the quantitative form of "robust-to-g, meaning-from-g". (The form-swap
+axis is reported separately and is dominated by the benchmark-anchored
+exponential — see Layer 2 below for why its emergency envelope, 0.484,
+is a boundary-of-validity statement rather than noise.)
 `sensitivity/deprivation_curves.png` draws the functions being varied —
 baseline, the Layer-1 grid and the Layer-2 anchor-calibrated swaps —
 together with the **linear loss implied by a pure-access minutes
@@ -990,9 +998,23 @@ between/beyond the anchors differs:
   baseline at *both* 8 and 15 min, so the benchmark-window ratio
   `g(15)/g(8) ≈ 2.85` is identical. `beta` is *solved* from that ratio.
   Beyond the anchors the exponential prices the tail far harder than the
-  Box-Cox (1.7× at 30 min, 3.9× at 45) — deliberately: the swap tests
-  whether the emergency conclusions survive a much harsher pricing of the
-  beyond-threshold tail, which is where the desert cities live.
+  Box-Cox (1.7× at 30 min, 3.9× at 45, ~11× at 60) — deliberately: the
+  swap tests whether the emergency conclusions survive a much harsher
+  pricing of the beyond-threshold tail, which is where the desert cities
+  live. **They do not all survive, and that is the finding**: under this
+  variant the emergency Gini becomes dominated by the beyond-threshold
+  tail (Hamburg 0.44 → 0.94), the city ranking reorders (Spearman vs
+  baseline 0.19), and the emergency-Gini size slope flips positive and
+  significant (+0.098, wild-family p = 0.0003 on the specification
+  curve) — reversing the everyday-vs-emergency Gini contrast. Under the
+  previous 45/60-anchored exponential (calibrated where the tail
+  actually lives; parameters in the config history note) the slope was
+  −0.001, p = 0.97. Both anchor windows are on the record. The honest
+  scope statement for H2's emergency half is therefore: size-flat under
+  the calibrated Box-Cox family (λ 1.4–2.2) and under form swaps
+  anchored to the range they are applied over; an exponential
+  extrapolated 4× beyond its 8/15-min anchor window effectively measures
+  tail-share inequality, which does grow with size.
 
 The calibrated parameters and their anchor equations live in
 `config/deprivation.yaml → deprivation.alternatives.*` (`note:` fields, exactly

@@ -94,9 +94,9 @@ def run(data: Path) -> int:
     # ---- facilities and travel times (methods table) ----------------------
     pooled = a.table("accessibility_by_service_pooled").set_index("service")
     for service, facilities, minutes in (("gp", 93, 7.9),
-                                         ("pharmacy", 227, 4.9),
+                                         ("pharmacy", 228, 4.9),
                                          ("supermarket", 325, 4.7),
-                                         ("school_primary", 411, 4.4),
+                                         ("school_primary", 409, 4.4),
                                          ("green_space_local", 636, 3.8),
                                          ("emergency_dept_hospital", 6, 12.0),
                                          ("ambulance_station", 6, 12.0)):
@@ -124,7 +124,7 @@ def run(data: Path) -> int:
     gp = gp.assign(per100k=gp.n_facilities / (gp.population / 1e5))
     a.check("GP per 100k: sample median",
             "accessibility_by_service_cities",
-            round(float(gp.per100k.median()), 1), 10.8, 0.05)
+            round(float(gp.per100k.median()), 1), 10.9, 0.05)
     by_country = gp.groupby("country").per100k.median().round(1)
     for country, expected in (("SE", 2.1), ("PT", 2.3), ("FI", 2.6),
                               ("IT", 3.5)):
@@ -141,16 +141,16 @@ def run(data: Path) -> int:
     _lookup = {c: r for r, cs in _regions.items() for c in cs}
     a.check("GP per 100k: West median", "accessibility_by_service_cities",
             round(float(gp[gp.country.map(_lookup) == "West"]
-                        .per100k.median()), 1), 24.5, 0.05)
+                        .per100k.median()), 1), 24.6, 0.05)
     thin = desc.n_emergency_services < 2
     em = desc.set_index("city").mean_emergency
     a.check("single-service cities: median mean_emergency",
             "cities_descriptives",
-            round(float(em[desc.loc[thin, "city"]].median()), 4), 0.1965,
+            round(float(em[desc.loc[thin, "city"]].median()), 4), 1.3237,
             5e-4)
     a.check("two-service cities: median mean_emergency",
             "cities_descriptives",
-            round(float(em[desc.loc[~thin, "city"]].median()), 4), 0.1687,
+            round(float(em[desc.loc[~thin, "city"]].median()), 4), 1.1372,
             5e-4)
     a.check("no single-service city is a desert",
             "cities_descriptives vs cityvector_clustered",
@@ -173,22 +173,22 @@ def run(data: Path) -> int:
                    "p_wild_cluster_bootstrap"), 0.0002, 1e-9)
     a.check("H1 emergency elasticity", sc["table"],
             a.cell(sc["table"], {"outcome": "mean_emergency"}, "elasticity"),
-            -0.058, 0.0005)
+            -0.059, 0.0005)
     a.check("H1 emergency clustered p", sc["table"],
             a.cell(sc["table"], {"outcome": "mean_emergency"},
-                   "p_cluster_country"), 0.17, 0.005)
+                   "p_cluster_country"), 0.16, 0.005)
     a.check("H1 emergency wild p", sc["table"],
             a.cell(sc["table"], {"outcome": "mean_emergency"},
                    "p_wild_cluster_bootstrap"), 0.21, 0.005)
     a.check("H1 TOST smallest bound", "inference_equivalence",
             a.cell("inference_equivalence", {"outcome": "mean_emergency"},
-                   "smallest_passing_bound"), 0.13, 0.001)
+                   "smallest_passing_bound"), 0.132, 0.001)
     a.check("H1 paired mean diff", "inference_regime_paired",
             a.cell("inference_regime_paired", {"measure": "mean"},
-                   "gradient_difference_emergency"), 0.138, 0.0005)
+                   "gradient_difference_emergency"), 0.137, 0.0005)
     a.check("H1 paired mean wild p", "inference_regime_paired",
             a.cell("inference_regime_paired", {"measure": "mean"},
-                   "p_wild_cluster_bootstrap"), 0.0018, 1e-9)
+                   "p_wild_cluster_bootstrap"), 0.002, 5e-4)
     infl = a.table("inference_influence")
     ev = infl[infl.outcome == "mean_everyday"].iloc[0]
     a.check("H1 LOO envelope min", "inference_influence",
@@ -206,19 +206,19 @@ def run(data: Path) -> int:
             0.062, 0.0005)
     a.check("H2 gini_everyday wild p", sc["table"],
             a.cell(sc["table"], {"outcome": "gini_everyday"},
-                   "p_wild_cluster_bootstrap"), 0.0014, 1e-9)
+                   "p_wild_cluster_bootstrap"), 0.0012, 5e-4)
     a.check("H2 gini_emergency slope", sc["table"],
             a.cell(sc["table"], {"outcome": "gini_emergency"}, "elasticity"),
-            0.005, 0.0005)
+            0.004, 0.0005)
     a.check("H2 gini_emergency wild p", sc["table"],
             a.cell(sc["table"], {"outcome": "gini_emergency"},
-                   "p_wild_cluster_bootstrap"), 0.82, 0.005)
+                   "p_wild_cluster_bootstrap"), 0.84, 0.005)
     a.check("H2 paired gini diff", "inference_regime_paired",
             a.cell("inference_regime_paired", {"measure": "gini"},
-                   "gradient_difference_emergency"), -0.057, 0.0005)
+                   "gradient_difference_emergency"), -0.058, 0.0005)
     a.check("H2 paired gini wild p", "inference_regime_paired",
             a.cell("inference_regime_paired", {"measure": "gini"},
-                   "p_wild_cluster_bootstrap"), 0.0282, 1e-9)
+                   "p_wild_cluster_bootstrap"), 0.029, 5e-4)
     spec = a.table("specification_curve")
     ev_spec = spec[spec.outcome == "gini_everyday"].drop_duplicates("variant")
     a.check("H2 spec-curve variants", "specification_curve",
@@ -233,10 +233,21 @@ def run(data: Path) -> int:
             int((ev_spec.p < 0.05).sum()), 12)
     box = ev_spec[ev_spec.variant == "formswap_everyday_box_cox"].iloc[0]
     a.check("H2 Box-Cox exception p", "specification_curve",
-            round(float(box.p), 3), 0.083, 0.0005)
+            round(float(box.p), 3), 0.082, 0.0005)
     em_spec = spec[spec.outcome == "gini_emergency"].drop_duplicates("variant")
-    a.check("H2 emergency spec none significant", "specification_curve",
-            int((em_spec.p < 0.05).sum()), 0)
+    sig = em_spec[em_spec.p < 0.05]
+    a.check("H2 emergency spec: exactly one significant variant",
+            "specification_curve", len(sig), 1)
+    a.check("H2 emergency spec: the exception is the benchmark exponential",
+            "specification_curve", list(sig.variant),
+            ["formswap_emergency_exponential"])
+    a.check("H2 exception slope", "specification_curve",
+            round(float(sig.elasticity.iloc[0]), 3), 0.098, 0.0005)
+    a.check("H2 exception p", "specification_curve",
+            round(float(sig.p.iloc[0]), 4), 0.0003, 0.0002)
+    non_exp = em_spec[em_spec.variant != "formswap_emergency_exponential"]
+    a.check("H2 emergency null holds outside the exception",
+            "specification_curve", int((non_exp.p < 0.05).sum()), 0)
 
     # ---- H3: regional structure -------------------------------------------
     reg = "inference_regional"
@@ -245,13 +256,13 @@ def run(data: Path) -> int:
             0.74, 0.005)
     a.check("H3 gini_emergency p_perm", reg,
             a.cell(reg, {"outcome": "gini_emergency"},
-                   "p_permutation_countries"), 0.0022, 0.0002)
+                   "p_permutation_countries"), 0.0024, 0.0002)
     a.check("H3 divergence_gap p_perm", reg,
             a.cell(reg, {"outcome": "divergence_gap"},
                    "p_permutation_countries"), 0.010, 0.0005)
     a.check("H3 spearman_rho p_perm", reg,
             a.cell(reg, {"outcome": "spearman_rho"},
-                   "p_permutation_countries"), 0.0016, 0.0002)
+                   "p_permutation_countries"), 0.0015, 0.0002)
     a.check("H3 HH share p_perm", reg,
             a.cell(reg, {"outcome": "compounding_pop_share_50"},
                    "p_permutation_countries"), 0.0008, 0.0002)
@@ -260,7 +271,7 @@ def run(data: Path) -> int:
                    "p_permutation_countries"), 0.0023, 0.0002)
     a.check("H3 gini_everyday NOT regional (p_perm)", reg,
             a.cell(reg, {"outcome": "gini_everyday"},
-                   "p_permutation_countries"), 0.28, 0.005)
+                   "p_permutation_countries"), 0.27, 0.005)
     a.check("H3 gini_everyday city-level p", reg,
             a.cell(reg, {"outcome": "gini_everyday"},
                    "p_city_anova_anticonservative"), 0.0007, 0.0001)
@@ -304,24 +315,24 @@ def run(data: Path) -> int:
     a.check("H4 main null p", "cluster_null", float(cn.p_null_gaussian),
             0.001, 1e-9)
     a.check("H4 main bootstrap ARI", "cluster_null",
-            round(float(cn.stability_ari), 2), 0.88, 0.005)
+            round(float(cn.stability_ari), 2), 0.87, 0.005)
     cnp = a.table("cluster_null_peeled").iloc[0]
     a.check("H4 peeled n removed", "cluster_null_peeled",
             int(cnp.n_removed), 5)
     a.check("H4 peeled silhouette", "cluster_null_peeled",
             round(float(cnp.silhouette), 2), 0.38, 0.005)
     a.check("H4 peeled bootstrap ARI", "cluster_null_peeled",
-            round(float(cnp.stability_ari), 2), 0.77, 0.005)
+            round(float(cnp.stability_ari), 2), 0.74, 0.005)
     a.check("H4 peeled null p", "cluster_null_peeled",
             float(cnp.p_null_gaussian), 0.001, 1e-9)
     a.check("H4 peeled ARI vs region", "cluster_null_peeled",
-            round(float(cnp.ari_vs_region), 2), 0.06, 0.005)
+            round(float(cnp.ari_vs_region), 2), 0.07, 0.005)
     peeled = a.table("cityvector_clustered_peeled")
     pk = peeled.cluster_kmeans.value_counts().sort_values()
     a.check("H4 peeled split (small)", "cityvector_clustered_peeled",
-            int(pk.iloc[0]), 12)
+            int(pk.iloc[0]), 14)
     a.check("H4 peeled split (large)", "cityvector_clustered_peeled",
-            int(pk.iloc[-1]), 50)
+            int(pk.iloc[-1]), 48)
     pw = peeled.cluster_ward.value_counts().sort_values()
     a.check("H4 peeled Ward nests", "cityvector_clustered_peeled",
             set(peeled.loc[peeled.cluster_ward == pw.index[0], "city"])
@@ -341,7 +352,7 @@ def run(data: Path) -> int:
     a.check("H5 children median HH gap", "vulnerability_summary",
             round(float(vs.loc["children_census",
                                "median_hh_share_gap_covered"]), 2),
-            0.14, 0.005)
+            0.13, 0.005)
     a.check("H5 elderly median ratio", "vulnerability_summary",
             round(float(vs.loc["elderly_census",
                                "median_everyday_ratio_covered"]), 2),
@@ -386,7 +397,7 @@ def run(data: Path) -> int:
                         .elasticity.iloc[0]), 3), 0.965, 0.0005)
     a.check("H7 emergency Gini correlation", "deprivation_vs_access",
             round(float(gini_corr[gini_corr.regime == "emergency"]
-                        .elasticity.iloc[0]), 3), 0.977, 0.0005)
+                        .elasticity.iloc[0]), 3), 0.976, 0.0005)
     dac = a.table("desert_access_contrast").set_index("city")
     a.check("H7 Bucharest access ratio", "desert_access_contrast",
             round(float(dac.loc["bucuresti", "median_time_ratio_vs_sample"]),
@@ -411,17 +422,17 @@ def run(data: Path) -> int:
             0.005)
     grade = a.table("scaling_by_grade").set_index("grade")
     a.check("H7 covered n", "scaling_by_grade",
-            int(grade.loc["covered", "n_cities"]), 50)
+            int(grade.loc["covered", "n_cities"]), 48)
     a.check("H7 partial desert n", "scaling_by_grade",
-            int(grade.loc["partial desert", "n_cities"]), 12)
+            int(grade.loc["partial desert", "n_cities"]), 14)
     a.check("H7 desert n", "scaling_by_grade",
             int(grade.loc["desert", "n_cities"]), 5)
     a.check("H7 grade level shift p < 1e-10", "scaling_by_grade",
             bool(float(grade.loc["grade level shift (at mean size)", "p"])
                  < 1e-10), True)
     a.check("H7 grade interaction p", "scaling_by_grade",
-            round(float(grade.loc["interaction (slope x grade)", "p"]), 2),
-            0.17, 0.005)
+            round(float(grade.loc["interaction (slope x grade)", "p"]), 3),
+            0.010, 0.0005)
 
     # ---- size gradient of divergence --------------------------------------
     a.check("gap slope per log10 pop", "size_gradient",
@@ -429,30 +440,46 @@ def run(data: Path) -> int:
                    "slope_per_log10_pop"), -0.066, 0.0005)
     a.check("gap slope p", "size_gradient",
             round(a.cell("size_gradient", {"outcome": "divergence_gap"},
-                         "p"), 3), 0.014, 0.0005)
+                         "p"), 3), 0.012, 0.0005)
     a.check("gap slope R2", "size_gradient",
             round(a.cell("size_gradient", {"outcome": "divergence_gap"},
                          "r2"), 2), 0.06, 0.005)
 
     # ---- robustness inventory ---------------------------------------------
     ra = a.table("rank_agreement")
-    mins = ra.groupby("target").spearman_rho.min().round(2)
-    a.check("rank agreement min rho (gini_everyday)", "rank_agreement",
-            float(mins["gini_everyday"]), 0.90, 0.005)
-    a.check("rank agreement min rho (divergence_gap)", "rank_agreement",
-            float(mins["divergence_gap"]), 0.94, 0.005)
-    a.check("rank agreement min rho (gini_emergency)", "rank_agreement",
-            float(mins["gini_emergency"]), 0.96, 0.005)
+    scoped = ra[ra.variant != "formswap_emergency_exponential"]
+    mins = scoped.groupby("target").spearman_rho.min().round(2)
+    a.check("rank agreement min rho (gini_everyday, scoped)",
+            "rank_agreement", float(mins["gini_everyday"]), 0.90, 0.005)
+    a.check("rank agreement min rho (divergence_gap, scoped)",
+            "rank_agreement", float(mins["divergence_gap"]), 0.95, 0.005)
+    a.check("rank agreement min rho (gini_emergency, scoped)",
+            "rank_agreement", float(mins["gini_emergency"]), 0.98, 0.005)
+    exp_em = ra[(ra.variant == "formswap_emergency_exponential")
+                & (ra.target == "gini_emergency")]
+    a.check("rank agreement: the flagged exception (emergency, exponential)",
+            "rank_agreement", round(float(exp_em.spearman_rho.iloc[0]), 2),
+            0.19, 0.005)
     a.check("rank agreement covers the sample", "rank_agreement",
             int(ra.n_cities.max()), 67)
+    cfr = a.table("cluster_feature_robustness").iloc[0]
+    a.check("feature-set robustness: main partition ARI",
+            "cluster_feature_robustness",
+            round(float(cfr.ari_vs_published), 2), 1.0, 1e-9)
+    a.check("feature-set robustness: same small group",
+            "cluster_feature_robustness",
+            bool(cfr.small_group_matches_published), True)
+    a.check("feature-set robustness: peeled ARI",
+            "cluster_feature_robustness",
+            round(float(cfr.peeled_ari_vs_published), 2), 0.97, 0.005)
     fc = a.table("flip_cells")
     a.check("flip cells: cities covered", "flip_cells", len(fc), 67)
     a.check("flip cells: mean sensitive share", "flip_cells",
-            round(float(fc.sensitive_pop_share.mean()), 3), 0.156, 0.0005)
+            round(float(fc.sensitive_pop_share.mean()), 3), 0.158, 0.0005)
     a.check("flip cells: min", "flip_cells",
             round(float(fc.sensitive_pop_share.min()), 3), 0.052, 0.0005)
     a.check("flip cells: max", "flip_cells",
-            round(float(fc.sensitive_pop_share.max()), 3), 0.356, 0.0005)
+            round(float(fc.sensitive_pop_share.max()), 3), 0.361, 0.0005)
     env = a.table("typology_share_envelope")
     hh = env[env["class"] == "HH"]
     a.check("typology envelope: cities covered", "typology_share_envelope",

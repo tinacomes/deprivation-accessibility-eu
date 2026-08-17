@@ -1,10 +1,10 @@
 block,regime,kind,outcome,elasticity,se,p,r2,n_cities,inference
-size_elasticity,everyday,deprivation,mean_everyday,-0.19623201726931244,0.022819902779875265,8.030099249998757e-18,0.44324163543729467,67,"log-log, country-clustered SE; cross-sectional space-for-time"
-size_elasticity,everyday,access,everyday_median_time,-0.2365845909632563,0.05739531095852143,3.755654008721973e-05,0.15981338421984337,67,"log-log, country-clustered SE; cross-sectional space-for-time"
-size_elasticity,everyday,access,everyday_mean_time,-0.1779518547134774,0.030349167841989523,4.532550228309797e-09,0.3131674504584475,67,"log-log, country-clustered SE; cross-sectional space-for-time"
-size_elasticity,emergency,deprivation,mean_emergency,-0.058309436289920274,0.042178077282455685,0.1668310020611934,0.017564951025464293,67,"log-log, country-clustered SE; cross-sectional space-for-time"
-size_elasticity,emergency,access,emergency_median_time,-0.042287785685347384,0.0254018376769742,0.09596204266278976,0.037388393886462645,67,"log-log, country-clustered SE; cross-sectional space-for-time"
-size_elasticity,emergency,access,emergency_mean_time,-0.04303358337303828,0.02203871012494405,0.0508627175224841,0.03894352107138199,67,"log-log, country-clustered SE; cross-sectional space-for-time"
-size_elasticity,emergency,access,emergency_p90_time,-0.05833145895953373,0.02474453568588729,0.01840603442386184,0.047856460084570784,67,"log-log, country-clustered SE; cross-sectional space-for-time"
-gini_correlation,everyday,deprivation_vs_time,gini_everyday~gini_t_everyday,0.9653686238967769,,0.9693511054353902,,67,elasticity column = Pearson r; p column = Spearman rho
-gini_correlation,emergency,deprivation_vs_time,gini_emergency~gini_t_emergency,0.9766698886394269,,0.954385824886264,,67,elasticity column = Pearson r; p column = Spearman rho
+size_elasticity,everyday,deprivation,mean_everyday,-0.196346387089927,0.022812216136966965,7.495036465460434e-18,0.4425352267172252,67,"log-log, country-clustered SE; cross-sectional space-for-time"
+size_elasticity,everyday,access,everyday_median_time,-0.2366032334727194,0.05742508064594035,3.7853175552480435e-05,0.15964592431459212,67,"log-log, country-clustered SE; cross-sectional space-for-time"
+size_elasticity,everyday,access,everyday_mean_time,-0.17814035465054076,0.030352500495578572,4.382982428463272e-09,0.3121879546951447,67,"log-log, country-clustered SE; cross-sectional space-for-time"
+size_elasticity,emergency,deprivation,mean_emergency,-0.05933961362089446,0.04253212843394655,0.16296412773213742,0.018284850689193055,67,"log-log, country-clustered SE; cross-sectional space-for-time"
+size_elasticity,emergency,access,emergency_median_time,-0.043309625048384925,0.025710091192989924,0.0920777461286868,0.038555533458702995,67,"log-log, country-clustered SE; cross-sectional space-for-time"
+size_elasticity,emergency,access,emergency_mean_time,-0.04335262340237703,0.022101034138444862,0.04981310633016975,0.03950827682471614,67,"log-log, country-clustered SE; cross-sectional space-for-time"
+size_elasticity,emergency,access,emergency_p90_time,-0.05901620969489299,0.024720317570619477,0.01697002847058443,0.04910115259007486,67,"log-log, country-clustered SE; cross-sectional space-for-time"
+gini_correlation,everyday,deprivation_vs_time,gini_everyday~gini_t_everyday,0.9654043805927878,,0.9702689759757364,,67,elasticity column = Pearson r; p column = Spearman rho
+gini_correlation,emergency,deprivation_vs_time,gini_emergency~gini_t_emergency,0.9763750504980976,,0.9482001755926253,,67,elasticity column = Pearson r; p column = Spearman rho

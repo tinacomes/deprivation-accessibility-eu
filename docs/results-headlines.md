@@ -39,12 +39,12 @@ cluster bootstrap p = 0.0002, R² = 0.44), robust to country fixed
 effects (−0.17), leave-one-out city deletion (envelope −0.204 to
 −0.185), robust estimators (Huber −0.196, median regression −0.223) and
 exclusion of the emergency-desert group (−0.203). Mean emergency
-deprivation shows **no detectable size gradient** (−0.058, clustered
-p = 0.17, wild p = 0.21) — and the TOST bounds it: the emergency
+deprivation shows **no detectable size gradient** (−0.059, clustered
+p = 0.16, wild p = 0.21) — and the TOST bounds it: the emergency
 elasticity lies within **±0.13** (equivalence at the stricter ±0.10
 bound is not shown, so say "no detectable scaling, bounded within
 ±0.13", never "proven flat"). The difference between the two slopes is
-itself significant (paired regime test, +0.138, wild p = 0.002).
+itself significant (paired regime test, +0.137, wild p = 0.002).
 
 *Phrase as:* agglomeration benefits are regime-specific — bigger cities
 deliver everyday services closer to people, but proximity to emergency
@@ -53,16 +53,31 @@ care does not improve with size.
 ### H2 — Everyday inequality grows with size; emergency inequality does not
 
 The Gini of everyday deprivation rises with population (elasticity
-**+0.062**, wild p = 0.0014), while the emergency Gini is size-flat
-(+0.005, wild p = 0.82). The paired slope difference is **−0.057 with
-wild p = 0.028** over all 67 cities. Robustness: the everyday-Gini slope
+**+0.062**, wild p = 0.0012), while the emergency Gini is size-flat
+(+0.004, wild p = 0.84). The paired slope difference is **−0.058 with
+wild p = 0.029** over all 67 cities. Robustness: the everyday-Gini slope
 is positive under **all 13 deprivation parameterisations** of the
 specification curve (+0.026 to +0.075), significant in 12/13 — the
-exception is the concave Box-Cox form swap (+0.026, p = 0.083), a caveat
-to state; the emergency-Gini slope stays within −0.006 to +0.015 and is
-non-significant under every parameterisation. Note what this robustness
+exception is the concave Box-Cox form swap (+0.026, p = 0.082), a caveat
+to state. The emergency-Gini slope stays within −0.006 to +0.014 and
+non-significant under the full curvature grid and the everyday form
+swap — **with one exception that must be stated, not smoothed over**:
+under the benchmark-anchored (8/15-min) exponential form swap, which
+prices the beyond-threshold tail ~10× harder than the Box-Cox at 60 min,
+the emergency-Gini slope turns **positive and significant (+0.098,
+p = 0.0003)** and the everyday-vs-emergency Gini contrast reverses. The
+same variant reorders the city ranking (Spearman vs baseline 0.19 for
+the emergency Gini) — under extreme tail-pricing the emergency Gini
+effectively becomes a tail-share measure, which *does* grow with city
+size. So phrase H2's emergency half as: "size-flat under the calibrated
+Box-Cox family (λ 1.4–2.2) and under form swaps anchored where the tail
+lives; under an exponential extrapolated far beyond its 8/15-min anchor
+window the sign flips — the null is a property of the calibrated family,
+not of every conceivable cost curve." (Under the previous 45/60-anchored
+exponential the slope was −0.001, p = 0.97; both anchor windows are on
+the record — this state and 39f1e58.) Note what this robustness
 is *not*: the Gini **levels** move a great deal under the same sweep
-(median envelope width 0.24 everyday, 0.17 emergency), which is the point
+(median envelope width 0.24 everyday, 0.17 emergency under curvature alone), which is the point
 — the calibration carries information, and the slope claim is defended by
 the whole curve rather than by any one parameterisation. The curves being
 swept, and the linear loss a pure-access measure would use instead, are
@@ -88,7 +103,7 @@ city-level p = 0.0007) — do not claim it.
 k-means cuts the sample 62-vs-5: **București, Rīga, Vilnius, Tallinn,
 Ljubljana** — the emergency-desert capitals, driven by their
 beyond-threshold emergency travel-time tails. The split is real
-(silhouette 0.65, Gaussian-null p = 0.001, bootstrap ARI 0.88) but it is
+(silhouette 0.65, Gaussian-null p = 0.001, bootstrap ARI 0.87) but it is
 an **outlier group, not a typology** (agreement with the region
 partition ARI = 0.001). Ward selects the same k on the same axis and
 isolates a *nested subset* — the two most extreme capitals, București
@@ -97,20 +112,28 @@ of a severity ordering, not as two algorithms agreeing on one group: the
 methods disagree about where to cut a gradient, not about the gradient.
 The peeled re-clustering (outliers
 removed, everything recomputed — `cluster_null_peeled.csv`) finds one
-further split, **along the same axis at lower intensity**: a 50/12 cut
+further split, **along the same axis at lower intensity**: a 48/14 cut
 isolating the *partial-desert* cities (Oslo, Stockholm, Göteborg,
-Stavanger, Aalborg, Turku, Norrköping, Warszawa, Sofia, Zagreb,
-Palermo, Luxembourg — real emergency tails, 13 % of population beyond
-30-minute care on average vs 4 % in the covered group). It clears the
-null (p = 0.001, 999 sims) and is not the region partition (ARI 0.06),
-but the separation is moderate (silhouette 0.38) and only borderline
-stable (bootstrap ARI 0.77); Ward again nests inside it (56/6, the six
-most extreme of the twelve). The citable reading: European cities do not
-form
+Stavanger, Aalborg, Turku, Norrköping, Warszawa, Sofia, Zagreb, Palermo,
+Luxembourg, Brăila, Łomża — real emergency tails). It clears the null
+(p = 0.001, 999 sims) and is not the region partition (ARI 0.07), but
+the separation is moderate (silhouette 0.38) and only borderline stable
+(bootstrap ARI 0.74); Ward again nests inside it (56/6). Its borderline
+stability is visible in the data's own history: under the pre-refresh
+extraction state the same rule cut 50/12, with Brăila and Łomża —
+the two smallest CEE cities — on the covered side of the boundary.
+**Feature-set robustness (`cluster_feature_robustness.csv`)**: re-running
+the whole pipeline with the 8/15-min benchmark shares *included* in the
+feature set leaves the main partition identical (ARI 1.00, same five
+capitals) and reproduces the peeled cut at ARI 0.97 — while flagging
+Brăila+Łomża as their own micro-group, converging evidence that they sit
+on the gradient boundary rather than in any type. The citable reading is
+unchanged and strengthened: European cities do not form
 multi-dimensional types — the only recoverable discrete structure is a
 **severity ordering on one axis**, emergency-periphery coverage
 (covered → partial desert → desert), presented as a gradient made
-visible, not as city types.
+visible, not as city types, with the boundary between "covered" and
+"partial desert" explicitly fuzzy.
 
 ### H5 — Who carries it: children, almost everywhere
 
@@ -118,7 +141,7 @@ Pooling the census-harmonised strata across all 67 cities
 (covered-cell reference): **children live in cells with more everyday
 deprivation than their comparison cells in 88 % of cities** (median
 ratio 1.27) and in higher-compounding cells in 88 % (median HH gap
-+0.14), strongest in CEE (median ratio 1.44) and the North. **The
++0.13), strongest in CEE (median ratio 1.44) and the North. **The
 elderly do not compound at the harmonised level** (median 0.96, above
 parity in only 37 % of cities, below parity across most of CEE). The
 sharper Tier-2 national results (Hamburg: elderly 1.37×, children
@@ -158,16 +181,19 @@ emergency *deprivation* is 2.81× it; across the five deserts, median-time
 ratios of 0.71–1.92× sit against deprivation ratios of 2.45–4.72×
 (`desert_access_contrast.csv`). Only the convex, clinically anchored DCF
 prices the tail that puts them there. The two Gini families agree closely
-in ranking (Pearson r 0.965 everyday / 0.977 emergency), which is why the
+in ranking (Pearson r 0.965 everyday / 0.976 emergency), which is why the
 *rank-based* results are safe to call parameterisation-free.
 
-The emergency-coverage grade (covered 50 / partial desert 12 / desert 5 —
-the k-means severity ordering of H4) sets the **level**, not the slope:
-the grade level shift is overwhelming (country-clustered Wald
-p = 1.8e-17; median mean-emergency deprivation 0.15 / 0.29 / 0.50), while
-the slope × grade interaction is **not** significant (p = 0.17). Say
-"coverage class, not city size, sets emergency deprivation" — do not
-claim the size gradient itself differs by grade
+The emergency-coverage grade (covered 48 / partial desert 14 / desert 5 —
+the k-means severity ordering of H4) sets the **level** above all: the
+grade level shift is overwhelming (country-clustered Wald p ≈ 1e-15;
+median mean-emergency deprivation 1.02 / 1.87 / 3.37 in multiples of the
+15-min benchmark cost — the ordering itself is the policy result). The
+slope × grade interaction is p = 0.010 under the current 48/14/5 grades
+but was p = 0.17 under the pre-refresh 50/12/5 — a two-city boundary
+change flips it, so treat the interaction as boundary-sensitive: lead
+with "coverage class, not city size, sets emergency deprivation" and
+never headline a grade-specific size gradient
 (`scaling_by_grade.csv`, `figures/scaling_by_coverage_grade.png`).
 
 ### What is deliberately NOT claimed
@@ -181,8 +207,14 @@ claim the size gradient itself differs by grade
   cross-sectional space-for-time.
 - **An everyday-Gini regional contrast** (H3) and **elderly compounding
   at the European level** (H5).
-- **A grade-specific size gradient** (H7: the interaction is p = 0.17;
-  the grade sets the level, not the slope).
+- **A form-universal emergency-Gini null** (H2: under the
+  benchmark-anchored exponential the slope is +0.098, p = 0.0003, and
+  the Gini contrast reverses — scope the null to the calibrated family
+  and state the exception).
+- **Rank-agreement universality** (min ρ 0.90+ holds over the curvature
+  grid and the everyday form swap; the benchmark-anchored exponential
+  reorders the emergency-Gini city ranking to ρ = 0.19 — cite the
+  exclusion explicitly).
 - **Two clustering algorithms agreeing on one desert group** (H4: Ward's
   cut nests inside k-means', it does not coincide with it).
 
@@ -208,7 +240,7 @@ claim the size gradient itself differs by grade
 |---|---|
 | DLF | Deprivation Loss Function — the everyday regime's increasing, S-shaped (logistic) function of effective travel time, in [0, 1]. Parameters: `t0` (inflection ≈ the 15-minute-city threshold), `k` (steepness/curvature), `Lmax` (ceiling). |
 | DCF | Deprivation Cost Function — the emergency regime's convex, unbounded (Box-Cox) function of nearest travel time. Parameter `lam` (λ = 1.8) transferred from the DCF literature and consistent with the EMS response benchmarks (negligible below the 3–4 min ideal, the contested 8-min urban response standard,
-10–15 min upper target); reported in multiples of g(15 min), so 1.0 = the deprivation of arriving at the 15-minute benchmark. (Tables produced before the 2026-08 re-anchor run are in g(45 min) units, a factor 6.73 larger; ranks, Ginis and every ratio are identical under either anchor.) |
+10–15 min upper target); reported in multiples of g(15 min), so 1.0 = the deprivation of arriving at the 15-minute benchmark. (States before 2026-08-17 are in g(45 min) units, a factor 6.731 larger; ranks, Ginis and every ratio are identical under either anchor — verified to machine precision on the artifact-seeded cities.) |
 | 2SFCA | Two-Step Floating Catchment Area — the congestion adjustment: a facility serving many people relative to its capacity inflates the effective travel time of everyone using it. `gamma` (γ) is the exponent (how strongly congestion bites). |
 | soft-min (κ) | A smooth minimum over reachable facilities: with several nearby options the effective time is slightly better than the single nearest (substitutability bonus ln(n)/κ). `kappa` (κ) controls the smoothing; κ→∞ = plain nearest. |
 | t_eff / t_nearest | Per-service effective (congestion-adjusted, soft-min) travel time / plain nearest-facility time, minutes. |
@@ -221,7 +253,7 @@ claim the size gradient itself differs by grade
 
 | term | meaning |
 |---|---|
-| mean_everyday / mean_emergency | Population-weighted mean deprivation per regime (everyday in [0, 1]; emergency in multiples of g(15 min) after the re-anchor run — g(45 min) before). |
+| mean_everyday / mean_emergency | Population-weighted mean deprivation per regime (everyday in [0, 1]; emergency in multiples of g(15 min)). |
 | gini_everyday / gini_emergency | Population-weighted Gini (0 = equal, 1 = maximal inequality) of each deprivation surface *within* the city. |
 | gini_t_* | The same Gini computed on travel times instead of deprivations — deprivation-function-free companion. |
 | divergence_gap | gini_emergency − gini_everyday. Positive = the city's inequality problem is emergency-side; negative = everyday-side. |
@@ -266,8 +298,8 @@ claim the size gradient itself differs by grade
 | Gaussian silhouette null | Parametric null: same-covariance multivariate-normal samples put through the same k-selection — is the observed silhouette surprising with NO cluster structure? |
 | peeled clustering | The re-clustering with the flagged outlier group removed (fresh scaling, full diagnostics) — "is there a typology among ordinary cities?" |
 | specification curve | The headline regression re-estimated under every deprivation parameterisation (curvature grid + form swaps); a claim is robust when the whole curve sits on one side of zero. |
-| rank agreement (ρ/τ) | Spearman/Kendall correlation of the *city ranking* under a variant vs baseline — "do city orderings survive the assumption?" (min ρ 0.89 across all variants). |
-| flip cells | Cells whose typology class changes under any deprivation variant — the spatial footprint of an assumption. Over all 67 cities the population-weighted sensitive share averages 15.6 % (5.2–35.6 %); the complementary ~84 % keeps its class under every parameterisation. Distinct from the ~24 % *engine* flip (E.1), which is a routing artifact, not an assumption. |
+| rank agreement (ρ/τ) | Spearman/Kendall correlation of the *city ranking* under a variant vs baseline — "do city orderings survive the assumption?" (min ρ 0.90 across the curvature grid and everyday form swap; the benchmark-anchored exponential is the flagged exception — emergency-Gini ρ 0.19). |
+| flip cells | Cells whose typology class changes under any deprivation variant — the spatial footprint of an assumption. Over all 67 cities the population-weighted sensitive share averages 15.8 % (5.2–36.1 %); the complementary ~84 % keeps its class under every parameterisation (the typology is rank-based, so even the harsh exponential form swap barely moves it). Distinct from the ~24 % *engine* flip (E.1), which is a routing artifact, not an assumption. |
 | Layer 1 / 2 / 3 | Sensitivity layers: deprivation curvature / functional-form swap / accessibility model (κ, γ, bandwidth, k-nearest, mode set, unreachable policy). |
 | threshold axis | The "how high is high" percentile cut sweep — the dominant lever on the HH share (hence the continuous intensity as headline). |
 | degenerate variant | A sensitivity variant where one tie block holds > 50 % of population (e.g. κ = 0.1 floors the core at zero) — flagged and excluded from acceptance ranges. |

@@ -102,6 +102,7 @@ CROSS_FILES = (
     "cities_descriptives.csv",
     "accessibility_by_service_pooled.csv",
     "accessibility_by_service_cities.csv",
+    "cluster_feature_robustness.csv",
 )
 # Robustness-harness outputs (data/derived/sensitivity/*), passed through
 # verbatim into results/sensitivity/. The per-city deprivation-sensitivity
@@ -210,6 +211,18 @@ def cmd_import(results: Path, derived: Path) -> None:
                 shutil.copy2(src, sens_dst / src.name)
                 n += 1
         print(f"imported {n} previously persisted variant table(s)")
+        # The ACCUMULATING sensitivity tables must be on disk BEFORE the
+        # harness runs, or its merge-into-persisted step (_merge_persisted)
+        # has nothing to merge with and the run's own staged cities replace
+        # the whole union — the seed round of run 32055983121 cut the
+        # 67-city flip-cell table to 3 rows exactly this way, one collect
+        # after the harness-side merge fix landed. Restore-if-absent, so a
+        # freshly computed local table still wins.
+        for name in ("flip_cells.csv", "typology_share_envelope.csv"):
+            src = sens_src / name
+            if src.exists() and not (sens_dst / name).exists():
+                shutil.copy2(src, sens_dst / name)
+                print(f"restored accumulating table {name} for the merge")
     rebuild_cityplane(derived)
 
 
