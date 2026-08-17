@@ -1,5 +1,5 @@
 outcome,elasticity,se_cluster_country,p_cluster_country,p_wild_cluster_bootstrap,n_cities,n_countries,inference
 mean_everyday,-0.196346387089927,0.022812216136966965,7.495036465460434e-18,0.0002,67,24,country-clustered; cross-sectional space-for-time
-mean_emergency,-0.1942998660707127,0.08900863901015042,0.029040768661419167,0.1212,67,24,country-clustered; cross-sectional space-for-time
+mean_emergency,-0.05933961362089446,0.04253212843394655,0.16296412773213742,0.208,67,24,country-clustered; cross-sectional space-for-time
 gini_everyday,0.06204202752156342,0.018650650989449777,0.0008793324280364542,0.0012,67,24,country-clustered; cross-sectional space-for-time
-gini_emergency,0.00397944327949791,0.017714289837987326,0.8222547237755908,0.8392,67,24,country-clustered; cross-sectional space-for-time
+gini_emergency,0.003979443279497882,0.017714289837986136,0.8222547237755803,0.8392,67,24,country-clustered; cross-sectional space-for-time

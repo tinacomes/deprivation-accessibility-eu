@@ -1,2 +1,2 @@
 outcome,elasticity,se_cluster_country,equivalence_bound,p_tost,smallest_passing_bound,dof_countries,n_cities,conclusion
-mean_emergency,-0.1942998660707127,0.08900863901015042,0.1,0.8498017488756706,0.3468492381937247,23,67,equivalence not shown at this bound
+mean_emergency,-0.05933961362089446,0.04253212843394655,0.1,0.17450864604338792,0.1322342175583161,23,67,equivalence not shown at this bound
