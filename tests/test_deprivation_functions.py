@@ -108,8 +108,10 @@ def test_shipped_alternatives_are_anchor_calibrated():
         deprivation_spec(cfg, "emergency", alternative="emergency_exponential"))
     base = DeprivationFunction.from_spec(deprivation_spec(cfg, "emergency"))
     assert ex.form == "exponential" and ex.kind == "DCF"
-    assert float(ex(60.0)) / float(ex(45.0)) == pytest.approx(
-        float(base(60.0)) / float(base(45.0)), rel=2e-3)  # clinical-threshold ratio
+    # EMS-benchmark anchors (8/15 min): the forms share the escalation ratio
+    # across the benchmark window and coincide at both anchor points.
+    assert float(ex(15.0)) / float(ex(8.0)) == pytest.approx(
+        float(base(15.0)) / float(base(8.0)), rel=2e-3)
     for g in (bc, ex):
         assert g.source and "TODO(cite)" not in g.source
 
@@ -200,7 +202,7 @@ def test_anchor_leaves_every_rank_and_inequality_output_unchanged():
     pct = [to_percentile(RegimeSurface(d, pop, "emergency", "c")).values
            for d in (d_raw, d_anch)]
     assert np.allclose(*pct)
-    # ... while the reported LEVEL becomes readable (multiples of g(45 min)).
+    # ... while the reported LEVEL becomes readable (multiples of g(t_ref)).
     assert np.average(d_raw, weights=pop) > 10.0
     assert np.average(d_anch, weights=pop) < 1.0
 
@@ -208,19 +210,19 @@ def test_anchor_leaves_every_rank_and_inequality_output_unchanged():
 def test_shipped_emergency_config_is_anchored_and_readable():
     cfg = load_config()
     em = DeprivationFunction.from_spec(deprivation_spec(cfg, "emergency"))
-    assert em.reference_time_min == 45.0
-    assert float(em(45.0)) == pytest.approx(1.0)
-    # Hamburg's observed median (3.9 min) and p90 (14.4 min) car times to an ED
-    # now report as small fractions of the clinical-threshold cost instead of
-    # the off-scale 9.5 / 75.6 of the raw relative units.
-    assert 0.0 < float(em(3.9)) < 0.05
-    assert 0.0 < float(em(14.4)) < 0.2
-    assert "multiples of g(45 min)" in em.units
+    assert em.reference_time_min == 15.0
+    assert float(em(15.0)) == pytest.approx(1.0)
+    # Hamburg's observed median (3.9 min) and p90 (14.4 min) car times to an
+    # ED read directly against the EMS benchmark scale: ~11% of the 15-min
+    # target cost at the median, just under it at the p90.
+    assert 0.0 < float(em(3.9)) < 0.15
+    assert 0.5 < float(em(14.4)) < 1.0
+    assert "multiples of g(15 min)" in em.units
     # The Layer-2 form swap shares the anchor, so both forms read 1.0 there and
     # the alternative's free `scale` cancels entirely.
     alt = DeprivationFunction.from_spec(
         deprivation_spec(cfg, "emergency", alternative="emergency_exponential"))
-    assert float(alt(45.0)) == pytest.approx(1.0)
+    assert float(alt(15.0)) == pytest.approx(1.0)
     # The everyday DLF needs no anchor: it is bounded by its own ceiling.
     everyday = DeprivationFunction.from_spec(deprivation_spec(cfg, "everyday"))
     assert everyday.reference_time_min is None

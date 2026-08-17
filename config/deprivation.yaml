@@ -142,27 +142,43 @@ deprivation:
       shift: 1.0   # time offset (minutes)
       scale: 1.0   # relative units; anchor to a VSL only if absolute magnitudes needed
     # REPORTING ANCHOR. The DCF escalates without bound and `scale` is a free
-    # relative constant, so the raw surface is on an arbitrary scale: with
-    # lam=1.8, shift=1, scale=1 we get g(45) = (46^1.8 - 1)/1.8 = 545.3, and
-    # Hamburg's population-weighted mean emergency deprivation reported as
-    # 15.76 — a number with no interpretation, sitting in the same tables as
-    # the everyday 0-1 DLF. Dividing by g(t_ref) at the SAME clinical
-    # time-to-care threshold the curvature was calibrated to puts the surface
-    # in units of "multiples of the deprivation at 45 min": 1.0 = arriving at
-    # the threshold, > 1 = worse (the escalation is preserved, not bounded).
-    # This is division by a positive CONSTANT, so percentiles, the typology,
-    # Ginis, the concentration index, rho, Jaccard and every ranking are
-    # unchanged EXACTLY (tests/test_deprivation_functions.py); only reported
-    # levels move (Hamburg's 15.76 becomes 15.76/545.3 = 0.0289). Set to null
-    # to report the raw relative units instead.
-    reference_time_min: 45.0
+    # relative constant, so the raw surface is on an arbitrary scale.
+    # Dividing by g(t_ref) puts the surface in units of "multiples of the
+    # deprivation at t_ref minutes": 1.0 = arriving at the threshold, > 1 =
+    # worse (the escalation is preserved, not bounded). This is division by a
+    # positive CONSTANT, so percentiles, the typology, Ginis, the
+    # concentration index, rho, Jaccard and every ranking are unchanged
+    # EXACTLY (tests/test_deprivation_functions.py); only reported levels
+    # move. Set to null to report the raw relative units instead.
+    #
+    # t_ref = 15 is the EMS upper-bound response target — the benchmark
+    # structure is ideal <= 8 min in dense urban cores (WHO-recommended),
+    # 10-15 min realistic peri-urban/rural targets (Pons et al. 2005; Vo et
+    # al. 2020; Khan et al. 2026, citing WHO 2020 — see
+    # docs/paper-pack/references.bib). Under this anchor the lam=1.8 curve
+    # reads: g(3)/g(15)=0.08, g(4)/g(15)=0.12 (negligible below the 3-4 min
+    # ideal), g(8)/g(15)=0.35 (~a third of threshold cost at the recommended
+    # 8), 1.0 at 15, escalating convexly beyond (3.3x at 30, 6.7x at 45).
+    # NOTE (do not "fix"): the 8-min mark CANNOT be a half-max anchor — any
+    # curve with g(4)/g(15)=0.1 and g(8)/g(15)=0.5 is concave between 8 and
+    # 15 (convexity caps g(8)/g(15) at 0.427 there), so 8 min enters as an
+    # intermediate benchmark, unlike the everyday DLF's 15-min half-max.
+    # (History: before 2026-08 this anchor was 45.0, the "~45-60 min
+    # clinical time-to-care window" — level tables produced before the
+    # re-anchor run are in g(45) units, a factor 6.73 larger.)
+    reference_time_min: 15.0
     source: >-
       Form: Cantillo et al. 2018; Delgado-Lindeman 2019 (ambulance/time-to-care
-      DCF). Convex Box-Cox TRANSFERRED, curvature CALIBRATED to the clinical
-      time-to-care threshold (~45-60 min). See methods.md §3.
+      DCF) — convex Box-Cox TRANSFERRED. Curvature: lam=1.8 transferred from
+      that line and CONSISTENT with the EMS response benchmarks (<=8 min
+      urban ideal per WHO, 10-15 min upper target: Pons et al. 2005, Vo et
+      al. 2020, Khan et al. 2026) — solving lam from g(4)/g(15)=0.10 or
+      g(8)/g(15)=1/3 gives 1.89-1.95, within the sensitivity sweep
+      (1.4-2.2). See methods.md §3.
     note: >-
       Convex form per Cantillo 2018 / Delgado-Lindeman 2019; curvature
-      calibrated to clinical time-to-care threshold (~45-60 min).
+      transferred (lam=1.8), consistent with anchor-solved 1.89-1.95 from
+      the 8/15-min EMS benchmarks; reported in multiples of g(15 min).
 
   # Sensitivity analysis: each entry is an alternative FORM that can be swapped
   # in for either regime via `depacc run --deprivation-spec NAME`, and that the
@@ -192,27 +208,34 @@ deprivation:
         scale = lam/((45+1)^lam - 1) = 0.077. Curvature (lam) is thus the only
         free shape parameter and it is fixed by the anchor, not chosen.
     emergency_exponential:
-      # Convex Box-Cox DCF -> exponential DCF, same clinical-threshold anchors:
-      # passes through the baseline Box-Cox at BOTH 45 and 60 min, so the
-      # g(60)/g(45) ratio (the ~45-60 min time-to-care escalation) is identical.
+      # Convex Box-Cox DCF -> exponential DCF, same EMS-benchmark anchors:
+      # passes through the baseline Box-Cox at BOTH 8 and 15 min (the
+      # WHO-recommended urban response mark and the upper-bound target), so
+      # the g(15)/g(8) escalation across the benchmark window is identical.
+      # Beyond the anchors the exponential diverges hard (1.7x the Box-Cox
+      # at 30 min, 3.9x at 45) — deliberately so: the swap now tests whether
+      # the emergency conclusions survive a much harsher pricing of the
+      # beyond-threshold tail, which is where the desert cities live.
       kind: "DCF"
       form: "exponential"
-      params: { beta: 0.02437, scale: 273.7805 }
-      # Same reporting anchor as the baseline DCF, so the form swap is compared
-      # on one scale. With g(45) = 1 on both, the two forms coincide at the
-      # anchor by construction and `scale` above cancels entirely — what the
-      # Layer-2 swap then shows is purely the FORM between and beyond the
-      # anchors, which is the point of the exercise.
-      reference_time_min: 45.0
+      params: { beta: 0.10084, scale: 22.9257 }
+      # Same reporting anchor as the baseline DCF; the two forms coincide at
+      # g(15) by construction, so the swap is compared on one scale and
+      # `scale` above cancels — what Layer 2 then shows is purely the FORM
+      # between and beyond the anchors.
+      # (History: before the 2026-08 re-anchor this variant was calibrated at
+      # 45/60 min: beta = 0.02437, scale = 273.7805, reference 45.0.)
+      reference_time_min: 15.0
       source: >-
         Form: exponential DCF (Holguín-Veras et al. 2013 line of work), swapped
         for the Box-Cox to test functional FORM at fixed anchors. See methods.md
         §7a Layer 2.
       note: >-
         Anchors held fixed with the baseline Box-Cox DCF (lam=1.8, shift=1,
-        scale=1; methods.md §3): beta solved from the clinical-threshold RATIO
-        anchor g(60)/g(45) = (61^1.8 - 1)/(46^1.8 - 1) = 1.6627, i.e.
-        (exp(60*beta)-1)/(exp(45*beta)-1) = 1.6627  ->  beta = 0.02437; scale
-        solved so g_exp(45) = g_boxcox(45) = (46^1.8 - 1)/1.8, i.e.
-        scale = 273.7805. The exponential then coincides with the Box-Cox at
-        both 45 and 60 min, so only the FORM between/beyond the anchors differs.
+        scale=1; methods.md §3): beta solved from the benchmark RATIO anchor
+        g(15)/g(8) = (16^1.8 - 1)/(9^1.8 - 1) = 2.8524, i.e.
+        (exp(15*beta)-1)/(exp(8*beta)-1) = 2.8524  ->  beta = 0.10084; scale
+        solved so g_exp(15) = g_boxcox(15) = (16^1.8 - 1)/1.8 = 81.13, i.e.
+        scale = 22.9257. The exponential then coincides with the Box-Cox at
+        both 8 and 15 min, so only the FORM between/beyond the anchors
+        differs.

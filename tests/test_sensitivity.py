@@ -386,12 +386,28 @@ def test_deprivation_curve_helper_uses_the_reporting_anchor():
 
     cfg = load_config()
     spec = cfg["deprivation"]["emergency"]
-    t = np.array([45.0, 60.0])
-    anchored = _curve(spec, t, 45.0)
+    t = np.array([15.0, 30.0])
+    anchored = _curve(spec, t, 15.0)
     raw = _curve(spec, t, None)
-    assert anchored[0] == pytest.approx(1.0)          # g(45) = 1 by anchor
+    assert anchored[0] == pytest.approx(1.0)          # g(15) = 1 by anchor
     assert anchored[1] == pytest.approx(raw[1] / raw[0])
-    assert anchored[1] > 1.0                          # escalating past 45 min
+    assert anchored[1] > 1.0                          # escalating past 15 min
+
+
+def test_emergency_anchor_encodes_the_ems_benchmark_windows():
+    """The re-anchored DCF must read as the three-window benchmark
+    structure (Pons 2005; Vo 2020; Khan 2026): negligible below the 3-4 min
+    ideal, well under half at the WHO-recommended 8 (convexity caps
+    g(8)/g(15) at 0.427 given g(4)/g(15)=0.1), 1.0 at the 15-min target."""
+    from depacc.viz.deprivation_curves import _curve
+
+    cfg = load_config()
+    spec = cfg["deprivation"]["emergency"]
+    assert float(spec["reference_time_min"]) == 15.0
+    r = _curve(spec, np.array([3.0, 4.0, 8.0, 15.0]), 15.0)
+    assert r[0] < 0.10 and r[1] < 0.15                # negligible <= 3-4 min
+    assert 0.25 < r[2] < 0.427                        # intermediate, convex-feasible
+    assert r[3] == pytest.approx(1.0)
 
 
 def test_flip_cells():

@@ -207,7 +207,7 @@ claim the size gradient itself differs by grade
 | term | meaning |
 |---|---|
 | DLF | Deprivation Loss Function — the everyday regime's increasing, S-shaped (logistic) function of effective travel time, in [0, 1]. Parameters: `t0` (inflection ≈ the 15-minute-city threshold), `k` (steepness/curvature), `Lmax` (ceiling). |
-| DCF | Deprivation Cost Function — the emergency regime's convex, unbounded (Box-Cox) function of nearest travel time. Parameter `lam` (λ, curvature ≈ 1.8) calibrated to clinical time-to-care anchors; reported in multiples of g(45 min), so 1.0 = the deprivation of arriving at the 45-minute threshold. |
+| DCF | Deprivation Cost Function — the emergency regime's convex, unbounded (Box-Cox) function of nearest travel time. Parameter `lam` (λ = 1.8) transferred from the DCF literature and consistent with the EMS response benchmarks (negligible below the 3–4 min ideal, WHO-recommended 8 min urban, 10–15 min upper target); reported in multiples of g(15 min), so 1.0 = the deprivation of arriving at the 15-minute benchmark. (Tables produced before the 2026-08 re-anchor run are in g(45 min) units, a factor 6.73 larger; ranks, Ginis and every ratio are identical under either anchor.) |
 | 2SFCA | Two-Step Floating Catchment Area — the congestion adjustment: a facility serving many people relative to its capacity inflates the effective travel time of everyone using it. `gamma` (γ) is the exponent (how strongly congestion bites). |
 | soft-min (κ) | A smooth minimum over reachable facilities: with several nearby options the effective time is slightly better than the single nearest (substitutability bonus ln(n)/κ). `kappa` (κ) controls the smoothing; κ→∞ = plain nearest. |
 | t_eff / t_nearest | Per-service effective (congestion-adjusted, soft-min) travel time / plain nearest-facility time, minutes. |
@@ -220,7 +220,7 @@ claim the size gradient itself differs by grade
 
 | term | meaning |
 |---|---|
-| mean_everyday / mean_emergency | Population-weighted mean deprivation per regime (everyday in [0, 1]; emergency in multiples of g(45 min)). |
+| mean_everyday / mean_emergency | Population-weighted mean deprivation per regime (everyday in [0, 1]; emergency in multiples of g(15 min) after the re-anchor run — g(45 min) before). |
 | gini_everyday / gini_emergency | Population-weighted Gini (0 = equal, 1 = maximal inequality) of each deprivation surface *within* the city. |
 | gini_t_* | The same Gini computed on travel times instead of deprivations — deprivation-function-free companion. |
 | divergence_gap | gini_emergency − gini_everyday. Positive = the city's inequality problem is emergency-side; negative = everyday-side. |

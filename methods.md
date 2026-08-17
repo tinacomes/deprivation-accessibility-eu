@@ -135,20 +135,48 @@ the logistic is convex below t0 and concave above, and g(0) is a small
 positive baseline (= Lmax/(1+e^{k·t0}) ≈ 0.05) rather than exactly 0.
 
 **Emergency deprivation ESCALATES** without bound — it is time-critical, so
-the convex Box-Cox (λ > 1) rises ever more steeply; the curvature is tuned so
-the cost climbs sharply through the clinical time-to-care threshold
-(g(60)/g(45) ≈ 1.66, i.e. +66% over that 15-minute window). g(0) = 0.
+the convex Box-Cox (λ > 1) rises ever more steeply. Its anchors are the EMS
+response-time benchmarks (Pons et al. 2005; Vo et al. 2020; Khan et al.
+2026, citing WHO 2020): deprivation negligible below the ~3–4-minute ideal,
+an intermediate cost at the WHO-recommended 8 minutes for dense urban
+cores, and the full threshold cost at the realistic 10–15-minute
+upper-bound target. Under λ = 1.8 the curve reads g(3)/g(15) = 0.08,
+g(4)/g(15) = 0.12, g(8)/g(15) = 0.35, 1.0 at 15 min, escalating convexly
+beyond (3.3× at 30 min, 6.7× at 45). g(0) = 0. Two structural notes.
+*First*, the 8-minute mark cannot play the half-max role the 15-minute
+inflection plays for the everyday DLF: any curve through
+g(4)/g(15) = 0.1 and g(8)/g(15) = 0.5 is concave between 8 and 15 min
+(convexity caps g(8)/g(15) at 0.427 there), so the benchmark structure of
+the two regimes is genuinely different — a threshold-with-half-max for
+substitutable services, a convex escalation through an intermediate
+benchmark for time-critical care. *Second*, λ solved *from* these anchors
+(g(4)/g(15) = 0.10 → λ = 1.945; g(8)/g(15) = 1/3 → λ = 1.891) coincides
+with the transferred λ = 1.8 to within the sensitivity sweep (1.4–2.2), so
+"form and curvature transferred" and "anchor-calibrated" give the same
+curve here.
 
 **Provenance — form transferred, curvature calibrated (NOT raw coefficient
 transfer).** The published DLF/DCF estimates are on an *hours*-scale
 deprivation-time basis (hours without water/food/care), not the *minutes*
 scale of intra-urban access, so their coefficients are not directly
 transferable. We therefore transfer the *functional form* from the cited
-work and *calibrate the curvature* to domain anchors: the everyday S-curve to
-the intra-urban 15-minute access threshold, and the emergency convexity to
-the ~45–60 min clinical time-to-care threshold. This is recorded honestly
+work and *calibrate the curvature* to domain anchors: the everyday S-curve
+to the intra-urban 15-minute access threshold, and the emergency convexity
+to the 8/15-minute EMS response benchmarks above. This is recorded honestly
 here and in each spec's `note:` field in `config/deprivation.yaml`; the
 curvature parameters (k, λ) are the primary sensitivity-analysis targets.
+
+**Benchmark semantics caveat.** The emergency surface is the *civilian
+free-flow drive time* to the nearest ED/ambulance station: R5 car times
+are time-independent (no congestion) and the matrices are reverse-routed
+(station → cell, for ambulance response the substantively correct
+direction, §7.1; measured car asymmetry median 1 min). Response-time
+benchmarks additionally include dispatch and turnout (~1–2 min), while
+lights-and-siren travel is faster than civilian flow — partially
+offsetting, unmodelled. Free-flow also understates congested urban-core
+times relative to the periphery, which is conservative for the
+desert/periphery findings. The 8/15-minute benchmarks therefore anchor the
+cost scale; they are not literal response-time predictions.
 
 The emergency `scale` is left at 1.0 (relative units); anchor it to a value
 of statistical life / value of time only if absolute monetary magnitudes are
@@ -166,10 +194,12 @@ the same tables as the everyday 0–1 DLF and inviting exactly the cross-regime
 magnitude comparison §3a forbids. The vulnerability table (§6.2) surfaces those
 levels prominently, so they have to mean something.
 
-`deprivation.emergency.reference_time_min` (= 45 min, the *same* clinical
-time-to-care anchor the curvature was calibrated to) divides g by g(t_ref).
-The emergency surface is then in **multiples of the deprivation of arriving at
-the clinical threshold**: 1.0 = at the threshold, > 1 = worse. It does *not*
+`deprivation.emergency.reference_time_min` (= 15 min, the EMS upper-bound
+response target the curvature is anchored to; 45 min before the 2026-08
+re-anchor — older level tables are in g(45) units, a factor 6.73 larger)
+divides g by g(t_ref). The emergency surface is then in **multiples of the
+deprivation of arriving at the benchmark threshold**: 1.0 = at the
+threshold, > 1 = worse. It does *not*
 bound the function — the escalation is preserved — and because it is division
 by a positive constant, the population-weighted percentiles, the typology, ρ,
 Jaccard, both Ginis, the p90/p50 ratio and the concentration index are
@@ -900,9 +930,9 @@ the quantitative form of "robust-to-g, meaning-from-g".
 `sensitivity/deprivation_curves.png` draws the functions being varied —
 baseline, the Layer-1 grid and the Layer-2 anchor-calibrated swaps —
 together with the **linear loss implied by a pure-access minutes
-average**, matched to the baseline at the 45-minute anchor. Each panel
+average**, matched to the baseline at each panel's anchor. Each panel
 stays on its own reporting scale (everyday raw on the Lmax = 1 scale,
-emergency in multiples of g(45); §3), so the figure never invites the
+emergency in multiples of g(15); §3), so the figure never invites the
 cross-regime magnitude comparison the standardisation layer forbids. The
 figure is built from the same `expand_variants` the harness sweeps, so it
 cannot drift from what was actually run.
@@ -929,8 +959,12 @@ between/beyond the anchors differs:
   ceiling. `lam` is *solved* from the ratio anchor, `scale` from the ceiling
   anchor — not chosen.
 - Emergency: the convex **Box-Cox DCF → an exponential DCF** matching the
-  baseline at *both* 45 and 60 min, so the clinical-threshold ratio
-  `g(60)/g(45) ≈ 1.66` is identical. `beta` is *solved* from that ratio.
+  baseline at *both* 8 and 15 min, so the benchmark-window ratio
+  `g(15)/g(8) ≈ 2.85` is identical. `beta` is *solved* from that ratio.
+  Beyond the anchors the exponential prices the tail far harder than the
+  Box-Cox (1.7× at 30 min, 3.9× at 45) — deliberately: the swap tests
+  whether the emergency conclusions survive a much harsher pricing of the
+  beyond-threshold tail, which is where the desert cities live.
 
 The calibrated parameters and their anchor equations live in
 `config/deprivation.yaml → deprivation.alternatives.*` (`note:` fields, exactly

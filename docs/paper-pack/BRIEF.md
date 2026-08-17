@@ -40,8 +40,8 @@ grow — and do the same residents carry both burdens? We measure
 potential deprivation — literature-anchored loss functions of effective
 travel time, not raw access — for two regimes (everyday walkable
 services via a congestion-adjusted soft-minimum; emergency care via
-nearest-facility time under a clinically anchored convex cost) on a
-100 m grid across 67 European functional urban areas in 24 countries.
+nearest-facility time under a convex cost anchored on EMS response
+benchmarks) on a 100 m grid across 67 European functional urban areas in 24 countries.
 City size buys everyday access (elasticity −0.20) but not emergency
 relief (−0.06, bounded within ±0.13), and everyday inequality *rises*
 with size while emergency inequality is size-flat; the divergence is
@@ -69,8 +69,9 @@ RQ4. What does the deprivation framing add over pure access?
 
 1. A two-regime *deprivation* (not access) framework: functional forms
    transferred from literature, curvature calibrated to anchors
-   (15-minute-city inflection; 45/60-min clinical time-to-care),
-   substitution (soft-min), congestion (2SFCA), on a 100 m grid,
+   (15-minute-city inflection; the EMS response benchmarks — negligible
+   below the 3-4 min ideal, WHO-recommended 8 min urban, 10-15 min upper
+   target), substitution (soft-min), congestion (2SFCA), on a 100 m grid,
    comparably across 67 FUAs / 24 countries.
 2. Regime-specific agglomeration: size buys everyday access, not
    emergency relief — with the difference itself tested (paired, wild
@@ -218,8 +219,12 @@ emergency; reverse-routed); friction is the declared sensitivity
 variant (E.1). Everyday deprivation: per-service logistic DLF of
 congestion-adjusted (2SFCA) soft-min effective time, t0 = 15 min anchor;
 composite = weighted mean of per-service deprivations. Emergency:
-convex Box-Cox DCF of nearest time, λ = 1.8, reported in multiples of
-g(45 min). Typology: population-weighted percentile split per regime at
+convex Box-Cox DCF of nearest time, λ = 1.8 (transferred; anchor-solved
+1.89–1.95 coincides), anchored on the EMS response benchmarks — negligible
+below the 3–4 min ideal, WHO-recommended 8 min urban, 10–15 min upper
+target — and reported in multiples of g(15 min). The 8-min mark is NOT a
+half-max (convexity caps g(8)/g(15) at 0.427): state the two regimes'
+anchor structures as genuinely different. Typology: population-weighted percentile split per regime at
 p50 (p75 companion); continuous compounding_intensity as the headline
 compounding measure. Equity: census-2021 1 km strata broadcast to the
 grid; covered-cell reference. Inference conventions per §4.4.
@@ -298,8 +303,21 @@ is awaiting a rerun.
   recovered from the `depacc-results` history and the harness now merges
   instead of replacing.
 
+**Pending — the re-anchor run.** The emergency reporting anchor moved
+from g(45 min) to g(15 min) on 2026-08-15 (EMS benchmarks; methods §3).
+Until the re-anchor batch lands on `depacc-results` and this pack is
+refreshed from it, the `data/` tables' emergency LEVEL columns
+(`mean_emergency`, `mean_emergency_deprivation`, per-service emergency
+`mean_deprivation`) are still in g(45 min) units — a constant factor
+6.73 larger than the g(15) scale. Every rank, Gini, ρ, share, elasticity
+and inference number is identical under either anchor and needs no
+caveat. The batch also adds 8- and 15-min emergency threshold shares to
+the accessibility tables and re-runs the Layer-2 exponential swap on its
+new 8/15-min calibration (the form-swap sensitivity rows will move; the
+curvature rows will not).
+
 Every number this brief and `docs/results-headlines.md` quote is checked
-against its source table by `tools/audit_paper_pack.py` (107 checks, run
+against its source table by `tools/audit_paper_pack.py` (133 checks, run
 in CI). Re-run it after editing any claim or refreshing any table.
 
 Still open, and outside the results: the DE registry counts carry

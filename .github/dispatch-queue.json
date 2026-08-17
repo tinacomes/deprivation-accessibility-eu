@@ -1,10 +1,10 @@
 [
   {
     "workflow": "tier1-batch.yml",
-    "ref": "main",
-    "nonce": "paris-resume-round-12",
+    "ref": "claude/paper-readiness-verification-uknfe2",
+    "nonce": "re-anchor-g15-all-67",
     "inputs": {
-      "cities": "[\"paris\"]"
+      "cities": "[\"aalborg\", \"aarhus\", \"alicante\", \"amersfoort\", \"amsterdam\", \"antwerpen\", \"apeldoorn\", \"arezzo\", \"athina\", \"barcelona\", \"berlin\", \"bilbao\", \"braila\", \"bratislava\", \"brno\", \"bruxelles\", \"bucuresti\", \"budapest\", \"caserta\", \"chemnitz\", \"cosenza\", \"goteborg\", \"grenoble\", \"hamburg\", \"helsingborg\", \"helsinki\", \"jaen\", \"katowice\", \"kobenhavn\", \"koeln\", \"krakow\", \"lahti\", \"landshut\", \"lisboa\", \"ljubljana\", \"lodz\", \"lomza\", \"luxembourg\", \"madrid\", \"milano\", \"munchen\", \"napoli\", \"norrkoping\", \"oslo\", \"palermo\", \"palma_de_mallorca\", \"paris\", \"porto\", \"praha\", \"riga\", \"roma\", \"sittard_geleen\", \"sofia\", \"stavanger\", \"stockholm\", \"szeged\", \"talavera_de_la_reina\", \"tallinn\", \"toulon\", \"turku\", \"vasteras\", \"vicenza\", \"vilnius\", \"warszawa\", \"wroclaw\", \"zagreb\", \"zilina\"]"
     }
   }
 ]

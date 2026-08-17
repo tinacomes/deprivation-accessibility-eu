@@ -80,7 +80,12 @@ def accessibility_indicators(surfaces: pd.DataFrame, cfg: dict,
     ``unreachable_<s>`` and ``deprivation_<s>``, plus per-regime composites.
     """
     pop = surfaces["population"].to_numpy(float)
-    thr_cfg = cfg.get("cityvector", {}).get("access_thresholds_min", {}) or {}
+    # Reporting thresholds may be a superset of the clustering-feature
+    # thresholds (e.g. the 8/15-min EMS benchmarks) — the summary is a table,
+    # so extending it cannot perturb the cityvector feature space.
+    cv = cfg.get("cityvector", {})
+    thr_cfg = (cv.get("access_report_thresholds_min")
+               or cv.get("access_thresholds_min") or {})
     srv_regime = _service_regime_map(cfg)
     # Reachable-but-service-deprived cells are finite-filled to this value by the
     # deprivation stage (>= any mode cutoff): it is NOT a measured travel time,

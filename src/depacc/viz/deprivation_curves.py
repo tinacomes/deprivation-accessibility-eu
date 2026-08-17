@@ -12,8 +12,9 @@ to judge whether the envelope is defensible:
   sweep;
 * the calibration **anchors** drawn as points, so "form transferred,
   curvature calibrated" is visible rather than asserted (everyday: the
-  15-minute-city inflection and the 45-min ceiling; emergency: the 45- and
-  60-min clinical time-to-care thresholds);
+  15-minute-city inflection and the 45-min ceiling; emergency: the EMS
+  response benchmarks — negligible below the 3-4 min ideal, the
+  WHO-recommended 8 min, the 15-min upper-bound target);
 * a **pure-access reference**: deprivation proportional to travel time,
   normalised at the same anchor. This is the implicit loss function of
   every "average minutes to the nearest X" accessibility measure. The gap
@@ -24,7 +25,7 @@ to judge whether the envelope is defensible:
 
 Each panel uses the reporting convention of its own surface (§3), not a
 common rescaling: the everyday DLF is drawn raw on its dimensionless
-0-Lmax scale, the emergency DCF in multiples of g(45 min). The
+0-Lmax scale, the emergency DCF in multiples of g(15 min). The
 pure-access line is drawn on whichever of those scales the panel uses, so
 "what a minutes average would have said" is directly readable against the
 calibrated curve. The two panels must not be compared to each other —
@@ -41,7 +42,14 @@ import numpy as np
 MAX_MINUTES = 60.0
 EVERYDAY_ANCHORS = ((15.0, "15-min city\n(inflection / half-max)"),
                     (45.0, "45 min (ceiling)"))
-EMERGENCY_ANCHORS = ((45.0, "45 min"), (60.0, "60 min"))
+# EMS response benchmarks (Pons et al. 2005; Vo et al. 2020; Khan et al.
+# 2026): negligible below the 3-4 min ideal, WHO-recommended 8 min in dense
+# urban cores, 10-15 min upper-bound target. NOT a half-max structure — see
+# config/deprivation.yaml: convexity caps g(8)/g(15) at 0.427, so 8 min is
+# an intermediate mark (~1/3), unlike the everyday DLF's 15-min half-max.
+EMERGENCY_ANCHORS = ((4.0, "3-4 min\n(negligible)"),
+                     (8.0, "8 min\n(WHO recommended)"),
+                     (15.0, "15 min\n(upper target)"))
 BASELINE_STYLE = {"color": "#1a1a1a", "lw": 2.6, "zorder": 5}
 CURVATURE_STYLE = {"color": "#eb6834", "lw": 1.1, "alpha": 0.75, "zorder": 3}
 FORMSWAP_STYLE = {"color": "#4a3aa7", "lw": 2.0, "ls": "--", "zorder": 4}
@@ -78,18 +86,21 @@ def plot_deprivation_curves(cfg: dict, grid: dict, out_path: Path,
     variants = expand_variants(cfg, grid or {})
     base = next(v for v in variants if v.layer == "baseline")
     t = np.linspace(0.0, float(max_minutes), 601)
-    anchor = 45.0
 
     fig, axes = plt.subplots(1, 2, figsize=(11.6, 4.9))
     panels = (
-        # (regime, axis, title, anchors, y-label, reporting reference)
+        # (regime, axis, title, anchors, y-label, reporting reference,
+        #  access-line match point). The access line is matched at each
+        #  panel's own anchor: the everyday DLF's 45-min ceiling, the
+        #  emergency DCF's 15-min reporting anchor.
         ("everyday", axes[0], "everyday DLF — saturating (logistic)",
          EVERYDAY_ANCHORS, "deprivation (dimensionless, ceiling Lmax = 1)",
-         None),
+         None, 45.0),
         ("emergency", axes[1], "emergency DCF — escalating (Box-Cox)",
-         EMERGENCY_ANCHORS, "deprivation, multiples of g(45 min)", anchor),
+         EMERGENCY_ANCHORS, "deprivation, multiples of g(15 min)", 15.0,
+         15.0),
     )
-    for regime, ax, title, anchors, ylab, t_ref in panels:
+    for regime, ax, title, anchors, ylab, t_ref, anchor in panels:
         seen_curv = seen_swap = False
         for v in variants:
             spec = getattr(v, regime)
@@ -107,7 +118,7 @@ def plot_deprivation_curves(cfg: dict, grid: dict, out_path: Path,
         base_curve = _curve(getattr(base, regime), t, t_ref)
         ax.plot(t, base_curve, **BASELINE_STYLE, label="baseline (published)")
         # Pure access: deprivation linear in minutes, matched to this panel's
-        # scale at the 45-min anchor so the two are readable against each other.
+        # own anchor so the two are readable against each other.
         ax.plot(t, (t / anchor) * float(_curve(getattr(base, regime),
                                                np.asarray(anchor), t_ref)),
                 **ACCESS_STYLE, label="pure access (linear in minutes)")
@@ -131,11 +142,11 @@ def plot_deprivation_curves(cfg: dict, grid: dict, out_path: Path,
                  "and what pure access assumes instead", fontsize=11)
     fig.text(0.01, -0.02,
              "each panel on its own reporting scale (everyday raw, emergency "
-             "in multiples of g(45 min)) — do not compare panels · Layer 1 = "
+             "in multiples of g(15 min)) — do not compare panels · Layer 1 = "
              "curvature grid (config/sensitivity.yaml) · Layer 2 = form swap "
              "with the domain anchors held fixed (config/deprivation.yaml "
              "alternatives) · the access line is the loss function a minutes "
-             "average implies, matched to the baseline at 45 min",
+             "average implies, matched to the baseline at each panel's anchor",
              fontsize=6.5, color="0.45", ha="left", va="top")
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
