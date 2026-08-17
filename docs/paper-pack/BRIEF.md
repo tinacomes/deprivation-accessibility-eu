@@ -314,7 +314,12 @@ and inference number is identical under either anchor and needs no
 caveat. The batch also adds 8- and 15-min emergency threshold shares to
 the accessibility tables and re-runs the Layer-2 exponential swap on its
 new 8/15-min calibration (the form-swap sensitivity rows will move; the
-curvature rows will not).
+curvature rows will not). When it lands,
+`tools/cluster_feature_robustness.py` also runs: the full clustering
+re-done with the 8/15-min emergency shares INCLUDED in the feature set,
+reporting the ARI against the published partition — H4 is claimed only if
+it survives its own feature-set choice, and if the partitions disagree,
+both specifications get reported (methods §4.4).
 
 Every number this brief and `docs/results-headlines.md` quote is checked
 against its source table by `tools/audit_paper_pack.py` (133 checks, run

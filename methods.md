@@ -472,6 +472,24 @@ silhouette criterion. On the full sample both passes cut along one axis
 — **coverage grades**: covered / partial desert / desert — not as city
 types.
 
+**The feature set is a tested specification, not a frozen one.** The
+clustering features include the emergency level shares at 30/45/60 min —
+fixed before the EMS benchmarks (8/15 min) entered the study. When the
+benchmarks arrived, the new shares were added to the *reporting* tables
+only (`access_report_thresholds_min`), so the re-anchor run stayed a
+one-change-at-a-time experiment whose invariances could be verified. That
+control is only honest if the feature-set choice is itself tested:
+`tools/cluster_feature_robustness.py` re-runs the full clustering
+pipeline (scaling, k-selection, bootstrap, Gaussian null, peeled pass) on
+the extended set with the 8/15-min shares included and reports the ARI
+against the published partition — with the outcome reported either way,
+and both specifications reported side by side if they disagree. Note the
+mechanical direction: the added shares are nested versions of the tails
+the desert group already separates on, so including them up-weights that
+axis and would, if anything, *strengthen* the 62/5 split — the published
+specification is the conservative one, and the check verifies rather
+than asserts this.
+
 **Vulnerability synthesis** (`equity/vulnerability_cross.py`). The
 census-harmonised age strata of every city's `equity_vulnerability.csv`
 (level `age_census` only — the three-level rule of §6.1 forbids pooling
