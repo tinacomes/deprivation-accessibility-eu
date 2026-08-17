@@ -105,44 +105,81 @@ attributions rather than bibliography entries.
 - **`macea2018attitudes`: in** (PI: important).
 - **`mackinnon2023cluster`: added** as the few-clusters practice guide.
 
+## The emergency anchor recalibration (analysis, 2026-08-15)
+
+The PI's three-window reading — deprivation negligible below ~3–4 min
+(`vo2020vulnerable`), the WHO-recommended 8-min response as an
+intermediate mark, 15 min as the realistic upper threshold
+(`khan2026melbourne`, `pons2005response`) — was checked against the DCF
+mathematics. Three findings, exactly reproducible from
+`DeprivationFunction` (box_cox, shift = 1):
+
+1. **A "half-max at 8 min" calibration is mathematically impossible for
+   a convex DCF.** Any curve through g(4)/g(15) = 0.10 and
+   g(8)/g(15) = 0.50 has chord slopes 0.025 → 0.100 → 0.071 — the slope
+   *falls* between the 8- and 15-min segments, i.e. the curve is concave
+   there. Convexity (the defining property of an escalating deprivation
+   cost, `holguinveras2013objective`) caps g(8)/g(15) at **0.427** when
+   the 4-min level is 0.10. So the 8-min mark cannot play the role the
+   15-min inflection plays for the everyday DLF; it enters as an
+   intermediate benchmark, not a half-max anchor.
+2. **The existing curve, re-anchored at g(15), already encodes the
+   feasible three-window structure.** With λ = 1.8:
+   g(3)/g(15) = 0.076, g(4)/g(15) = 0.117, g(8)/g(15) = 0.351 —
+   negligible-to-small below 3–4 min, about a third of the threshold
+   cost at the WHO-recommended 8, 1.0 at 15, convex escalation beyond
+   (3.3× at 30 min, 6.7× at 45).
+3. **Calibrating λ *from* the new anchors lands where the curve already
+   is.** Solving g(4)/g(15) = 0.10 gives λ = 1.945; solving
+   g(8)/g(15) = 1/3 gives λ = 1.891. Both a hair from the published 1.8
+   and inside the sensitivity sweep (1.4–2.2), whose envelope is already
+   published (`deprivation_sensitivity_summary.csv`) and under which
+   every emergency conclusion holds.
+
+Consequently **(a) — re-anchor the reporting scale at g(15), keep
+λ = 1.8 — is not just feasible but internally consistent with the new
+anchors**; (b) — re-solving λ from the anchors — moves it to ≈1.9, a
+within-sweep change that alters no conclusion. Estimated effort (no
+re-routing under either; the OD matrices are cached, λ and the anchor
+enter only the deprivation stage):
+
+- **(a)**: config change (`reference_time_min` 45 → 15, add 8- and
+  15-min emergency threshold shares) + one Tier-1 batch dispatch
+  (~2–4 h wall-clock, unattended: each city re-runs
+  deprivation→divergence→equity→viz from cached matrices) + pack/doc
+  refresh and audit re-run (~1–2 h). Every rank/ratio result —
+  percentiles, typology, both Ginis, ρ, all inference tables — is
+  *unchanged exactly*; emergency levels re-express as multiples of
+  g(15) (× 6.73 relative to today's g(45) units).
+- **(b)**: identical CI compute (~2–4 h), but every emergency-side
+  number changes (levels, Ginis, spec curve, envelopes, clustering
+  features), so add a full re-verification and rewrite of the headline
+  documents — roughly one working day end-to-end, for third-decimal
+  movements already bounded by the published λ-sweep.
+
+**Travel-time semantics caveat (both options).** The emergency surface
+is the *civilian free-flow drive time* to the nearest ED/ambulance
+station: R5 car times are time-independent (no congestion; speeds from
+the OSM network's attributes), and the matrices are reverse-routed
+(station → cell — for ambulance response the substantively correct
+direction, methods §7.1, measured car asymmetry median 1 min).
+Response-time benchmarks additionally contain dispatch and turnout
+(~1–2 min) but lights-and-siren travel is faster than civilian flow —
+partially offsetting, unmodelled. And free-flow understates congested
+urban-core times relative to the periphery, which is *conservative* for
+the desert/periphery findings. State this when using the 8/15-min
+benchmarks: they anchor the cost scale, they are not literal response
+predictions.
+
 ## Open questions for the PI
 
-1. **What does the lower emergency anchor do to the pipeline?** The
-   benchmarks (8 / 10–15 min) replace the 45–60 min window in the
-   *justification*, but the shipped surfaces were computed with
-   `lam = 1.8` "calibrated to ~45–60 min" and reported in multiples of
-   g(45). Two options:
-   - **(a) Re-anchor the reporting scale only** (`reference_time_min`
-     45 → 15): division by a positive constant, so *every rank- and
-     ratio-based result is unchanged exactly* — percentiles, typology,
-     both Ginis, ρ, Jaccard, all inference tables. Only the reported
-     emergency *levels* rescale (1.0 then means "the deprivation of
-     arriving at the 15-min benchmark"). Cheap: config change + a
-     deprivation-stage re-run from cached ODs, or an exact constant
-     rescale of the level columns.
-   - **(b) Recalibrate the curvature too** (solve `lam` from anchors in
-     the 8–15 min window): the Ginis and level results move; per-service
-     cell rankings are preserved (any strictly increasing g), but every
-     level/inequality table and the spec curve need a full
-     deprivation-stage + cross re-run. Note the current sensitivity sweep
-     (λ ∈ 1.4–2.2) already brackets curvature uncertainty, and the
-     emergency conclusions (no size gradient, size-flat Gini) hold across
-     that whole range — so (b) is unlikely to change any claim, but it is
-     a re-run of everything emergency-side.
-   Recommendation: **(a)**, keeping λ = 1.8 as "form and curvature
-   transferred from the DCF literature" (`cantillo2018discrete`,
-   `delgadolindeman2019ambulance`) with the *benchmark* anchoring the
-   reporting scale — and state in limitations that results are robust
-   across λ 1.4–2.2. **Confirm (a) or (b).** Also: a
-   `pop_share_beyond_emergency_15` level indicator does not exist yet
-   (only 30/45/60) and would need the same deprivation-stage re-run —
-   worth adding under either option, since the 10–15 min benchmark makes
-   it the policy-relevant threshold share.
-2. **Which WHO 2020 document?** `khan2026melbourne` cites "World Health
-   Organization, 2020" for the EMS benchmarks; I could not identify the
-   exact WHO publication from the abstract alone. **Please upload the
-   Khan et al. PDF (or name the WHO document)** and I'll add a verified
-   entry — until then WHO 2020 is deliberately absent from the .bib
-   rather than guessed. The upload would also let me complete
-   `khan2026melbourne`'s author list (currently "and others" past the
-   first three, per the publisher's listing).
+1. **Confirm (a) or (b)** given the analysis above (recommendation: (a),
+   with the three-window consistency stated in methods; optionally
+   present λ = 1.9 as "anchor-solved" in the SI since it is
+   within-sweep).
+2. **Please upload `vo2020vulnerable` and `khan2026melbourne`** (the
+   publisher sites are blocked from this environment): needed to quote
+   the exact 3–4-min statement and window definitions, to identify
+   which **WHO 2020** document the benchmark sentence cites (absent from
+   the .bib until identified, not guessed), and to complete the Khan
+   author list (currently "and others" past the first three).
