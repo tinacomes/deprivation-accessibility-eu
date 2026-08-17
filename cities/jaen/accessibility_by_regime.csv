@@ -1,3 +1,3 @@
-level,regime,service,n_facilities,pop_mean_time_min,pop_median_time_min,pop_p90_time_min_reachable,pop_share_beyond_15min,pop_share_beyond_30min,pop_service_deprived_share,unreachable_pop_share,mean_deprivation,pop_share_beyond_45min,pop_share_beyond_60min
-everyday,everyday,everyday,,20.465436990752263,19.124933658231278,48.83300432288712,0.550142113663232,0.27579785779217486,0.09661162986925186,0.0005149201470868066,0.29107964348438015,,
-emergency,emergency,emergency,,14.91959914015356,13.5,25.0,,0.013640877826323845,0.0,0.0005149201470868066,0.185693649606299,0.0029084463070803168,0.0005928928366167031
+level,regime,service,n_facilities,pop_mean_time_min,pop_median_time_min,pop_p90_time_min_reachable,pop_share_beyond_15min,pop_share_beyond_30min,pop_service_deprived_share,unreachable_pop_share,mean_deprivation,pop_share_beyond_8min,pop_share_beyond_45min,pop_share_beyond_60min
+everyday,everyday,everyday,,20.46882410825665,19.136909534229027,48.83412877811217,0.550142113663232,0.2760269047849161,0.09661162986925186,0.0005149201470868066,0.2911789502956375,,,
+emergency,emergency,emergency,,14.839043622378364,13.5,25.0,0.4085100747675971,0.013569177931636084,0.0,0.0005149201470868066,1.2428594209420174,0.8176499975291758,0.002906665794125127,0.0005853360084150271
