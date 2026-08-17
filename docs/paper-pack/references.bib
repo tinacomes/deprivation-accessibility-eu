@@ -51,6 +51,20 @@
              deprivation time — the form transferred to the everyday DLF.}
 }
 
+@article{macea2018attitudes,
+  author  = {Macea, Luis F. and Cantillo, Victor and Arellana, Julian},
+  title   = {Influence of attitudes and perceptions on deprivation cost
+             functions},
+  journal = {Transportation Research Part E: Logistics and Transportation
+             Review},
+  year    = {2018},
+  volume  = {112},
+  pages   = {125--141},
+  doi     = {10.1016/j.tre.2018.02.007},
+  note    = {Psychosocial factors in DCF estimation (hybrid latent-variable
+             discrete choice) — completes the Cantillo-line DCF block.}
+}
+
 @article{cantillo2018discrete,
   author  = {Cantillo, Victor and Serrano, Iv{\'a}n and Macea, Luis F. and
              Holgu{\'i}n-Veras, Jos{\'e}},
@@ -242,6 +256,35 @@
              capability are distinct regimes needing separate measurement.}
 }
 
+@article{logan2020reframing,
+  author  = {Logan, Tom M. and Guikema, Seth D.},
+  title   = {Reframing Resilience: Equitable Access to Essential Services},
+  journal = {Risk Analysis},
+  year    = {2020},
+  volume  = {40},
+  number  = {8},
+  pages   = {1538--1553},
+  doi     = {10.1111/risa.13492},
+  note    = {Resilience operationalised as equitable access to essential
+             services — the conceptual bridge between the equity results
+             (H5/H6) and the resilience framing of the emergency regime.}
+}
+
+@article{fan2022equality,
+  author  = {Fan, Chao and Jiang, Xiangqi and Lee, Ronald and Mostafavi,
+             Ali},
+  title   = {Equality of access and resilience in urban population-facility
+             networks},
+  journal = {npj Urban Sustainability},
+  year    = {2022},
+  volume  = {2},
+  pages   = {9},
+  doi     = {10.1038/s42949-022-00051-3},
+  note    = {More equitable facility distribution increases network
+             resilience — the access-equality/resilience interplay the
+             compounding result speaks to.}
+}
+
 @article{meerow2016defining,
   author  = {Meerow, Sara and Newell, Joshua P. and Stults, Melissa},
   title   = {Defining urban resilience: A review},
@@ -255,8 +298,63 @@
 }
 
 % ==========================================================================
-% Clinical anchor for the emergency DCF curvature (PROPOSED — confirm)
+% Emergency time-to-care benchmarks (the DCF's clinical anchors)
+% PI direction 2026-08: anchor on EMS response benchmarks (8 min ideal
+% urban / 10-15 min peri-urban and rural), NOT the 45-60 min window the
+% config currently names. See REFERENCES.md open question 1 for what
+% re-anchoring does to the pipeline.
 % ==========================================================================
+
+@article{pons2005response,
+  author  = {Pons, Peter T. and Haukoos, Jason S. and Bludworth, Whitney
+             and Cribley, Thomas and Pons, Kathryn A. and Markovchick,
+             Vincent J.},
+  title   = {Paramedic Response Time: Does It Affect Patient Survival?},
+  journal = {Academic Emergency Medicine},
+  year    = {2005},
+  volume  = {12},
+  number  = {7},
+  pages   = {594--600},
+  doi     = {10.1197/j.aem.2005.02.013},
+  note    = {The 8-minute EMS response-time criterion examined against
+             survival — benchmark source for the urban-core anchor.}
+}
+
+@article{vo2020vulnerable,
+  author  = {Vo, Ace and Bhaskar, Rahul and Chi, Ting Yu and Faddoul,
+             Guillaume},
+  title   = {Identifying socially vulnerable regions with persistent low
+             accessibility to emergency care through a spatial decision
+             framework},
+  journal = {Journal of Decision Systems},
+  year    = {2020},
+  volume  = {29},
+  number  = {4},
+  pages   = {201--222},
+  doi     = {10.1080/12460125.2020.1796300},
+  note    = {Spatial decision framework for persistent low emergency-care
+             accessibility in vulnerable regions — supports the lower
+             (sub-45-min) emergency thresholds and the vulnerability
+             framing of H5.}
+}
+
+@article{khan2026melbourne,
+  author  = {Khan, Md Ashrafuzzaman and Adegboye, Oyelola and Lyu, Song
+             and others},
+  title   = {Spatial Disparities in Emergency Service Accessibility for
+             Vulnerable Populations in {Melbourne}: A {Voronoi}
+             Tessellation Study},
+  journal = {Spatial Demography},
+  year    = {2026},
+  volume  = {14},
+  pages   = {6},
+  doi     = {10.1007/s40980-026-00159-5},
+  note    = {States the benchmark framing adopted here: ideal 8-minute
+             response in dense urban cores vs realistic 10--15-minute
+             targets peri-urban/rural (citing Pons et al. 2005 and WHO
+             2020). Author list beyond the first three to be completed
+             from the PDF.}
+}
 
 @article{nicholl2007distance,
   author  = {Nicholl, Jon and West, James and Goodacre, Steve and Turner,
@@ -269,8 +367,9 @@
   number  = {9},
   pages   = {665--668},
   doi     = {10.1136/emj.2007.047654},
-  note    = {Empirical mortality-distance gradient — proposed citation for
-             the 45--60 min clinical time-to-care anchor of the DCF.}
+  note    = {Mortality rises with distance to emergency care — supporting
+             evidence for the DCF's convexity in time, independent of any
+             specific threshold.}
 }
 
 % ==========================================================================
@@ -289,6 +388,20 @@
   doi     = {10.1162/rest.90.3.414},
   note    = {The wild cluster bootstrap used for all country-clustered
              scaling p-values.}
+}
+
+@article{mackinnon2023cluster,
+  author  = {MacKinnon, James G. and Nielsen, Morten {\O}rregaard and Webb,
+             Matthew D.},
+  title   = {Cluster-robust inference: A guide to empirical practice},
+  journal = {Journal of Econometrics},
+  year    = {2023},
+  volume  = {232},
+  number  = {2},
+  pages   = {272--299},
+  doi     = {10.1016/j.jeconom.2022.04.001},
+  note    = {The modern few-clusters guide — backs the wild-bootstrap
+             choices with 24 country clusters.}
 }
 
 @article{lakens2017equivalence,

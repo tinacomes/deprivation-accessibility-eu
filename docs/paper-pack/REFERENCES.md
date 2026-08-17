@@ -16,6 +16,7 @@ the open questions to settle with the PI before submission.
 | `holguinveras2016econometric` | Deprivation cost functions are estimable and convex in deprivation time — licence for the calibrated-curvature approach. |
 | `wang2017deprivation` | The everyday DLF's logistic S-form ("form transferred": saturating severity of substitutable services). Van Wassenhove co-authors both lines, tying DLF and DCF to one literature. |
 | `cantillo2018discrete` | Discrete-choice estimation of deprivation costs — the empirical line the convex DCF form comes from. |
+| `macea2018attitudes` | Attitudes/perceptions in DCF estimation (hybrid latent-variable discrete choice) — completes the Cantillo-line block. |
 | `delgadolindeman2019ambulance` | DCFs specifically for *emergency medical* services, higher than goods-deprivation estimates — the emergency regime's own anchor. |
 
 ### Access measurement (RQ4 / H7 — what we improve over)
@@ -47,19 +48,25 @@ the open questions to settle with the PI before submission.
 | cite | supports |
 |---|---|
 | `sirenko2026heatwaves` | The empirical case that everyday vulnerability does not predict crisis-time resilience — i.e. everyday access and emergency capability are distinct regimes that must be measured separately. **The motivating citation for the two-regime design.** |
+| `logan2020reframing` | Resilience *defined as* equitable access to essential services — the conceptual bridge from the equity results (H5/H6) to the resilience framing; supports reading the everyday regime as the resilience baseline. |
+| `fan2022equality` | Equality of access and network resilience move together in population–facility networks — the compounding result (the same people deprived in both regimes) is the pathological case of this interplay. |
 | `meerow2016defining` | Urban-resilience definitional anchor for the emergency-capability framing. |
 
-### The clinical anchor (PROPOSED — see open questions)
+### Emergency time-to-care benchmarks (the DCF anchors — PI direction: lower than the config's 45–60 min)
 
 | cite | supports |
 |---|---|
-| `nicholl2007distance` | Mortality rises with distance/time to emergency care — proposed empirical anchor for the DCF's 45–60 min calibration window. |
+| `pons2005response` | The 8-minute EMS response-time criterion (urban cores) — the benchmark the ideal-urban anchor rests on. |
+| `khan2026melbourne` | States the adopted framing verbatim: ideal 8-min response in dense urban cores vs realistic 10–15-min targets peri-urban/rural (citing Pons 2005 and WHO 2020). |
+| `vo2020vulnerable` | Persistent low emergency-care accessibility concentrates in socially vulnerable regions — supports both the lower thresholds and the H5 vulnerability lens. |
+| `nicholl2007distance` | Mortality rises with distance/time to emergency care — evidence for the DCF's *convexity*, independent of any specific threshold. |
 
 ### Statistics
 
 | cite | supports |
 |---|---|
 | `cameron2008bootstrap` | Wild cluster bootstrap (all country-clustered scaling p's). |
+| `mackinnon2023cluster` | The modern few-clusters practice guide — the referee-proofing companion to CGM 2008 at 24 country clusters. |
 | `lakens2017equivalence` | TOST equivalence bounds (the emergency null, H1). |
 | `simonsohn2020specification` | Specification curve (H2 robustness). |
 | `rousseeuw1987silhouettes` | Silhouette (cluster k-selection, H4). |
@@ -78,29 +85,64 @@ grid, GISCO URAU, OSM, national Tier-2 grids) are attributed per
 `data/README.md`; journals normally take those as data-availability
 attributions rather than bibliography entries.
 
+## Decisions taken (PI, 2026-08)
+
+- **Emergency thresholds: lower than the config's 45–60 min.** Anchor on
+  EMS response benchmarks — ideal 8 min in dense urban cores, realistic
+  10–15 min peri-urban/rural (`pons2005response`, `khan2026melbourne`,
+  `vo2020vulnerable`, WHO 2020 pending identification).
+  `nicholl2007distance` is kept as convexity evidence only. **The
+  pipeline consequence is a real decision — see open question 1.**
+- **Per-service t0 thresholds: not used.** The published baseline is the
+  uniform t0 = 15 (`threshold_mode: "uniform"`); the per-service seeds
+  stay config-internal and uncited. (Where they live, for reference:
+  `config/deprivation.yaml → deprivation.everyday.per_service`, one
+  block per service with a seed value and a `verify: TODO` source note;
+  methods §3.1 describes the frequency-of-use rationale. None of them
+  affects any published number.)
+- **Resilience block**: `logan2020reframing` and `fan2022equality` added
+  alongside `sirenko2026heatwaves` and `meerow2016defining`.
+- **`macea2018attitudes`: in** (PI: important).
+- **`mackinnon2023cluster`: added** as the few-clusters practice guide.
+
 ## Open questions for the PI
 
-1. **Clinical anchor for the DCF (45–60 min).** The config says
-   "calibrated to clinical time-to-care anchors" but names no source.
-   Proposed: `nicholl2007distance` (mortality–distance gradient,
-   UK ambulance cohort). Alternatives if you prefer: golden-hour trauma
-   literature, or stroke/STEMI time-to-treatment guidelines. **Which?**
-2. **Per-service t0 seeds.** `config/deprivation.yaml` seeds per-service
-   thresholds from named standards (DE Apothekenbetriebsordnung, RCGP/NHS
-   GP access, school catchment norms) all flagged `verify: TODO`. The
-   published baseline uses uniform t0 = 15 so nothing cited depends on
-   them — but if the per-service variant is mentioned in the SI, those
-   standards need verified citations. **Cite the per-service variant, or
-   keep it config-internal?**
-3. **Resilience framing depth.** Currently `sirenko2026heatwaves` +
-   `meerow2016defining`. If you want the discussion to engage the
-   resilience literature more broadly (e.g. infrastructure-resilience or
-   crisis-logistics lines from your group), name the papers and I'll
-   verify and add them.
-4. **Macea et al. 2018** (*Influence of attitudes and perceptions on
-   deprivation cost functions*, Transp. Res. E 112:125–141) is the other
-   Cantillo-line DCF paper; I left it out to keep the DCF block tight.
-   **Include?**
-5. **Wild-bootstrap small-cluster refinement.** With 24 clusters,
-   `cameron2008bootstrap` suffices; if a referee pushes, MacKinnon &
-   Webb's later work is the standard fallback — can add pre-emptively.
+1. **What does the lower emergency anchor do to the pipeline?** The
+   benchmarks (8 / 10–15 min) replace the 45–60 min window in the
+   *justification*, but the shipped surfaces were computed with
+   `lam = 1.8` "calibrated to ~45–60 min" and reported in multiples of
+   g(45). Two options:
+   - **(a) Re-anchor the reporting scale only** (`reference_time_min`
+     45 → 15): division by a positive constant, so *every rank- and
+     ratio-based result is unchanged exactly* — percentiles, typology,
+     both Ginis, ρ, Jaccard, all inference tables. Only the reported
+     emergency *levels* rescale (1.0 then means "the deprivation of
+     arriving at the 15-min benchmark"). Cheap: config change + a
+     deprivation-stage re-run from cached ODs, or an exact constant
+     rescale of the level columns.
+   - **(b) Recalibrate the curvature too** (solve `lam` from anchors in
+     the 8–15 min window): the Ginis and level results move; per-service
+     cell rankings are preserved (any strictly increasing g), but every
+     level/inequality table and the spec curve need a full
+     deprivation-stage + cross re-run. Note the current sensitivity sweep
+     (λ ∈ 1.4–2.2) already brackets curvature uncertainty, and the
+     emergency conclusions (no size gradient, size-flat Gini) hold across
+     that whole range — so (b) is unlikely to change any claim, but it is
+     a re-run of everything emergency-side.
+   Recommendation: **(a)**, keeping λ = 1.8 as "form and curvature
+   transferred from the DCF literature" (`cantillo2018discrete`,
+   `delgadolindeman2019ambulance`) with the *benchmark* anchoring the
+   reporting scale — and state in limitations that results are robust
+   across λ 1.4–2.2. **Confirm (a) or (b).** Also: a
+   `pop_share_beyond_emergency_15` level indicator does not exist yet
+   (only 30/45/60) and would need the same deprivation-stage re-run —
+   worth adding under either option, since the 10–15 min benchmark makes
+   it the policy-relevant threshold share.
+2. **Which WHO 2020 document?** `khan2026melbourne` cites "World Health
+   Organization, 2020" for the EMS benchmarks; I could not identify the
+   exact WHO publication from the abstract alone. **Please upload the
+   Khan et al. PDF (or name the WHO document)** and I'll add a verified
+   entry — until then WHO 2020 is deliberately absent from the .bib
+   rather than guessed. The upload would also let me complete
+   `khan2026melbourne`'s author list (currently "and others" past the
+   first three, per the publisher's listing).
