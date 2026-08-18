@@ -222,7 +222,7 @@ def run(data: Path) -> int:
     spec = a.table("specification_curve")
     ev_spec = spec[spec.outcome == "gini_everyday"].drop_duplicates("variant")
     a.check("H2 spec-curve variants", "specification_curve",
-            len(ev_spec), 13)
+            len(ev_spec), 14)
     a.check("H2 spec-curve all positive", "specification_curve",
             bool((ev_spec.elasticity > 0).all()), True)
     a.check("H2 spec-curve min slope", "specification_curve",
@@ -230,7 +230,7 @@ def run(data: Path) -> int:
     a.check("H2 spec-curve max slope", "specification_curve",
             round(float(ev_spec.elasticity.max()), 3), 0.075, 0.0005)
     a.check("H2 spec-curve significant", "specification_curve",
-            int((ev_spec.p < 0.05).sum()), 12)
+            int((ev_spec.p < 0.05).sum()), 13)
     box = ev_spec[ev_spec.variant == "formswap_everyday_box_cox"].iloc[0]
     a.check("H2 Box-Cox exception p", "specification_curve",
             round(float(box.p), 3), 0.082, 0.0005)
@@ -447,7 +447,12 @@ def run(data: Path) -> int:
 
     # ---- robustness inventory ---------------------------------------------
     ra = a.table("rank_agreement")
-    scoped = ra[ra.variant != "formswap_emergency_exponential"]
+    # Scoped = curvature grid + everyday form swap. BOTH emergency form
+    # swaps change the emergency-Gini measurand (exponential -> extreme-
+    # tail-depth index; bounded survival -> benchmark-window inequality)
+    # and are checked separately as flagged exceptions.
+    em_swaps = ("formswap_emergency_exponential", "formswap_emergency_survival")
+    scoped = ra[~ra.variant.isin(em_swaps)]
     mins = scoped.groupby("target").spearman_rho.min().round(2)
     a.check("rank agreement min rho (gini_everyday, scoped)",
             "rank_agreement", float(mins["gini_everyday"]), 0.90, 0.005)
@@ -460,6 +465,11 @@ def run(data: Path) -> int:
     a.check("rank agreement: the flagged exception (emergency, exponential)",
             "rank_agreement", round(float(exp_em.spearman_rho.iloc[0]), 2),
             0.19, 0.005)
+    sv_em = ra[(ra.variant == "formswap_emergency_survival")
+               & (ra.target == "gini_emergency")]
+    a.check("rank agreement: the flagged exception (emergency, survival)",
+            "rank_agreement", round(float(sv_em.spearman_rho.iloc[0]), 2),
+            0.49, 0.005)
     a.check("rank agreement covers the sample", "rank_agreement",
             int(ra.n_cities.max()), 67)
     cfr = a.table("cluster_feature_robustness").iloc[0]
@@ -475,19 +485,19 @@ def run(data: Path) -> int:
     fc = a.table("flip_cells")
     a.check("flip cells: cities covered", "flip_cells", len(fc), 67)
     a.check("flip cells: mean sensitive share", "flip_cells",
-            round(float(fc.sensitive_pop_share.mean()), 3), 0.158, 0.0005)
+            round(float(fc.sensitive_pop_share.mean()), 3), 0.181, 0.0005)
     a.check("flip cells: min", "flip_cells",
             round(float(fc.sensitive_pop_share.min()), 3), 0.052, 0.0005)
     a.check("flip cells: max", "flip_cells",
-            round(float(fc.sensitive_pop_share.max()), 3), 0.361, 0.0005)
+            round(float(fc.sensitive_pop_share.max()), 3), 0.530, 0.0005)
     env = a.table("typology_share_envelope")
     hh = env[env["class"] == "HH"]
     a.check("typology envelope: cities covered", "typology_share_envelope",
             hh.city.nunique(), 67)
     a.check("typology envelope: mean HH width", "typology_share_envelope",
-            round(float((hh["max"] - hh["min"]).mean()), 3), 0.019, 0.0005)
+            round(float((hh["max"] - hh["min"]).mean()), 3), 0.021, 0.0005)
     a.check("typology envelope: max HH width", "typology_share_envelope",
-            round(float((hh["max"] - hh["min"]).max()), 3), 0.057, 0.0005)
+            round(float((hh["max"] - hh["min"]).max()), 3), 0.061, 0.0005)
     dss = a.table("deprivation_sensitivity_summary")
     a.check("deprivation envelope: cities covered",
             "deprivation_sensitivity_summary", dss.city.nunique(), 67)
@@ -503,7 +513,7 @@ def run(data: Path) -> int:
             round(float(curv_hh.width.median()), 3), 0.014, 0.0005)
     a.check("HH envelope: form-swap median width (pp)",
             "deprivation_sensitivity_summary",
-            round(float(fs_hh.width.median()), 3), 0.007, 0.0005)
+            round(float(fs_hh.width.median()), 3), 0.009, 0.0005)
     a.check("HH envelope: threshold median width (pp)",
             "deprivation_sensitivity_summary",
             round(float(thr_hh.width.median()), 3), 0.298, 0.0005)

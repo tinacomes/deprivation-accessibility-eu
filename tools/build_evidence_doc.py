@@ -313,14 +313,14 @@ def build() -> None:
     doc.h("H2 — Everyday inequality grows with size; "
           "emergency inequality does not")
     doc.p(
-        "The everyday-deprivation Gini rises with population under all 13 "
+        "The everyday-deprivation Gini rises with population under all 14 "
         "deprivation parameterisations; the emergency Gini is size-flat at "
         "baseline. The emergency half is conditional on beyond-benchmark "
         "escalation and must always be reported as such: the EMS benchmarks "
-        "define the cost scale up to the 15-minute cut-off and both "
-        "literature-grounded DCF forms coincide at the 8- and 15-minute "
+        "define the cost scale up to the 15-minute cut-off and all three "
+        "literature-grounded escalation forms coincide at the 4/8/15-minute "
         "anchors; beyond the cut-off no benchmark exists, and that is "
-        "exactly where the two forms diverge.")
+        "exactly where the forms diverge.")
     spec = read("specification_curve.csv")
     ev = sorted(float(r["elasticity"]) for r in spec
                 if r["outcome"] == "gini_everyday" and r["elasticity"])
@@ -332,6 +332,11 @@ def build() -> None:
         f"{ev[0]:+.3f} to {ev[-1]:+.3f}, significant in {ev_sig}/{len(ev)} "
         "(the exception is the concave Box-Cox everyday form swap — a "
         "caveat to state).",
+        "Saturating escalation — the bounded survival-based curve "
+        "(1 = full deprivation; saturation at ~30–45 min emerging from "
+        "the benchmark anchors): emergency Gini size-flat — the "
+        "“1 = full deprivation” framing gives the same headline as the "
+        "baseline.",
         "Polynomial (Box-Cox) beyond-cut-off escalation — the "
         "Cantillo/Delgado-Lindeman ambulance-DCF line: emergency Gini "
         "size-flat, in agreement with the deprivation-free travel-time "
@@ -352,11 +357,14 @@ def build() -> None:
             continue
         if r["variant"] in ("baseline", "emergency_lam1.4",
                             "emergency_lam2.2",
+                            "formswap_emergency_survival",
                             "formswap_emergency_exponential"):
             label = {
                 "baseline": "Box-Cox λ 1.8 (baseline)",
                 "emergency_lam1.4": "Box-Cox λ 1.4",
                 "emergency_lam2.2": "Box-Cox λ 2.2",
+                "formswap_emergency_survival":
+                    "Saturating (survival-based, bounded, 1 = full)",
                 "formswap_emergency_exponential":
                     "Exponential (Holguín-Veras line)",
             }[r["variant"]]
@@ -374,10 +382,13 @@ def build() -> None:
         caption="Table H2b — deprivation Gini vs deprivation-free "
                 "travel-time Gini (deprivation_vs_access.csv)")
     doc.fig(FIGS / "deprivation_curves.png",
-            "Figure H2 — deprivation_curves.png: both regimes' loss/cost "
-            "curves with the EMS anchors (3–4 / 8 / 15 min), the curvature "
-            "and form-swap variants swept in sensitivity, and the linear "
-            "loss a pure-access measure implies.")
+            "Figure H2 — deprivation_curves.png: everyday level curve; the "
+            "emergency benchmark window (0–15 min), where all three "
+            "escalation forms coincide at the EMS anchors by construction; "
+            "and the beyond-cut-off region (log scale), where they diverge "
+            "— saturating 1.6× / Box-Cox 11× / exponential 120× the "
+            "benchmark cost at 60 min. The dotted line is the linear loss "
+            "a pure-access minutes average implies.")
     doc.page_break()
 
     # ------------------------------------------------------------ H3
@@ -585,7 +596,7 @@ def build() -> None:
     doc.h("Robustness inventory")
     doc.p(
         "Everything the claims were pushed through, in one place: the "
-        "specification curve (13 deprivation parameterisations), rank "
+        "specification curve (14 deprivation parameterisations), rank "
         "agreement of the city orderings, the per-city assumption "
         "footprint (flip cells), and the level envelopes.")
     ra = [r for r in read("rank_agreement.csv") if r["variant"]]
@@ -593,20 +604,32 @@ def build() -> None:
             if not r["variant"].startswith("formswap_")]
     ev_swap = [float(r["spearman_rho"]) for r in ra
                if r["variant"] == "formswap_everyday_box_cox"]
-    exp_gini = [r for r in ra
-                if r["variant"] == "formswap_emergency_exponential"
-                and r["target"] == "gini_emergency"]
-    doc.bullets([
+    def _em_swap_rho(variant):
+        rows_ = [r for r in ra if r["variant"] == variant
+                 and r["target"] == "gini_emergency"]
+        return float(rows_[0]["spearman_rho"]) if rows_ else None
+
+    exp_rho = _em_swap_rho("formswap_emergency_exponential")
+    sv_rho = _em_swap_rho("formswap_emergency_survival")
+    bullets = [
         f"Rank agreement: minimum Spearman ρ {min(curv):.2f} over the "
         f"curvature grid and {min(ev_swap):.2f} under the everyday form "
         "swap — the rank-based results are parameterisation-free in that "
         "scope.",
-        "Exception, reported as a change of measurand (not noise): under "
-        "exponential escalation the emergency-Gini ordering becomes an "
-        "extreme-tail-depth ordering "
-        f"(ρ = {float(exp_gini[0]['spearman_rho']):.2f} vs baseline)."
-        if exp_gini else "",
-    ])
+    ]
+    if exp_rho is not None:
+        bullets.append(
+            "Scoped exception (a change of measurand, not noise): under "
+            "exponential escalation the emergency-Gini ordering becomes "
+            f"an extreme-tail-depth ordering (ρ = {exp_rho:.2f} vs "
+            "baseline).")
+    if sv_rho is not None:
+        bullets.append(
+            "Scoped exception: under the bounded survival curve it "
+            "becomes a benchmark-window inequality ordering "
+            f"(ρ = {sv_rho:.2f} vs baseline) — the tail beyond saturation "
+            "no longer distinguishes cities.")
+    doc.bullets(bullets)
     fc = [float(r["sensitive_pop_share"]) for r in read("flip_cells.csv")]
     doc.table(
         ["Metric", "Value"],

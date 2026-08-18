@@ -215,8 +215,10 @@ by a positive constant, the population-weighted percentiles, the typology, ρ,
 Jaccard, both Ginis, the p90/p50 ratio and the concentration index are
 unchanged **exactly** (regression-tested in
 `tests/test_deprivation_functions.py`). Only levels move: 15.76 → 0.0289. The
-Layer-2 form-swap alternative carries the same anchor, so the two forms coincide
-at 1.0 there and the alternative's free `scale` cancels. The everyday DLF needs
+Layer-2 form-swap alternatives carry the same anchor, so the swapped forms
+coincide at 1.0 there and each alternative's free `scale` cancels (the
+bounded survival swap reports on its own [0, 1] scale instead — 1 = full
+deprivation; ranks and Ginis are identical either way). The everyday DLF needs
 no anchor (it is bounded by Lmax = 1); set `reference_time_min: null` to report
 raw relative units instead. Every reported level names its own scale via the
 `units` column of `equity_indices.csv`.
@@ -989,8 +991,9 @@ sample the median envelope widths are 0.244 (everyday Gini) and 0.170
 (emergency Gini) under curvature against 0.014 for the compounding
 share, and 0.298 for the compounding share under the threshold axis —
 the quantitative form of "robust-to-g, meaning-from-g". (The form-swap
-axis is reported separately and is dominated by the benchmark-anchored
-exponential — see Layer 2 below for why its emergency envelope, 0.484,
+axis is reported separately and is dominated by the emergency
+escalation swaps — see Layer 2 below for why its emergency envelope,
+0.649 across the three escalation hypotheses,
 is a boundary-of-validity statement rather than noise.)
 `sensitivity/deprivation_curves.png` draws the functions being varied —
 baseline, the Layer-1 grid and the Layer-2 anchor-calibrated swaps —

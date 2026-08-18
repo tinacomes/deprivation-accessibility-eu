@@ -56,21 +56,26 @@ The Gini of everyday deprivation rises with population (elasticity
 **+0.062**, wild p = 0.0012), while the emergency Gini is size-flat
 (+0.004, wild p = 0.84). The paired slope difference is **−0.058 with
 wild p = 0.029** over all 67 cities. Robustness: the everyday-Gini slope
-is positive under **all 13 deprivation parameterisations** of the
-specification curve (+0.026 to +0.075), significant in 12/13 — the
+is positive under **all 14 deprivation parameterisations** of the
+specification curve (+0.026 to +0.075), significant in 13/14 — the
 exception is the concave Box-Cox form swap (+0.026, p = 0.082), a caveat
 to state.
 
 **The emergency half is conditional on beyond-benchmark escalation, and
 must be reported as such.** The EMS benchmarks (negligible ≤3–4 min,
 8-min urban standard, 15-min cut-off) define the cost scale up to
-15 minutes, and both literature-grounded DCF forms are calibrated to
-coincide at the 8-minute standard and the 15-minute cut-off. *Beyond*
-the 15-minute cut-off no benchmark exists —
+15 minutes, and all three literature-grounded escalation forms are
+calibrated to coincide there (identical 4/8/15-min ratio anchors).
+*Beyond* the 15-minute cut-off no benchmark exists —
 times out there measure only "how bad things are" — and this is exactly
-where the two forms diverge, so the emergency-Gini size behaviour splits
-by escalation hypothesis:
+where the forms diverge (at 60 min: 1.6× / 11× / 120× the benchmark
+cost), so the emergency-Gini size behaviour splits by escalation
+hypothesis:
 
+- **Saturating escalation (the bounded survival-based curve, 1 = full
+  deprivation, saturation ~30–45 min emerging from the anchors):
+  size-flat** (+0.001, p = 0.97) — the "should 1 not be full
+  deprivation?" framing gives the same headline as the baseline.
 - **Polynomial escalation (Box-Cox, the Cantillo/Delgado-Lindeman line;
   λ 1.4–2.2): size-flat** (slopes −0.006 to +0.014, all ns) — in
   agreement with the deprivation-FREE travel-time Gini, which is itself
@@ -88,10 +93,12 @@ by escalation hypothesis:
   dominate the Gini.
 
 Form-independent statements, safe under everything: everyday inequality
-rises with size under all 13 parameterisations; emergency inequality
+rises with size under all 14 parameterisations; emergency inequality
 **never falls** with size under any of them; and whether it is flat or
 rising is decided by the beyond-benchmark escalation form, which no
-benchmark pins down. The Box-Cox is the baseline by transfer provenance
+benchmark pins down — flat under two of the three literature-grounded
+escalation hypotheses (saturating and polynomial), rising only under
+the exponential. The Box-Cox is the baseline by transfer provenance
 (the ambulance-DCF line) and by its agreement with the raw-minutes Gini
 — not because the exponential is extreme. (History: the superseded
 45/60-min anchor window flattened the exponential to β = 0.024, slope
@@ -179,7 +186,7 @@ spans −0.02 to 0.74. The continuous `compounding_intensity` (which
 removes the threshold's leverage) shows the same regional pattern
 (p_perm = 0.0023). The class shares barely notice the deprivation
 function — median envelope width across the 67 cities is 1.4 pp under the
-curvature grid and 0.7 pp under the form swap, against **29.8 pp for the
+curvature grid and 0.9 pp under the form swaps, against **29.8 pp for the
 "how high is high" threshold**, a ~21× dominance
 (`deprivation_sensitivity_summary.csv`). Per-city assumption
 robustness: the "how high is high" threshold moves the HH share ~6×
@@ -229,16 +236,18 @@ never headline a grade-specific size gradient
   cross-sectional space-for-time.
 - **An everyday-Gini regional contrast** (H3) and **elderly compounding
   at the European level** (H5).
-- **An unconditional emergency-Gini trend** (H2: flat under polynomial
-  beyond-benchmark escalation and under the raw-minutes Gini, rising
-  under exponential escalation — always report the conditionality; the
-  safe unconditional statements are "never falls with size" and "the
-  everyday Gini rises under everything").
+- **An unconditional emergency-Gini trend** (H2: flat under saturating
+  and polynomial beyond-benchmark escalation and under the raw-minutes
+  Gini, rising only under exponential escalation — always report the
+  conditionality; the safe unconditional statements are "never falls
+  with size" and "the everyday Gini rises under everything").
 - **Rank-agreement universality** (min ρ 0.90+ holds over the curvature
-  grid and the everyday form swap; under exponential escalation the
-  emergency-Gini ranking becomes an extreme-tail-depth ordering, ρ =
-  0.19 vs baseline — report it as a change of measurand, with the
-  saturation numbers, not as noise).
+  grid and the everyday form swap; the two emergency escalation swaps
+  change the measurand and are scoped exceptions — exponential makes the
+  emergency-Gini ranking an extreme-tail-depth ordering, ρ = 0.19 vs
+  baseline; the bounded survival swap makes it a benchmark-window
+  inequality ordering, ρ = 0.49 — report both as changes of measurand,
+  not as noise).
 - **Two clustering algorithms agreeing on one desert group** (H4: Ward's
   cut nests inside k-means', it does not coincide with it).
 
@@ -322,8 +331,8 @@ never headline a grade-specific size gradient
 | Gaussian silhouette null | Parametric null: same-covariance multivariate-normal samples put through the same k-selection — is the observed silhouette surprising with NO cluster structure? |
 | peeled clustering | The re-clustering with the flagged outlier group removed (fresh scaling, full diagnostics) — "is there a typology among ordinary cities?" |
 | specification curve | The headline regression re-estimated under every deprivation parameterisation (curvature grid + form swaps); a claim is robust when the whole curve sits on one side of zero. |
-| rank agreement (ρ/τ) | Spearman/Kendall correlation of the *city ranking* under a variant vs baseline — "do city orderings survive the assumption?" (min ρ 0.90 across the curvature grid and everyday form swap; under the exponential escalation form the emergency-Gini ordering becomes an extreme-tail-depth ordering, ρ 0.19 — a change of measurand, reported as such). |
-| flip cells | Cells whose typology class changes under any deprivation variant — the spatial footprint of an assumption. Over all 67 cities the population-weighted sensitive share averages 15.8 % (5.2–36.1 %); the complementary ~84 % keeps its class under every parameterisation (the typology is rank-based, so even the harsh exponential form swap barely moves it). Distinct from the ~24 % *engine* flip (E.1), which is a routing artifact, not an assumption. |
+| rank agreement (ρ/τ) | Spearman/Kendall correlation of the *city ranking* under a variant vs baseline — "do city orderings survive the assumption?" (min ρ 0.90 across the curvature grid and everyday form swap; the two emergency escalation swaps change what the emergency Gini measures and are the scoped exceptions — exponential → an extreme-tail-depth ordering, ρ 0.19; bounded survival → a benchmark-window inequality ordering, ρ 0.49 — changes of measurand, reported as such). |
+| flip cells | Cells whose typology class changes under any deprivation variant — the spatial footprint of an assumption. Over all 67 cities the population-weighted sensitive share averages 18.1 % (5.2–53.0 %); the complementary ~82 % keeps its class under every parameterisation — including the bounded survival swap, the largest single mover because it reorders the emergency percentile surface hardest. Distinct from the ~24 % *engine* flip (E.1), which is a routing artifact, not an assumption. |
 | Layer 1 / 2 / 3 | Sensitivity layers: deprivation curvature / functional-form swap / accessibility model (κ, γ, bandwidth, k-nearest, mode set, unreachable policy). |
 | threshold axis | The "how high is high" percentile cut sweep — the dominant lever on the HH share (hence the continuous intensity as headline). |
 | degenerate variant | A sensitivity variant where one tie block holds > 50 % of population (e.g. κ = 0.1 floors the core at zero) — flagged and excluded from acceptance ranges. |

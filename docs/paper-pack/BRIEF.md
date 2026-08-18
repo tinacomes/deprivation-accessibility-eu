@@ -46,7 +46,8 @@ benchmarks) on a 100 m grid across 67 European functional urban areas in 24 coun
 City size buys everyday access (elasticity −0.20) but not emergency
 relief (−0.06, bounded within ±0.13), and everyday inequality *rises*
 with size while emergency inequality never falls — size-flat under
-polynomial beyond-cut-off cost escalation, rising under exponential (a
+saturating and polynomial beyond-cut-off cost escalation, rising only
+under exponential (a
 conditionality the benchmarks cannot resolve and the paper reports as a
 result); the divergence is
 structured by country and macro-region, not size — culminating in a
@@ -97,7 +98,7 @@ RQ4. What does the deprivation framing add over pure access?
 | # | Claim | Key numbers | Table (data/) | Figure (figures/) |
 |---|---|---|---|---|
 | H1 | Size buys everyday access, not emergency care | ev elasticity −0.196 (wild p 2e-4, R² .44); em −0.059 (clustered p .16, wild p .21; TOST bound ±0.13); paired diff +0.137 (wild p .002); LOO [−.204,−.185] | inference_scaling_clustered, inference_equivalence, inference_regime_paired, inference_influence | scaling_elasticity.png |
-| H2 | Everyday inequality grows with size, emergency doesn't | gini_ev slope +0.062 (wild p .0012); gini_em +0.004 (wild p .84); paired diff −0.058 (wild p .029, 67 cities); spec curve +0.026..+0.075, 12/13 significant; emergency-Gini size behaviour is CONDITIONAL on the beyond-cut-off escalation form: flat under Box-Cox (−.006..+.014, ns; matches the raw-minutes Gini, −.015 p .42), rising under exponential (+.098, p .0003) — report both, never one | inference_scaling_clustered, inference_regime_paired, specification_curve | specification_curve.png |
+| H2 | Everyday inequality grows with size, emergency doesn't | gini_ev slope +0.062 (wild p .0012); gini_em +0.004 (wild p .84); paired diff −0.058 (wild p .029, 67 cities); spec curve +0.026..+0.075, 13/14 significant; emergency-Gini size behaviour is CONDITIONAL on the beyond-cut-off escalation form: flat under the bounded survival curve (+.001, p .97) and under Box-Cox (−.006..+.014, ns; matches the raw-minutes Gini, −.015 p .42), rising only under exponential (+.098, p .0003) — report the three-way split, never one branch | inference_scaling_clustered, inference_regime_paired, specification_curve | specification_curve.png |
 | H3 | Country-level regional structure | gini_em f .74 p_perm .0024; gap p_perm .010; ρ p_perm .0015; compounding p_perm .0008 / .0023; gini_ev NOT regional (p_perm .27) | inference_regional | region_strips.png |
 | H4 | No city types — a coverage severity gradient + desert group | main k-means 62/5 (sil .65, bootstrap ARI .87, null p .001, ARI-vs-region .001); Ward nests inside it 65/2; peeled 48/14 same axis (sil .38, ARI .74, p .001, ARI-vs-region .07), Ward nested 56/6; feature-set robustness: main ARI 1.00, peeled ARI .97 (cluster_feature_robustness) | cluster_null, cluster_null_peeled, cityvector_clustered(_peeled) | cityplane.png |
 | H5 | Children carry it almost everywhere; elderly locally | children ratio 1.27, >1 in 88 % of cities, HH gap +0.13 (CEE 1.44, North 1.30); elderly 0.96, 37 % | vulnerability_summary, vulnerability | vulnerability_strata.png |
@@ -131,13 +132,15 @@ per city × sweep axis, baseline / min / max / width:
 | axis | gini_everyday | gini_emergency | HH share |
 |---|---:|---:|---:|
 | curvature (Layer 1) | 0.244 | 0.170 | 0.014 |
-| form swap (Layer 2) | 0.035 | 0.484 | 0.007 |
+| form swap (Layer 2) | 0.035 | 0.649 | 0.009 |
 | "how high is high" threshold | — | — | 0.298 |
 
-The form-swap gini_emergency envelope (0.484) is the two
+The form-swap gini_emergency envelope (0.649) is the three
 literature-grounded escalation hypotheses disagreeing beyond the
-15-minute cut-off, where no benchmark exists: Box-Cox (ambulance-DCF
-line) gives a size-flat Gini in agreement with the raw-minutes Gini;
+15-minute cut-off, where no benchmark exists: the bounded survival
+curve (1 = full deprivation, saturating ~30–45 min) and Box-Cox
+(ambulance-DCF line) both give a size-flat Gini — the Box-Cox in
+agreement with the raw-minutes Gini;
 exponential (Holguín-Veras line) makes the Gini an extreme-tail-depth
 index (saturating at median 0.96, decoupled from the time
 distribution's inequality, ρ 0.04) that rises with size (+0.098,
@@ -152,15 +155,17 @@ point, which is exactly why the calibration carries information and why
 the *slope* claims are defended by the specification curve rather than by
 any single parameterisation. **Ranks and classes are robust**: the same
 curvature moves the compounding share by 1.4 pp, the form swap by 0.7 pp
-(the typology is rank-based, so even the harsh exponential barely
-touches it), against 29.8 pp for the threshold choice — the threshold
+(the typology is rank-based, so the form swaps move it modestly —
+the bounded survival swap is the largest single mover), against
+29.8 pp for the threshold choice — the threshold
 dominates curvature by ~21×, which is why the continuous
 `compounding_intensity` is the headline and the class shares always
 travel with a threshold sweep. City-level *Gini orderings* are robust
-with the same scoped exception: rank agreement min ρ 0.90 over the
-curvature grid and everyday form swap; the benchmark-anchored
-exponential reorders the emergency-Gini ranking (ρ = 0.19) exactly
-because it changes what the Gini measures there.
+with the two scoped exceptions: rank agreement min ρ 0.90 over the
+curvature grid and everyday form swap; both emergency escalation swaps
+reorder the emergency-Gini ranking (exponential ρ = 0.19, bounded
+survival ρ = 0.49) exactly
+because each changes what the Gini measures there.
 
 **What survives dropping the layer entirely** — H7 above
 (`deprivation_vs_access.csv`): the everyday gradient and the emergency
@@ -171,10 +176,11 @@ outcome (R² 0.44 vs 0.16) and the deserts, which access averages hide.
 Robustness inventory (cite as a block): rank agreement min ρ
 .90/.95/.98 for gini_everyday / divergence_gap / gini_emergency over the
 curvature grid + everyday form swap (rank_agreement.csv, 67 cities; the
-benchmark-anchored exponential is the flagged exception, emergency ρ
-.19); deprivation-variant flip-cell share 15.8 % of population on
-average, 5.2–36.1 % across the 67 cities (flip_cells.csv), with the HH
-class share moving 1.9 pp on average and 5.7 pp at most
+emergency escalation swaps are the flagged exceptions, emergency ρ
+.19 exponential / .49 bounded survival); deprivation-variant flip-cell
+share 18.1 % of population on
+average, 5.2–53.0 % across the 67 cities (flip_cells.csv), with the HH
+class share moving 2.1 pp on average and 6.1 pp at most
 (typology_share_envelope.csv); the clustering feature-set check (main
 partition ARI 1.00, peeled .97 with the benchmark shares included —
 cluster_feature_robustness.csv); engine
