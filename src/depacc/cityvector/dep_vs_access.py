@@ -459,7 +459,9 @@ def _plot_scaling_by_grade(merged: pd.DataFrame, by_grade: pd.DataFrame,
                         color=colour, lw=1.8, zorder=2)
         ax.set_xscale("log"); ax.set_yscale("log")
         ax.set_xlabel("FUA population")
-        ax.set_ylabel(f"mean {regime} deprivation")
+        ax.set_ylabel("mean everyday deprivation (level, 0–1)"
+                      if regime == "everyday" else
+                      "mean emergency deprivation cost (× g(15 min))")
         ax.set_title(regime, fontsize=10)
         ax.legend(frameon=False, fontsize=8, loc="lower left")
         for s in ("top", "right"):

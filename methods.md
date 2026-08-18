@@ -299,10 +299,39 @@ car-based and non-substitutable, keeps its own convex DCF and is unaffected.
 
 ## 3a. Cross-regime standardisation (mandatory)
 
-The everyday (bounded logistic DLF) and emergency (unbounded Box-Cox DCF)
-surfaces are on incomparable scales — and the emergency reporting anchor of
+The two regimes use deliberately different mathematical objects, and the
+terminology keeps them apart: the everyday surface is a deprivation
+**level** (bounded DLF, 1 = full deprivation — past the ceiling more
+minutes change nothing, because everyday services are substitutable or
+forgone), while the emergency surface is a deprivation **cost** (unbounded
+convex DCF — every extra minute keeps costing, because emergency outcomes
+keep worsening). This asymmetry is not an inconsistency to be harmonised
+away; it *is* the two-regime claim. Forcing both into levels would assert
+that a 60-minute ambulance is no worse than a 30-minute one; forcing both
+into costs would assert that living far from a supermarket is unboundedly
+catastrophic. The price of the asymmetry is a discipline: **only
+unit-invariant comparisons are allowed across regimes.** Three families
+qualify — (i) **elasticities** (slopes of log outcomes on log population),
+which are invariant to any constant rescaling of either surface; (ii)
+**Ginis**, which are mean-normalised and therefore unit-free — comparing
+the inequality of a level with the inequality of a cost is the same move
+as comparing an income Gini with a wealth Gini; and (iii) **rank-based
+statistics** (percentile surfaces, the typology, ρ, Jaccard), invariant to
+any monotone transform. What is *never* valid is reading raw magnitudes
+across regimes ("emergency deprivation is bigger than everyday
+deprivation" is a category error — the descriptive tables print the two
+means side by side for completeness, and their units differ). The one
+statistic that subtracts across regimes, the divergence gap, is a
+difference of two dimensionless inequality indices; it is form-dependent
+by construction and carries the widest sensitivity envelope in §7a, which
+is why it never carries a headline alone.
+
+The emergency (unbounded Box-Cox DCF)
+surface and the everyday (bounded logistic DLF) surface are therefore on
+incomparable scales — and the emergency reporting anchor of
 §3c does **not** change that: it makes the emergency level interpretable in its
-own units (multiples of the 45-min clinical-threshold cost), which is not the
+own units (multiples of the 15-min benchmark cost g(15), per the 2026-08
+re-anchor), which is not the
 everyday unit (a fraction of the saturation ceiling). Raw magnitudes are
 **never** summed,
 differenced, co-plotted on a shared axis, or clustered together. The
@@ -1027,6 +1056,28 @@ between/beyond the anchors differs:
   β = 0.024 — slope −0.001, p = 0.97 — by treating 45/60 min as a
   benchmark window, which it is not; parameters in the config history
   note.)
+- Emergency, third branch: the convex **Box-Cox DCF → a BOUNDED
+  survival-based curve** (`emergency_survival`) — deprivation read as
+  1 − survival prospect, a zero-anchored logistic with ceiling
+  `Lmax = 1` = **full deprivation**, answering "should 1 not correspond
+  to full deprivation?" empirically rather than by assertion. Motivated
+  by the EMS survival literature (survival benefit concentrated below
+  ~4 min, Pons 2005; response-time–mortality gradients, Blanchard 2012,
+  Nicholl 2007; survival essentially exhausted by ~25–30 min for the
+  most time-critical conditions), but its parameters come from the
+  *same* benchmark ratio anchors as every other swap — `t0, k` solved
+  from `D(4)/D(15) = 0.117` and `D(8)/D(15) = 0.351` →
+  `t0 = 12.55 min`, `k = 0.233/min` (unique solution). Notably the
+  saturation point is **not imposed**: with those anchors fixed, the
+  fitted curve reaches 98 % of full deprivation at 30 min and 99.9 % at
+  45 — the benchmark window itself places "full deprivation" at
+  ~30–45 min, consistent with the survival literature it is motivated
+  by. Beyond-cut-off escalation collapses to 1.61× g(15) at 60 min
+  (vs Box-Cox ~11×, exponential ~120×), so the three Layer-2 emergency
+  forms now span the escalation-hypothesis space — **saturating /
+  polynomial / exponential** — with the polynomial Box-Cox as the
+  published baseline by transfer provenance and by agreement with the
+  deprivation-free travel-time Gini.
 
 The calibrated parameters and their anchor equations live in
 `config/deprivation.yaml → deprivation.alternatives.*` (`note:` fields, exactly

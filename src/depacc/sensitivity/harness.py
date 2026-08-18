@@ -59,21 +59,26 @@ def expand_variants(cfg: dict, grid: dict) -> list[Variant]:
 
     fs = grid.get("form_swap", {}) or {}
     for entry in fs.get("everyday", []) or []:
-        spec, form = _resolve_form_swap(cfg, ev0, entry)
-        variants.append(Variant(f"formswap_everyday_{form}", "form_swap", spec, em0))
+        spec, label = _resolve_form_swap(cfg, ev0, entry, regime="everyday")
+        variants.append(Variant(f"formswap_everyday_{label}", "form_swap", spec, em0))
     for entry in fs.get("emergency", []) or []:
-        spec, form = _resolve_form_swap(cfg, em0, entry)
-        variants.append(Variant(f"formswap_emergency_{form}", "form_swap", ev0, spec))
+        spec, label = _resolve_form_swap(cfg, em0, entry, regime="emergency")
+        variants.append(Variant(f"formswap_emergency_{label}", "form_swap", ev0, spec))
     return variants
 
 
-def _resolve_form_swap(cfg: dict, base_spec: dict, entry: dict) -> tuple[dict, str]:
+def _resolve_form_swap(cfg: dict, base_spec: dict, entry: dict,
+                       regime: str = "") -> tuple[dict, str]:
     """Resolve a Layer-2 form_swap entry to a concrete deprivation spec.
 
     An entry is either ``{alternative: <name>}`` — resolved from
     ``deprivation.alternatives`` in the merged config (the single source of
     truth for the anchor-calibrated params) — or an inline ``{form, params,
-    ...}`` override merged over the regime baseline. Returns (spec, form_label).
+    ...}`` override merged over the regime baseline. Returns (spec, label);
+    for a named alternative the label is the alternative name minus its
+    regime prefix (so 'emergency_survival' -> 'survival', and two
+    alternatives sharing a functional form cannot collide), for an inline
+    entry it is the form.
     """
     if "alternative" in entry:
         alts = (cfg.get("deprivation", {}) or {}).get("alternatives", {}) or {}
@@ -83,8 +88,9 @@ def _resolve_form_swap(cfg: dict, base_spec: dict, entry: dict) -> tuple[dict, s
                 f"form_swap references unknown alternative '{name}'; "
                 f"available: {sorted(alts)}")
         spec = dict(alts[name])
-    else:
-        spec = {**base_spec, **entry}
+        label = name[len(regime) + 1:] if name.startswith(f"{regime}_") else name
+        return spec, label
+    spec = {**base_spec, **entry}
     return spec, str(spec.get("form"))
 
 

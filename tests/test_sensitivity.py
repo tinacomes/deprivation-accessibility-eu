@@ -180,6 +180,21 @@ def test_form_swap_resolves_named_alternatives():
     assert em.everyday == cfg["deprivation"]["everyday"]
 
 
+def test_form_swap_survival_variant_resolves_with_alternative_name():
+    """The bounded survival swap is named after the ALTERNATIVE (not its
+    logistic form), so it cannot collide with other logistic entries and the
+    persisted variant names stay stable."""
+    cfg = load_config()
+    grid = {"form_swap": {"emergency": [{"alternative": "emergency_survival"}]}}
+    variants = expand_variants(cfg, grid)
+    by_name = {v.name: v for v in variants}
+    sv = by_name["formswap_emergency_survival"]
+    assert sv.layer == "form_swap"
+    assert sv.emergency["form"] == "logistic"
+    assert sv.emergency["params"]["Lmax"] == 1.0
+    assert sv.everyday == cfg["deprivation"]["everyday"]
+
+
 def test_form_swap_unknown_alternative_raises():
     cfg = load_config()
     with pytest.raises(KeyError, match="unknown alternative"):

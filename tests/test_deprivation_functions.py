@@ -116,6 +116,30 @@ def test_shipped_alternatives_are_anchor_calibrated():
         assert g.source and "TODO(cite)" not in g.source
 
 
+def test_survival_alternative_is_bounded_and_anchor_calibrated():
+    """The bounded survival-based DCF swap: 1 = full deprivation, the SAME
+    4/8/15-min benchmark ratio anchors as the baseline Box-Cox, and
+    saturation (~full deprivation by 30-45 min) emerging from those anchors."""
+    cfg = load_config()
+    sv = DeprivationFunction.from_spec(
+        deprivation_spec(cfg, "emergency", alternative="emergency_survival"))
+    base = DeprivationFunction.from_spec(deprivation_spec(cfg, "emergency"))
+    assert sv.form == "logistic" and sv.kind == "DCF"
+    assert sv.source and "TODO(cite)" not in sv.source
+    # Benchmark-window ratio anchors match the baseline exactly.
+    for t in (4.0, 8.0):
+        assert float(sv(t)) / float(sv(15.0)) == pytest.approx(
+            float(base(t)) / float(base(15.0)), rel=2e-3)
+    # Bounded: 1 = full deprivation, approached but never exceeded.
+    assert float(sv(30.0)) == pytest.approx(0.982, abs=2e-3)
+    assert float(sv(45.0)) > 0.999
+    assert float(sv(240.0)) <= 1.0
+    # The three escalation hypotheses diverge only beyond the 15-min cut-off:
+    # saturating < polynomial (Box-Cox ~11x) at 60 min.
+    assert float(sv(60.0)) / float(sv(15.0)) < 2.0
+    assert float(base(60.0)) / float(base(15.0)) > 10.0
+
+
 def test_from_spec_round_trip():
     spec = {"kind": "DCF", "form": "box_cox",
             "params": {"lam": 1.2, "scale": 3.0, "shift": 1.0},

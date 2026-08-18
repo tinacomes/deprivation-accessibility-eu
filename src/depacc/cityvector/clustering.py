@@ -559,9 +559,11 @@ def _plot_cross_city(cfg: dict, vectors: pd.DataFrame, derived: Path) -> None:
                     color="#52514e")
     ax.set_xscale("log"); ax.set_yscale("log")
     ax.set_xlabel("FUA population")
-    ax.set_ylabel("mean deprivation (population-weighted)")
+    ax.set_ylabel("mean deprivation, population-weighted\n"
+                  "(everyday: level 0–1 · emergency: cost × g(15 min))")
     ax.set_title("Scaling of mean deprivation with city size, by regime\n"
-                 "(log-log; cross-sectional space-for-time)", fontsize=10)
+                 "(log-log; cross-sectional space-for-time; units differ "
+                 "by regime — compare slopes, not levels)", fontsize=10)
     ax.legend([plt.Line2D([], [], color=c, marker=m, ls="-", lw=2)
                for _, _, c, m in series], [s[1] for s in series],
               frameon=False, fontsize=8, loc="lower left")

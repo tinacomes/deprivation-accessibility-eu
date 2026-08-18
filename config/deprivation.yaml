@@ -209,6 +209,49 @@ deprivation:
         the LEVEL anchor g(45)=1 (the logistic ceiling Lmax=1), i.e.
         scale = lam/((45+1)^lam - 1) = 0.077. Curvature (lam) is thus the only
         free shape parameter and it is fixed by the anchor, not chosen.
+    emergency_survival:
+      # Convex Box-Cox DCF -> BOUNDED saturating DLF-type curve: deprivation
+      # = 1 - survival prospect, so 1 means FULL deprivation (the outcome can
+      # no longer be averted) instead of an ever-escalating cost. Motivated by
+      # the EMS survival literature — survival declines steeply with response
+      # time (Pons 2005: benefit only below ~4 min; Blanchard 2012;
+      # Nicholl 2007 distance-mortality) and is essentially exhausted by
+      # ~25-30 min for the most time-critical conditions — i.e. the harm has a
+      # ceiling, which the unbounded cost framing denies. Same anchor
+      # discipline as every Layer-2 swap: the FORM changes, the SAME
+      # benchmark-window anchors are held fixed. NOTE the saturation point is
+      # NOT imposed: with the 4/8/15-min ratio anchors fixed, the fitted curve
+      # reaches 98% of full deprivation at 30 min and 99.9% at 45 min on its
+      # own — the benchmark window itself puts "full deprivation" at
+      # ~30-45 min. Beyond-cut-off escalation collapses to 1.61x g(15) at
+      # 60 min (vs Box-Cox 11x, exponential ~120x): this is the SATURATING
+      # escalation hypothesis, the third branch of the escalation split
+      # (methods §7a Layer 2).
+      kind: "DCF"
+      form: "logistic"
+      params: { Lmax: 1.0, t0: 12.5455, k: 0.23338 }
+      # No reporting anchor: the surface is already interpretable on [0, 1]
+      # with 1 = full deprivation (division by g(15)=0.620 would only rescale
+      # a bounded curve; ranks/Ginis identical either way).
+      reference_time_min: null
+      source: >-
+        Form: bounded survival-based deprivation (1 - survival prospect),
+        motivated by the EMS response-time survival literature (Pons et al.
+        2005; Blanchard et al. 2012; Nicholl et al. 2007; classic OHCA
+        survival-decline models, e.g. Larsen et al. 1993 — VERIFY before
+        citing in the paper). Parameters solved from the SAME EMS benchmark
+        anchors as the baseline DCF, not from any survival dataset. See
+        methods.md §7a Layer 2.
+      note: >-
+        Anchors held fixed with the baseline Box-Cox DCF (lam=1.8, shift=1;
+        methods.md §3): zero-anchored logistic with Lmax=1 (full deprivation),
+        (t0, k) solved from the two benchmark RATIO anchors
+        D(4)/D(15) = g_bc(4)/g_bc(15) = 0.11723 and
+        D(8)/D(15) = g_bc(8)/g_bc(15) = 0.35058
+        -> t0 = 12.5455 min, k = 0.23338 /min (unique solution; reproduced to
+        6 decimals by the implementation). Resulting curve: D(15) = 0.620,
+        D(30) = 0.982, D(45) = 0.9995 — saturation at ~30-45 min emerges from
+        the anchors rather than being assumed.
     emergency_exponential:
       # Convex Box-Cox DCF -> exponential DCF, same EMS-benchmark anchors:
       # passes through the baseline Box-Cox at BOTH 8 and 15 min (the

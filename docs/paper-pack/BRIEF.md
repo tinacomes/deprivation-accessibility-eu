@@ -192,6 +192,25 @@ external benchmark E.3 passed (`docs/validation.md`).
   better-behaved outcome (R² .44 vs .16 — the DLF discounts
   welfare-irrelevant variation); deserts invisible to access averages.
   Never present the deprivation functions as decoration on travel times.
+- **Level vs cost — the two regimes are different objects, and only
+  unit-invariant comparisons cross between them.** Everyday deprivation
+  is a LEVEL (bounded, 1 = full deprivation); emergency deprivation is a
+  COST (unbounded convex, reported in multiples of the 15-min benchmark
+  cost g(15) — say "deprivation cost", never bare "deprivation", when
+  quoting an emergency level). The asymmetry is the two-regime claim,
+  not an inconsistency: forcing both into levels asserts a 60-min
+  ambulance is no worse than a 30-min one; forcing both into costs
+  asserts unbounded everyday catastrophe. Valid cross-regime
+  comparisons: elasticities (scale-free), Ginis (mean-normalised — the
+  income-vs-wealth-Gini move), rank/percentile statistics (monotone-
+  invariant). Never read raw magnitudes across regimes ("emergency
+  deprivation is bigger than everyday" is a category error). The
+  divergence gap is the one cross-regime subtraction — a difference of
+  dimensionless indices, form-dependent, widest envelope in the pack —
+  never a standalone headline. (methods §3a; the bounded survival-based
+  Layer-2 swap probes the level framing empirically: 1 = full
+  deprivation, saturation at ~30–45 min emerging from the benchmark
+  anchors.)
 - **Robust-to-g, meaning-from-g.** Rank-based results (typology, ρ, city
   orderings) are near-invariant to the deprivation parameterisation —
   say so; level/inequality results are where calibration carries
