@@ -35,14 +35,12 @@ verification (a controlled rescale, machine-precision checked).
    and this brief win).
 
 ## The paper in one paragraph (abstract seed)
+# writing note: ensure that a non-expert reader can understand the full expert, this is to make them read the paper. Give headline results here, backed up with some detail. 
 
-Do cities deliver everyday services and emergency care together as they
-grow — and do the same residents carry both burdens? We measure
-potential deprivation — literature-anchored loss functions of effective
-travel time, not raw access — for two regimes (everyday walkable
+Critical infrastructures are vital for urban populations. Many papers have attempted to measure access to everyday services or to emergency care. Yet access as a uniform function does not take into account potential deprivation that measure the impact on welfare. We aim to understand how deprivation co-evolves for for two regimes (everyday walkable
 services via a congestion-adjusted soft-minimum; emergency care via
 nearest-facility time under a convex cost anchored on EMS response
-benchmarks) on a 100 m grid across 67 European functional urban areas in 24 countries.
+benchmarks) on a 100 m grid across 67 European functional urban areas in 24 countries. We compare different city sizes and contexts. 
 City size buys everyday access (elasticity −0.20) but not emergency
 relief (−0.06, bounded within ±0.13), and everyday inequality *rises*
 with size while emergency inequality never falls — size-flat under
@@ -50,7 +48,7 @@ saturating and polynomial beyond-cut-off cost escalation, rising only
 under exponential (a
 conditionality the benchmarks cannot resolve and the paper reports as a
 result); the divergence is
-structured by country and macro-region, not size — culminating in a
+structured by country and macro-region, not size. We identify a
 one-dimensional severity ordering of emergency-periphery coverage whose
 extreme is five capital-city "emergency deserts" invisible to access
 averages. Compounding — the same population deprived in both regimes —
@@ -62,13 +60,12 @@ measures cannot.
 
 ## Research questions
 
-RQ1. Does city size deliver everyday access and emergency capability
-     together (levels and inequality)?
+RQ1. Do larger cities provide better everyday services and emergency capability (levels and inequality)?
 RQ2. Where do the two deprivations diverge, and what structures the
      divergence (size, country, region, coverage)?
 RQ3. Who carries compounding deprivation (co-location typology;
      vulnerability strata)?
-RQ4. What does the deprivation framing add over pure access?
+RQ4. What does analysing deprivation add over mere access metrics?
 
 ## Contribution claims
 
@@ -81,13 +78,13 @@ RQ4. What does the deprivation framing add over pure access?
    comparably across 67 FUAs / 24 countries.
 2. Regime-specific agglomeration: size buys everyday access, not
    emergency relief — with the difference itself tested (paired, wild
-   p = 0.002/0.028) and the emergency null bounded (TOST).
+   p = 0.002/0.028) and the emergency null bounded (TOST). At the same time, size increases everyday inequality.
 3. The geography of divergence: country-level regional structure; the
    emergency-coverage severity gradient (covered → partial desert →
    desert) replacing any city typology; deserts invisible to access
    averages.
 4. Compounding and its carriers: above-independence co-location nearly
-   everywhere; children the consistently burdened stratum at the
+   everywhere; children the consistently carry the burden at the
    European level.
 5. A robustness architecture usable as a template: rank-invariance by
    construction, specification curve, rank agreement, engine
@@ -198,6 +195,7 @@ external benchmark E.3 passed (`docs/validation.md`).
   better-behaved outcome (R² .44 vs .16 — the DLF discounts
   welfare-irrelevant variation); deserts invisible to access averages.
   Never present the deprivation functions as decoration on travel times.
+  - **distinguish deprivation levels from deprivation cost** be explicit about the fact that we use level for everyday access and deprivation cost for emergencies. Say how and in how far this is comparable. 
 - **Level vs cost — the two regimes are different objects, and only
   unit-invariant comparisons cross between them.** Everyday deprivation
   is a LEVEL (bounded, 1 = full deprivation); emergency deprivation is a
@@ -270,6 +268,8 @@ external benchmark E.3 passed (`docs/validation.md`).
   constant — footnote when used.
 - The everyday composite time above the walk cutoff behaves as a count
   of unmet service categories, not a travel time (methods §4.2 caveat).
+  - no confusion of Deprivation level and deprivation cost
+  - avoid triplets and --- and not xxx, but xxx phrases. 
 
 ## Methods facts the writer needs (full text: methods.md)
 
@@ -393,33 +393,43 @@ Still open, and outside the results: the DE registry counts carry
 verify-before-publication flags (`docs/validation.md`).
 
 ## Suggested skeleton
-
+PREFACE
+**Abstract**
+Abstract may not exceed 250 words. It may include up to three cited (non-numerical) references.
+**Significance Statement**
+Should not exceed 120 words but should be at least 50 words in length. It should not include any references.
+MAIN TEXT
 1. **Introduction** — 15-minute city vs emergency capability; the
-   compounding question; deprivation-not-access framing (RQ1–4).
-2. **Methods** — condensed from methods.md §§1–5 + §4.4; Table 1 =
-   sample composition + descriptives (cities_descriptives.csv).
-3. **Results**
-   3.1 Regime-specific agglomeration (H1, Fig scaling_elasticity).
-   3.2 Inequality scales with size only for the everyday regime (H2,
+   compounding question; deprivation-not-access framing (RQ1–4). 
+2. **Results**
+ensure the results can be understood without having read materials and methods. include also overview figure of all cities here. 
+ 2.1 Regime-specific agglomeration (H1, Fig scaling_elasticity).
+   2.2 Inequality scales with size only for the everyday regime (H2,
        Fig specification_curve as robustness inset).
-   3.3 The geography of divergence (H3 + H4: Fig cityplane with
+   2.3 The geography of divergence (H3 + H4: Fig cityplane with
        envelope whiskers, Fig region_strips; the severity gradient,
        Fig scaling_by_coverage_grade; desert contrast table).
-   3.4 Compounding and its carriers (H6 + H5: Fig rho_ranked,
+   2.4 Compounding and its carriers (H6 + H5: Fig rho_ranked,
        Fig vulnerability_strata, Fig compounding_gallery).
-   3.5 Deprivation vs access (H7 table; fold into 3.1–3.3 if tight).
-4. **Robustness** — lead with the deprivation layer itself (Fig
+   2.5 Deprivation vs access (H7 table; fold into 3.1–3.3 if tight).
+
+3. **Discussion**
+3.1 Robustness — lead with the deprivation layer itself (Fig
    deprivation_curves: what is varied, and the pure-access line it is
    varied against; the envelope table: levels move, ranks do not), then
    the inventory block (spec curve, rank agreement, engine check,
    threshold-vs-knob dominance). Most of it can live in SI with one
    summarising paragraph, but the curve figure earns a main-text slot in
    a paper whose contribution is the deprivation framing.
-5. **Discussion** — regime-specific agglomeration meets national
+3.2 Implications for theory and practice. Focus on resilience theory and urban analytics. 
+regime-specific agglomeration meets national
    emergency-system geography; policy: everyday inequality is a big-city
    problem, emergency deprivation a national-coverage problem; children
    as the systematic carriers.
-6. **SI** — per-city table (cities_descriptives), the 67 per-city
+
+4. **Materials and Methods** — condensed from methods.md §§1–5 + §4.4; Table 1 =
+   sample composition + descriptives (cities_descriptives.csv).
+5. **SI** — per-city table (cities_descriptives), the 67 per-city
    compounding maps (`figures/cities/`, indexed in its README), all
    sensitivity tables, validation (E.1–E.5), the glossary and stats guide
    from docs/results-headlines.md.
