@@ -497,6 +497,16 @@ def run(data: Path) -> int:
             "deprivation_sensitivity_summary",
             round(float(thr_hh.width.median() / curv_hh.width.median())), 21,
             1)
+    fs_hh = dss[(dss.axis == "form_swap") & (dss.target == "share_HH")]
+    a.check("HH envelope: curvature median width (pp)",
+            "deprivation_sensitivity_summary",
+            round(float(curv_hh.width.median()), 3), 0.014, 0.0005)
+    a.check("HH envelope: form-swap median width (pp)",
+            "deprivation_sensitivity_summary",
+            round(float(fs_hh.width.median()), 3), 0.007, 0.0005)
+    a.check("HH envelope: threshold median width (pp)",
+            "deprivation_sensitivity_summary",
+            round(float(thr_hh.width.median()), 3), 0.298, 0.0005)
     curv_gini = dss[(dss.axis == "curvature")
                     & (dss.target == "gini_everyday")]
     a.check("curvature moves gini_everyday (median width)",

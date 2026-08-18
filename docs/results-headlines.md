@@ -179,7 +179,7 @@ spans −0.02 to 0.74. The continuous `compounding_intensity` (which
 removes the threshold's leverage) shows the same regional pattern
 (p_perm = 0.0023). The class shares barely notice the deprivation
 function — median envelope width across the 67 cities is 1.4 pp under the
-curvature grid and 0.6 pp under the form swap, against **29.9 pp for the
+curvature grid and 0.7 pp under the form swap, against **29.8 pp for the
 "how high is high" threshold**, a ~21× dominance
 (`deprivation_sensitivity_summary.csv`). Per-city assumption
 robustness: the "how high is high" threshold moves the HH share ~6×
