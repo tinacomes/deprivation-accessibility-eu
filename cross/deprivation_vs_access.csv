@@ -1,6 +1,6 @@
 block,regime,kind,outcome,elasticity,se,p,r2,n_cities,inference
 size_elasticity,everyday,deprivation,mean_everyday,-0.196346387089927,0.022812216136966965,7.495036465460434e-18,0.4425352267172252,67,"log-log, country-clustered SE; cross-sectional space-for-time"
-size_elasticity,everyday,access,everyday_median_time,-0.2366032334727194,0.05742508064594035,3.7853175552480435e-05,0.15964592431459212,67,"log-log, country-clustered SE; cross-sectional space-for-time"
+size_elasticity,everyday,access,everyday_median_time,-0.23660300871724665,0.05742502701964431,3.785318643593172e-05,0.15964576319824708,67,"log-log, country-clustered SE; cross-sectional space-for-time"
 size_elasticity,everyday,access,everyday_mean_time,-0.17814035465054076,0.030352500495578572,4.382982428463272e-09,0.3121879546951447,67,"log-log, country-clustered SE; cross-sectional space-for-time"
 size_elasticity,emergency,deprivation,mean_emergency,-0.05933961362089446,0.04253212843394655,0.16296412773213742,0.018284850689193055,67,"log-log, country-clustered SE; cross-sectional space-for-time"
 size_elasticity,emergency,access,emergency_median_time,-0.043309625048384925,0.025710091192989924,0.0920777461286868,0.038555533458702995,67,"log-log, country-clustered SE; cross-sectional space-for-time"

@@ -1,2 +1,2 @@
 n_cities,n_removed,removed,k,silhouette,stability_ari,p_null_gaussian,n_sim,ari_vs_region
-62,5,bucuresti;ljubljana;riga;tallinn;vilnius,2,0.3777602998152066,0.7389788227823176,0.001,999,0.06999864279609301
+62,5,bucuresti;ljubljana;riga;tallinn;vilnius,2,0.3777602997991055,0.7389788227823176,0.001,999,0.06999864279609301
