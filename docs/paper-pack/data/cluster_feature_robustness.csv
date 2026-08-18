@@ -1,0 +1,2 @@
+feature_set,n_features,k,silhouette,stability_ari,p_null_gaussian,ari_vs_published,small_group,small_group_matches_published,peeled_ari_vs_published,peeled_k,peeled_silhouette,peeled_small_n
+extended (+emergency 8/15-min shares),19,2,0.6303678702721571,0.8768631296478675,0.001,1.0,bucuresti;ljubljana;riga;tallinn;vilnius,True,0.9725189286596619,3,0.3717475403494255,2

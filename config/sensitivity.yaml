@@ -25,7 +25,8 @@ sensitivity:
     everyday:
       - { alternative: everyday_box_cox }        # concave Box-Cox DLF, 15/45-min anchors
     emergency:
-      - { alternative: emergency_exponential }   # exponential DCF, 45/60-min anchors
+      - { alternative: emergency_exponential }   # exponential DCF, 8/15-min anchors
+      - { alternative: emergency_survival }      # bounded survival-based curve, 8/15-min anchors, 1 = full deprivation
 
   # LAYER 3 — accessibility axis (the knobs that BUILD the travel times, so —
   # unlike Layers 1/2 — they CAN move the rank-based targets). Run with:

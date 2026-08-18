@@ -210,8 +210,8 @@ def run_viz(cfg: dict, city: str, root: Path) -> None:
         kind = surfaces[f"deprivation_kind_{regime}"].iloc[0]
         ax.set_title(f"{name}: {regime} potential deprivation ({kind})", fontsize=11)
         cb = fig.colorbar(sc, ax=ax, shrink=0.75)
-        cb.set_label(f"deprivation ({'dimensionless' if kind == 'DLF' else 'monetary'})",
-                     fontsize=9)
+        cb.set_label("deprivation level (dimensionless)" if kind == "DLF"
+                     else "deprivation cost (relative units)", fontsize=9)
         cb.outline.set_visible(False)
         _watermark(fig, cfg)
         fig.tight_layout()

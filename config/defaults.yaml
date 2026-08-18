@@ -391,9 +391,22 @@ cityvector:
   # LEVEL features (deprivation-function-FREE): population share whose
   # regime travel time exceeds each policy threshold (minutes). Comparable
   # across cities independent of any deprivation-function calibration.
+  # These feed the CLUSTERING feature set (features.level_feature_names) —
+  # do not extend this list to add a reporting column, or the k-means
+  # feature space (and potentially H4's partition) changes with it; use
+  # access_report_thresholds_min below instead.
   access_thresholds_min:
     everyday: [15, 30]
     emergency: [30, 45, 60]
+  # REPORTING-ONLY thresholds for the per-city accessibility summary
+  # (accessibility_by_regime/service.csv): a superset of the above that adds
+  # the EMS response benchmarks (<=8 min urban response standard,
+  # 10-15 min upper target — Pons et al. 2005; Vo et al. 2020; Khan et al.
+  # 2026) without touching the clustering features. Falls back to
+  # access_thresholds_min when absent.
+  access_report_thresholds_min:
+    everyday: [15, 30]
+    emergency: [8, 15, 30, 45, 60]
   # Cross-city feature standardisation before clustering: "robust"
   # (median / IQR; default — small, outlier-prone sample) or "zscore".
   cross_city_scaler: "robust"

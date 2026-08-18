@@ -94,6 +94,15 @@ CROSS_FILES = (
     "inference_regime_paired.csv",
     "inference_influence.csv",
     "cluster_null.csv",
+    # Deprivation-vs-access contrast + Table-1 material
+    # (cityvector/dep_vs_access.py, run by `depacc cross`).
+    "deprivation_vs_access.csv",
+    "desert_access_contrast.csv",
+    "scaling_by_grade.csv",
+    "cities_descriptives.csv",
+    "accessibility_by_service_pooled.csv",
+    "accessibility_by_service_cities.csv",
+    "cluster_feature_robustness.csv",
 )
 # Robustness-harness outputs (data/derived/sensitivity/*), passed through
 # verbatim into results/sensitivity/. The per-city deprivation-sensitivity
@@ -106,6 +115,11 @@ SENSITIVITY_FILES = (
     # (cityvector/spec_curve.py).
     "specification_curve.csv",
     "specification_curve.png",
+    # Per-city envelope of every target per sweep axis + the cost curves
+    # themselves (harness deprivation_sensitivity_summary /
+    # viz/deprivation_curves) — the deprivation layer's own evidence.
+    "deprivation_sensitivity_summary.csv",
+    "deprivation_curves.png",
 )
 # Workstream E outputs, passed through verbatim (see _export_validation).
 VALIDATION_GLOBS = (
@@ -197,6 +211,18 @@ def cmd_import(results: Path, derived: Path) -> None:
                 shutil.copy2(src, sens_dst / src.name)
                 n += 1
         print(f"imported {n} previously persisted variant table(s)")
+        # The ACCUMULATING sensitivity tables must be on disk BEFORE the
+        # harness runs, or its merge-into-persisted step (_merge_persisted)
+        # has nothing to merge with and the run's own staged cities replace
+        # the whole union — the seed round of run 32055983121 cut the
+        # 67-city flip-cell table to 3 rows exactly this way, one collect
+        # after the harness-side merge fix landed. Restore-if-absent, so a
+        # freshly computed local table still wins.
+        for name in ("flip_cells.csv", "typology_share_envelope.csv"):
+            src = sens_src / name
+            if src.exists() and not (sens_dst / name).exists():
+                shutil.copy2(src, sens_dst / name)
+                print(f"restored accumulating table {name} for the merge")
     rebuild_cityplane(derived)
 
 

@@ -28,6 +28,19 @@ on:
         description: 'Generate configs: "FUA_CODE,Name,CC; FUA_CODE,Name,CC; ..."'
         required: false
         default: ""
+      # Disaster recovery for evicted derived caches (GitHub's 10 GB repo
+      # cache limit evicts the big-PBF cities' caches whenever the three of
+      # them coexist — run 32012438178 lost paris/berlin/madrid this way and
+      # they fell back to re-routing from scratch). Maps city id -> an
+      # earlier run id whose depacc-t1-<city> artifact holds that city's
+      # COMPLETE derived dir (OD matrices included); the job seeds
+      # data/derived/<city> from it and the pipeline then skips routing and
+      # recomputes deprivation-onward. Only sensible with a complete
+      # artifact; a partial one just resumes routing from its checkpoints.
+      seed_map:
+        description: 'JSON {city: run_id} to seed derived state from artifacts, e.g. {"paris":"31816777776"}'
+        required: false
+        default: ""
 
 env:
   MPLBACKEND: Agg
@@ -159,11 +172,16 @@ jobs:
           path: ${{ env.SHARED_RAW_PATHS }}
           key: depacc-raw-shared-v1-${{ hashFiles('config/defaults.yaml', 'config/cities/*.yaml') }}
           restore-keys: depacc-raw-shared-v1-
+      # Key bumped t1 -> t2 when the continental-PBF trim below landed: t2
+      # caches are ~0.5 GB (clip only) instead of ~5 GB (clip + parent), so
+      # the three big-PBF cities no longer blow the repo's 10 GB cache limit
+      # and evict each other (the failure that stalled run 32012438178).
+      # restore-keys still matches the old fat t1 entries as a fallback.
       - name: Restore this city's raw-data cache
         uses: actions/cache@v4
         with:
           path: ${{ env.CITY_RAW_PATHS }}
-          key: depacc-raw-city-${{ matrix.city }}-t1
+          key: depacc-raw-city-${{ matrix.city }}-t2
           restore-keys: depacc-raw-city-${{ matrix.city }}-
       # The derived cache is what makes a budget-stopped r5 city RESUMABLE
       # across batch dispatches: finished matrices and partial origin chunks
@@ -175,6 +193,30 @@ jobs:
           key: depacc-derived-${{ matrix.city }}-${{ github.run_id }}
           restore-keys: |
             depacc-derived-${{ matrix.city }}-
+      # Seed the derived dir from an earlier run's complete artifact (see the
+      # seed_map input). Runs AFTER the cache restore so the seed wins over
+      # whatever partial state the cache held; the end-of-job cache save then
+      # persists the seeded state for future resumes.
+      - name: Seed derived state from an earlier run's artifact
+        if: inputs.seed_map != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SEED_MAP: ${{ inputs.seed_map }}
+          CITY: ${{ matrix.city }}
+        run: |
+          run_id=$(jq -r --arg c "$CITY" '.[$c] // empty' <<< "$SEED_MAP")
+          if [ -z "$run_id" ]; then
+            echo "no seed for $CITY — skipping"; exit 0
+          fi
+          rm -rf .seed && mkdir -p .seed
+          gh run download "$run_id" -n "depacc-t1-$CITY" -D .seed \
+            -R "$GITHUB_REPOSITORY"
+          test -d ".seed/$CITY" || { echo "::error::artifact for $CITY from run $run_id has no $CITY dir"; exit 1; }
+          rm -rf "data/derived/$CITY"
+          mkdir -p data/derived
+          mv ".seed/$CITY" "data/derived/$CITY"
+          rm -rf .seed
+          echo "seeded data/derived/$CITY from run $run_id ($(du -sh data/derived/$CITY | cut -f1))"
       - name: Generate config if needed
         if: matrix.spec != ''
         run: |
@@ -211,6 +253,15 @@ jobs:
             exit 0
           fi
           exit $rc
+      # The continental .pbf is only an input to the one-time osmium clip;
+      # ingest reuses the *_clip.osm.pbf and never re-reads the parent. Drop
+      # the parent before the post-job cache save so the per-city raw cache
+      # stays ~0.5 GB and the big cities stop evicting each other.
+      - name: Trim the continental PBF out of the raw cache
+        if: always()
+        run: |
+          find data/raw/osm -maxdepth 1 -name '*.osm.pbf' ! -name '*_clip.osm.pbf' \
+            -print -delete 2>/dev/null || true
       - name: Upload city results
         if: always()
         uses: actions/upload-artifact@v4

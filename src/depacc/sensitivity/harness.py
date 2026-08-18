@@ -59,21 +59,26 @@ def expand_variants(cfg: dict, grid: dict) -> list[Variant]:
 
     fs = grid.get("form_swap", {}) or {}
     for entry in fs.get("everyday", []) or []:
-        spec, form = _resolve_form_swap(cfg, ev0, entry)
-        variants.append(Variant(f"formswap_everyday_{form}", "form_swap", spec, em0))
+        spec, label = _resolve_form_swap(cfg, ev0, entry, regime="everyday")
+        variants.append(Variant(f"formswap_everyday_{label}", "form_swap", spec, em0))
     for entry in fs.get("emergency", []) or []:
-        spec, form = _resolve_form_swap(cfg, em0, entry)
-        variants.append(Variant(f"formswap_emergency_{form}", "form_swap", ev0, spec))
+        spec, label = _resolve_form_swap(cfg, em0, entry, regime="emergency")
+        variants.append(Variant(f"formswap_emergency_{label}", "form_swap", ev0, spec))
     return variants
 
 
-def _resolve_form_swap(cfg: dict, base_spec: dict, entry: dict) -> tuple[dict, str]:
+def _resolve_form_swap(cfg: dict, base_spec: dict, entry: dict,
+                       regime: str = "") -> tuple[dict, str]:
     """Resolve a Layer-2 form_swap entry to a concrete deprivation spec.
 
     An entry is either ``{alternative: <name>}`` — resolved from
     ``deprivation.alternatives`` in the merged config (the single source of
     truth for the anchor-calibrated params) — or an inline ``{form, params,
-    ...}`` override merged over the regime baseline. Returns (spec, form_label).
+    ...}`` override merged over the regime baseline. Returns (spec, label);
+    for a named alternative the label is the alternative name minus its
+    regime prefix (so 'emergency_survival' -> 'survival', and two
+    alternatives sharing a functional form cannot collide), for an inline
+    entry it is the form.
     """
     if "alternative" in entry:
         alts = (cfg.get("deprivation", {}) or {}).get("alternatives", {}) or {}
@@ -83,8 +88,9 @@ def _resolve_form_swap(cfg: dict, base_spec: dict, entry: dict) -> tuple[dict, s
                 f"form_swap references unknown alternative '{name}'; "
                 f"available: {sorted(alts)}")
         spec = dict(alts[name])
-    else:
-        spec = {**base_spec, **entry}
+        label = name[len(regime) + 1:] if name.startswith(f"{regime}_") else name
+        return spec, label
+    spec = {**base_spec, **entry}
     return spec, str(spec.get("form"))
 
 
@@ -397,6 +403,26 @@ def _rank_agreement(baseline: pd.Series, variant: pd.Series) -> tuple[float, flo
 RANK_TARGETS = ("divergence_gap", "gini_emergency", "gini_everyday")
 
 
+def _merge_persisted(path: Path, fresh: pd.DataFrame,
+                     keys: list[str]) -> pd.DataFrame:
+    """Union a freshly computed per-city table with the one already on disk,
+    the fresh rows winning on the shared keys. Accumulating tables must not
+    shrink to whatever subset of cities a single batch happened to stage."""
+    if not path.exists():
+        return fresh
+    try:
+        old = pd.read_csv(path)
+    except Exception:
+        return fresh
+    if not set(keys) <= set(old.columns):
+        return fresh
+    keep = old.merge(fresh[keys].drop_duplicates(), on=keys, how="left",
+                     indicator=True)
+    keep = keep[keep["_merge"] == "left_only"].drop(columns="_merge")
+    return pd.concat([keep, fresh], ignore_index=True) \
+             .sort_values(keys).reset_index(drop=True)
+
+
 def rank_agreement_from_tables(sens_dir: Path) -> pd.DataFrame:
     """Cross-city rank agreement vs baseline from the persisted per-city
     variant tables (``<city>_deprivation_sensitivity.csv``). Reading the
@@ -425,6 +451,48 @@ def rank_agreement_from_tables(sens_dir: Path) -> pd.DataFrame:
             rows.append({"variant": name, "target": target,
                          "spearman_rho": rho, "kendall_tau": tau,
                          "n_cities": len(paired)})
+    return pd.DataFrame(rows)
+
+
+SUMMARY_TARGETS = ("gini_everyday", "gini_emergency", "divergence_gap",
+                   "share_HH")
+
+
+def deprivation_sensitivity_summary(sens_dir: Path) -> pd.DataFrame:
+    """Per-city envelope of every tracked target across the deprivation
+    sweep, read from the persisted per-city variant tables so it covers
+    every city on the results branch.
+
+    One row per (city, target, axis): the baseline value and the min/max the
+    target takes over that axis's variants, plus the width. The axes are kept
+    apart on purpose — a curvature envelope and a "how high is high"
+    threshold envelope are different claims, and pooling them would hide
+    that the threshold axis dominates the class shares while curvature
+    dominates the Ginis (methods §7a).
+    """
+    frames = []
+    for p in sorted(sens_dir.glob("*_deprivation_sensitivity.csv")):
+        frames.append(pd.read_csv(p))
+    if not frames:
+        return pd.DataFrame()
+    stacked = pd.concat(frames, ignore_index=True)
+    base = stacked[stacked.variant == "baseline"].set_index("city")
+    rows = []
+    for (city, axis), grp in stacked.groupby(["city", "axis"], sort=True):
+        for target in SUMMARY_TARGETS:
+            if target not in grp.columns:
+                continue
+            vals = pd.to_numeric(grp[target], errors="coerce").dropna()
+            if vals.empty:
+                continue
+            b = (float(base.loc[city, target])
+                 if city in base.index and pd.notna(base.loc[city, target])
+                 else float("nan"))
+            rows.append({"city": city, "axis": axis, "target": target,
+                         "baseline": b, "min": float(vals.min()),
+                         "max": float(vals.max()),
+                         "width": float(vals.max() - vals.min()),
+                         "n_variants": int(len(vals))})
     return pd.DataFrame(rows)
 
 
@@ -541,11 +609,21 @@ def run_sensitivity(cfg: dict, grid: dict, root: Path) -> None:
             print(f"  {target}: min rho={g.spearman_rho.min():.3f} "
                   f"min tau={g.kendall_tau.min():.3f}")
 
+    # These two tables are built ONLY from the cities whose surfaces were
+    # staged in this run (they need the cell-level surfaces, which are not
+    # persisted). Writing them straight out would shrink the accumulated
+    # table to the current batch — how a 67-city flip-cell table became a
+    # one-city table after a paris-only resume round. Merge instead: keep
+    # every persisted city, let this run's rows win for the cities it
+    # recomputed. Same union guarantee the rank-agreement table gets from
+    # reading the persisted per-city variant tables.
     if flip_records:
-        flip_df = pd.DataFrame(flip_records)
+        flip_df = _merge_persisted(out / "flip_cells.csv",
+                                   pd.DataFrame(flip_records), ["city"])
         flip_df.to_csv(out / "flip_cells.csv", index=False)
         print(f"flip-cells: mean sensitive pop share "
-              f"{flip_df.sensitive_pop_share.mean():.1%} across {len(flip_df)} cities")
+              f"{flip_df.sensitive_pop_share.mean():.1%} across "
+              f"{len(flip_df)} cities")
 
     # Typology-share envelope per city (min/max across variants).
     share_rows = []
@@ -556,7 +634,36 @@ def run_sensitivity(cfg: dict, grid: dict, root: Path) -> None:
             share_rows.append({"city": city, "class": cls,
                                "baseline": base.loc[city, f"share_{cls}"],
                                "min": np.nanmin(vals), "max": np.nanmax(vals)})
-    pd.DataFrame(share_rows).to_csv(out / "typology_share_envelope.csv", index=False)
+    if share_rows:
+        _merge_persisted(out / "typology_share_envelope.csv",
+                         pd.DataFrame(share_rows), ["city", "class"]) \
+            .to_csv(out / "typology_share_envelope.csv", index=False)
+
+    # Per-city envelope of every tracked target, per sweep axis — the
+    # single table that answers "how far does each city's result move when
+    # the deprivation function moves?". Same persisted-table source as the
+    # rank agreement, so it spans every city, not this run's subset.
+    summary = deprivation_sensitivity_summary(out)
+    if not summary.empty:
+        summary.to_csv(out / "deprivation_sensitivity_summary.csv",
+                       index=False)
+        for target in ("gini_everyday", "gini_emergency", "share_HH"):
+            for axis in ("curvature", "form_swap", "threshold"):
+                sel = summary[(summary.target == target)
+                              & (summary.axis == axis)]
+                if not sel.empty:
+                    print(f"  envelope [{axis}] {target}: median width "
+                          f"{sel.width.median():.4f}, max {sel.width.max():.4f} "
+                          f"over {sel.city.nunique()} cities")
+
+    # The curves themselves: what Layers 1/2 vary, against the linear loss a
+    # pure-access measure implies. Config-only, so it never goes stale.
+    try:
+        from depacc.viz.deprivation_curves import plot_deprivation_curves
+
+        plot_deprivation_curves(cfg, grid, out / "deprivation_curves.png")
+    except Exception as exc:                    # viz extra may be absent
+        print(f"  NOTE: deprivation-curve figure skipped ({exc})")
 
     # Specification curve: the cross-city Gini claims re-estimated under
     # every variant. Reads the per-city variant TABLES (unioned across runs

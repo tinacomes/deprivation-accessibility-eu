@@ -132,8 +132,8 @@ def test_equity_indices_record_the_units_of_every_reported_level(tmp_path):
 
     indices = pd.read_csv(out / "equity_indices.csv").set_index("regime")
     assert "saturation ceiling" in indices.loc["everyday", "units"]
-    # The emergency DCF is anchored, so its level is in multiples of g(45 min).
-    assert "multiples of g(45 min)" in indices.loc["emergency", "units"]
+    # The emergency DCF is anchored, so its level is in multiples of g(15 min).
+    assert "multiples of g(15 min)" in indices.loc["emergency", "units"]
 
 
 def test_shipped_defaults_stratify_every_city_on_the_census_age_layer():

@@ -180,6 +180,21 @@ def test_form_swap_resolves_named_alternatives():
     assert em.everyday == cfg["deprivation"]["everyday"]
 
 
+def test_form_swap_survival_variant_resolves_with_alternative_name():
+    """The bounded survival swap is named after the ALTERNATIVE (not its
+    logistic form), so it cannot collide with other logistic entries and the
+    persisted variant names stay stable."""
+    cfg = load_config()
+    grid = {"form_swap": {"emergency": [{"alternative": "emergency_survival"}]}}
+    variants = expand_variants(cfg, grid)
+    by_name = {v.name: v for v in variants}
+    sv = by_name["formswap_emergency_survival"]
+    assert sv.layer == "form_swap"
+    assert sv.emergency["form"] == "logistic"
+    assert sv.emergency["params"]["Lmax"] == 1.0
+    assert sv.everyday == cfg["deprivation"]["everyday"]
+
+
 def test_form_swap_unknown_alternative_raises():
     cfg = load_config()
     with pytest.raises(KeyError, match="unknown alternative"):
@@ -298,6 +313,116 @@ def test_rank_agreement_from_tables_empty_dir(tmp_path):
     from depacc.sensitivity.harness import rank_agreement_from_tables
 
     assert rank_agreement_from_tables(tmp_path).empty
+
+
+def test_merge_persisted_keeps_cities_this_run_did_not_recompute(tmp_path):
+    """A one-city resume round must not shrink an accumulated table."""
+    from depacc.sensitivity.harness import _merge_persisted
+
+    path = tmp_path / "flip_cells.csv"
+    pd.DataFrame({"city": ["berlin", "madrid", "paris"],
+                  "sensitive_pop_share": [0.09, 0.16, 0.50]}).to_csv(
+        path, index=False)
+    fresh = pd.DataFrame({"city": ["paris"], "sensitive_pop_share": [0.12]})
+    out = _merge_persisted(path, fresh, ["city"])
+    assert sorted(out.city) == ["berlin", "madrid", "paris"]
+    # The rerun city takes this run's value, the others keep theirs.
+    assert out.set_index("city").sensitive_pop_share["paris"] == 0.12
+    assert out.set_index("city").sensitive_pop_share["berlin"] == 0.09
+    # Nothing on disk yet, or an unusable file: the fresh table stands alone.
+    assert _merge_persisted(tmp_path / "absent.csv", fresh,
+                            ["city"]).equals(fresh)
+
+
+def test_merge_persisted_uses_every_key_column(tmp_path):
+    from depacc.sensitivity.harness import _merge_persisted
+
+    path = tmp_path / "envelope.csv"
+    pd.DataFrame({"city": ["berlin", "berlin", "paris"],
+                  "class": ["HH", "LL", "HH"],
+                  "baseline": [0.3, 0.2, 0.33]}).to_csv(path, index=False)
+    fresh = pd.DataFrame({"city": ["paris"], "class": ["HH"],
+                          "baseline": [0.34]})
+    out = _merge_persisted(path, fresh, ["city", "class"])
+    assert len(out) == 3
+    assert out[(out.city == "paris") & (out["class"] == "HH")] \
+        .baseline.iloc[0] == 0.34
+    assert set(out[out.city == "berlin"]["class"]) == {"HH", "LL"}
+
+
+def test_deprivation_sensitivity_summary_keeps_axes_apart(tmp_path):
+    from depacc.sensitivity.harness import deprivation_sensitivity_summary
+
+    rows = []
+    for city, g in (("a", 0.50), ("b", 0.60)):
+        rows += [
+            {"city": city, "axis": "curvature", "variant": "baseline",
+             "gini_everyday": g, "share_HH": 0.32},
+            {"city": city, "axis": "curvature", "variant": "k0.3",
+             "gini_everyday": g + 0.20, "share_HH": 0.33},
+            {"city": city, "axis": "threshold", "variant": "threshold_0.75",
+             "gini_everyday": np.nan, "share_HH": 0.14},
+        ]
+    pd.DataFrame(rows).to_csv(
+        tmp_path / "a_deprivation_sensitivity.csv", index=False)
+    out = deprivation_sensitivity_summary(tmp_path)
+
+    curv = out[(out.city == "a") & (out.axis == "curvature")
+               & (out.target == "gini_everyday")].iloc[0]
+    assert curv.baseline == pytest.approx(0.50)
+    assert curv.width == pytest.approx(0.20)
+    assert curv.n_variants == 2
+    # The threshold axis is its own envelope, never pooled with curvature.
+    thr = out[(out.city == "a") & (out.axis == "threshold")
+              & (out.target == "share_HH")].iloc[0]
+    assert thr.width == pytest.approx(0.0)
+    assert set(out.axis) == {"curvature", "threshold"}
+    # An all-NaN target on an axis produces no row rather than a NaN row.
+    assert out[(out.axis == "threshold")
+               & (out.target == "gini_everyday")].empty
+
+
+def test_deprivation_curves_figure_covers_both_layers(tmp_path):
+    pytest.importorskip("matplotlib")
+    from depacc.viz.deprivation_curves import plot_deprivation_curves
+
+    cfg = load_config()
+    grid = {"everyday": {"k": [0.1, 0.2, 0.3]},
+            "emergency": {"lam": [1.4, 1.8, 2.2]},
+            "form_swap": {"everyday": [{"alternative": "everyday_box_cox"}],
+                          "emergency": [{"alternative":
+                                         "emergency_exponential"}]}}
+    out = plot_deprivation_curves(cfg, grid, tmp_path / "curves.png")
+    assert out.exists() and out.stat().st_size > 0
+
+
+def test_deprivation_curve_helper_uses_the_reporting_anchor():
+    from depacc.viz.deprivation_curves import _curve
+
+    cfg = load_config()
+    spec = cfg["deprivation"]["emergency"]
+    t = np.array([15.0, 30.0])
+    anchored = _curve(spec, t, 15.0)
+    raw = _curve(spec, t, None)
+    assert anchored[0] == pytest.approx(1.0)          # g(15) = 1 by anchor
+    assert anchored[1] == pytest.approx(raw[1] / raw[0])
+    assert anchored[1] > 1.0                          # escalating past 15 min
+
+
+def test_emergency_anchor_encodes_the_ems_benchmark_windows():
+    """The re-anchored DCF must read as the three-window benchmark
+    structure (Pons 2005; Vo 2020; Khan 2026): negligible below the 3-4 min
+    ideal, well under half at the WHO-recommended 8 (convexity caps
+    g(8)/g(15) at 0.427 given g(4)/g(15)=0.1), 1.0 at the 15-min target."""
+    from depacc.viz.deprivation_curves import _curve
+
+    cfg = load_config()
+    spec = cfg["deprivation"]["emergency"]
+    assert float(spec["reference_time_min"]) == 15.0
+    r = _curve(spec, np.array([3.0, 4.0, 8.0, 15.0]), 15.0)
+    assert r[0] < 0.10 and r[1] < 0.15                # negligible <= 3-4 min
+    assert 0.25 < r[2] < 0.427                        # intermediate, convex-feasible
+    assert r[3] == pytest.approx(1.0)
 
 
 def test_flip_cells():

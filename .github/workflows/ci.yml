@@ -20,3 +20,9 @@ jobs:
         run: pytest --cov=depacc --cov-report=term-missing
       - name: Validate shipped configs load
         run: depacc validate --city hamburg
+      # The pack's prose quotes ~100 numbers copied out of its CSVs. This
+      # re-reads each one from its source table, so a refreshed table that
+      # nobody re-copied into BRIEF.md fails CI instead of reaching a
+      # referee.
+      - name: Audit the paper pack's quoted numbers against its tables
+        run: python tools/audit_paper_pack.py

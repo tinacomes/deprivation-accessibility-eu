@@ -135,20 +135,58 @@ the logistic is convex below t0 and concave above, and g(0) is a small
 positive baseline (= Lmax/(1+e^{k·t0}) ≈ 0.05) rather than exactly 0.
 
 **Emergency deprivation ESCALATES** without bound — it is time-critical, so
-the convex Box-Cox (λ > 1) rises ever more steeply; the curvature is tuned so
-the cost climbs sharply through the clinical time-to-care threshold
-(g(60)/g(45) ≈ 1.66, i.e. +66% over that 15-minute window). g(0) = 0.
+the convex Box-Cox (λ > 1) rises ever more steeply. Its anchors are the EMS
+response-time benchmarks (Pons et al. 2005; Vo et al. 2020; Khan et al.
+2026, citing WHO 2020): deprivation negligible below the ~3–4-minute ideal,
+an intermediate cost at the widely used 8-minute urban response
+standard (WHO as cited in Khan et al. 2026 — its own reference is an
+unpinnable who.int URL, so the standard is attributed via Khan and the
+primary literature; empirically *contested*: Pons et al. 2005 found no
+survival effect for most patients while response within 4 minutes was
+beneficial for intermediate/high-risk ones, Blanchard et al. 2012
+supports the criterion), and the full threshold cost at the realistic 10–15-minute
+upper-bound target. Under λ = 1.8 the curve reads g(3)/g(15) = 0.08,
+g(4)/g(15) = 0.12, g(8)/g(15) = 0.35, 1.0 at the 15-minute mark
+(acceptable for low-risk response, Peleg & Pliskin 2004), escalating convexly
+beyond (3.3× at 30 min, 6.7× at 45). g(0) = 0. Two structural notes.
+*First*, the 8-minute mark cannot play the half-max role the 15-minute
+inflection plays for the everyday DLF: any curve through
+g(4)/g(15) = 0.1 and g(8)/g(15) = 0.5 is concave between 8 and 15 min
+(convexity caps g(8)/g(15) at 0.427 there), so the benchmark structure of
+the two regimes is genuinely different — and the clinical literature
+agrees from its own side: the 8-minute criterion is empirically
+contested (Pons vs Blanchard), while the solid anchors are the ends
+(4-min benefit for high-risk; 15-min acceptability for low-risk),
+exactly the two the curvature is solved from — a threshold-with-half-max for
+substitutable services, a convex escalation through an intermediate
+benchmark for time-critical care. *Second*, λ solved *from* these anchors
+(g(4)/g(15) = 0.10 → λ = 1.945; g(8)/g(15) = 1/3 → λ = 1.891) coincides
+with the transferred λ = 1.8 to within the sensitivity sweep (1.4–2.2), so
+"form and curvature transferred" and "anchor-calibrated" give the same
+curve here.
 
 **Provenance — form transferred, curvature calibrated (NOT raw coefficient
 transfer).** The published DLF/DCF estimates are on an *hours*-scale
 deprivation-time basis (hours without water/food/care), not the *minutes*
 scale of intra-urban access, so their coefficients are not directly
 transferable. We therefore transfer the *functional form* from the cited
-work and *calibrate the curvature* to domain anchors: the everyday S-curve to
-the intra-urban 15-minute access threshold, and the emergency convexity to
-the ~45–60 min clinical time-to-care threshold. This is recorded honestly
+work and *calibrate the curvature* to domain anchors: the everyday S-curve
+to the intra-urban 15-minute access threshold, and the emergency convexity
+to the 8/15-minute EMS response benchmarks above. This is recorded honestly
 here and in each spec's `note:` field in `config/deprivation.yaml`; the
 curvature parameters (k, λ) are the primary sensitivity-analysis targets.
+
+**Benchmark semantics caveat.** The emergency surface is the *civilian
+free-flow drive time* to the nearest ED/ambulance station: R5 car times
+are time-independent (no congestion) and the matrices are reverse-routed
+(station → cell, for ambulance response the substantively correct
+direction, §7.1; measured car asymmetry median 1 min). Response-time
+benchmarks additionally include dispatch and turnout (~1–2 min), while
+lights-and-siren travel is faster than civilian flow — partially
+offsetting, unmodelled. Free-flow also understates congested urban-core
+times relative to the periphery, which is conservative for the
+desert/periphery findings. The 8/15-minute benchmarks therefore anchor the
+cost scale; they are not literal response-time predictions.
 
 The emergency `scale` is left at 1.0 (relative units); anchor it to a value
 of statistical life / value of time only if absolute monetary magnitudes are
@@ -166,17 +204,21 @@ the same tables as the everyday 0–1 DLF and inviting exactly the cross-regime
 magnitude comparison §3a forbids. The vulnerability table (§6.2) surfaces those
 levels prominently, so they have to mean something.
 
-`deprivation.emergency.reference_time_min` (= 45 min, the *same* clinical
-time-to-care anchor the curvature was calibrated to) divides g by g(t_ref).
-The emergency surface is then in **multiples of the deprivation of arriving at
-the clinical threshold**: 1.0 = at the threshold, > 1 = worse. It does *not*
+`deprivation.emergency.reference_time_min` (= 15 min, the EMS upper-bound
+response target the curvature is anchored to; 45 min before the 2026-08
+re-anchor — older level tables are in g(45) units, a factor 6.73 larger)
+divides g by g(t_ref). The emergency surface is then in **multiples of the
+deprivation of arriving at the benchmark threshold**: 1.0 = at the
+threshold, > 1 = worse. It does *not*
 bound the function — the escalation is preserved — and because it is division
 by a positive constant, the population-weighted percentiles, the typology, ρ,
 Jaccard, both Ginis, the p90/p50 ratio and the concentration index are
 unchanged **exactly** (regression-tested in
 `tests/test_deprivation_functions.py`). Only levels move: 15.76 → 0.0289. The
-Layer-2 form-swap alternative carries the same anchor, so the two forms coincide
-at 1.0 there and the alternative's free `scale` cancels. The everyday DLF needs
+Layer-2 form-swap alternatives carry the same anchor, so the swapped forms
+coincide at 1.0 there and each alternative's free `scale` cancels (the
+bounded survival swap reports on its own [0, 1] scale instead — 1 = full
+deprivation; ranks and Ginis are identical either way). The everyday DLF needs
 no anchor (it is bounded by Lmax = 1); set `reference_time_min: null` to report
 raw relative units instead. Every reported level names its own scale via the
 `units` column of `equity_indices.csv`.
@@ -259,10 +301,39 @@ car-based and non-substitutable, keeps its own convex DCF and is unaffected.
 
 ## 3a. Cross-regime standardisation (mandatory)
 
-The everyday (bounded logistic DLF) and emergency (unbounded Box-Cox DCF)
-surfaces are on incomparable scales — and the emergency reporting anchor of
+The two regimes use deliberately different mathematical objects, and the
+terminology keeps them apart: the everyday surface is a deprivation
+**level** (bounded DLF, 1 = full deprivation — past the ceiling more
+minutes change nothing, because everyday services are substitutable or
+forgone), while the emergency surface is a deprivation **cost** (unbounded
+convex DCF — every extra minute keeps costing, because emergency outcomes
+keep worsening). This asymmetry is not an inconsistency to be harmonised
+away; it *is* the two-regime claim. Forcing both into levels would assert
+that a 60-minute ambulance is no worse than a 30-minute one; forcing both
+into costs would assert that living far from a supermarket is unboundedly
+catastrophic. The price of the asymmetry is a discipline: **only
+unit-invariant comparisons are allowed across regimes.** Three families
+qualify — (i) **elasticities** (slopes of log outcomes on log population),
+which are invariant to any constant rescaling of either surface; (ii)
+**Ginis**, which are mean-normalised and therefore unit-free — comparing
+the inequality of a level with the inequality of a cost is the same move
+as comparing an income Gini with a wealth Gini; and (iii) **rank-based
+statistics** (percentile surfaces, the typology, ρ, Jaccard), invariant to
+any monotone transform. What is *never* valid is reading raw magnitudes
+across regimes ("emergency deprivation is bigger than everyday
+deprivation" is a category error — the descriptive tables print the two
+means side by side for completeness, and their units differ). The one
+statistic that subtracts across regimes, the divergence gap, is a
+difference of two dimensionless inequality indices; it is form-dependent
+by construction and carries the widest sensitivity envelope in §7a, which
+is why it never carries a headline alone.
+
+The emergency (unbounded Box-Cox DCF)
+surface and the everyday (bounded logistic DLF) surface are therefore on
+incomparable scales — and the emergency reporting anchor of
 §3c does **not** change that: it makes the emergency level interpretable in its
-own units (multiples of the 45-min clinical-threshold cost), which is not the
+own units (multiples of the 15-min benchmark cost g(15), per the 2026-08
+re-anchor), which is not the
 everyday unit (a fraction of the saturation ceiling). Raw magnitudes are
 **never** summed,
 differenced, co-plotted on a shared axis, or clustered together. The
@@ -442,6 +513,29 @@ silhouette criterion. On the full sample both passes cut along one axis
 — **coverage grades**: covered / partial desert / desert — not as city
 types.
 
+**The feature set is a tested specification, not a frozen one.** The
+clustering features include the emergency level shares at 30/45/60 min —
+fixed before the EMS benchmarks (8/15 min) entered the study. When the
+benchmarks arrived, the new shares were added to the *reporting* tables
+only (`access_report_thresholds_min`), so the re-anchor run stayed a
+one-change-at-a-time experiment whose invariances could be verified. That
+control is only honest if the feature-set choice is itself tested:
+`tools/cluster_feature_robustness.py` re-runs the full clustering
+pipeline (scaling, k-selection, bootstrap, Gaussian null, peeled pass) on
+the extended set with the 8/15-min shares included and reports the ARI
+against the published partition. **Run on the final 67-city state
+(`cluster_feature_robustness.csv`): the main partition is identical
+(ARI 1.00, the same five desert capitals, silhouette 0.63, Gaussian-null
+p = 0.001) and the peeled partition is reproduced at ARI 0.97**, with
+the extended features preferring k = 3 — splitting Brăila and Łomża into
+a micro-group, the same two cities the extraction refresh moved across
+the covered/partial boundary. H4 survives its own feature-set choice;
+the boundary cities are boundary cities under every specification. Note
+the mechanical direction: the added shares are nested versions of the
+tails the desert group already separates on, so including them
+up-weights that axis — the published specification is the conservative
+one, and the check verifies rather than asserts this.
+
 **Vulnerability synthesis** (`equity/vulnerability_cross.py`). The
 census-harmonised age strata of every city's `equity_vulnerability.csv`
 (level `age_census` only — the three-level rule of §6.1 forbids pooling
@@ -451,19 +545,74 @@ summarised per stratum (`vulnerability_summary.csv`: median
 covered-reference ratio, share of cities above parity) and drawn as
 by-region strips (`figures/vulnerability_strata.png`).
 
-**Deprivation vs pure access** (`cityvector/dep_vs_access.py`). The
-headline size regressions re-run on the deprivation-function-free
-travel-time indicators (median/mean/p90 minutes per regime from
-`accessibility_by_regime.csv`) next to the deprivation outcomes
+**Deprivation vs pure access** (`cityvector/dep_vs_access.py`, run as
+the last step of `depacc cross`). The headline size regressions re-run on
+the deprivation-function-free travel-time indicators (median/mean minutes
+per regime from `accessibility_by_regime.csv`, plus the p90 for the
+emergency regime) next to the deprivation outcomes
 (`deprivation_vs_access.csv`), plus the deprivation-vs-time Gini
 correlations; the desert cities' access-vs-deprivation ratios
 (`desert_access_contrast.csv` — coverage deserts are invisible to access
 averages and exposed only by the anchored convex DCF); and the scaling
-scatter by coverage grade with a country-clustered slope-×-grade Wald
-test (`scaling_by_grade.csv`,
-`figures/scaling_by_coverage_grade.png`). Purpose: show which claims are
-robust to dropping the deprivation layer entirely, and where the
-deprivation calibration carries information access measures cannot.
+scatter by coverage grade (`scaling_by_grade.csv`,
+`figures/scaling_by_coverage_grade.png`). The everyday p90 is
+deliberately not regressed: above the walk cutoff the everyday composite
+time behaves as a count of unmet service categories rather than a travel
+time (§4.2), and the published p90 is conditional on reachability.
+Purpose: show which claims are robust to dropping the deprivation layer
+entirely, and where the deprivation calibration carries information
+access measures cannot.
+
+The **coverage grade** is read off the two clustering passes above, never
+from a hand-set threshold on a beyond-30-minute share: `desert` is the
+main pass's flagged outlier group, `partial desert` is the peeled pass's
+smaller cluster (the same axis at lower intensity), `covered` is the
+rest — so the grades change only when the clustering does. The graded
+scaling table reports **both** halves of the contrast on
+`mean_emergency`, from one country-clustered model with ln population
+centred at the sample mean: a Wald test on the grade dummies (does the
+grade shift the LEVEL at a typical city size?) and a Wald test on the
+grade × ln-population terms (does it change the SLOPE?). Centring is what
+makes the first test a contrast between grades rather than an
+extrapolation to a population of one. On the 67-city sample the level
+test is decisive and the slope test is not, which is the citable reading:
+coverage class, not city size, sets emergency deprivation. Within-grade
+elasticities are reported as plain OLS and flagged as such — with 5–50
+cities in a grade a cluster-robust SE over a handful of countries would
+be theatre.
+
+The same module writes `cities_descriptives.csv`, the per-city appendix
+table (Table 1 / SI): sample composition (macro-region, F.2 size stratum)
+next to the headline indicators, largest FUA first, plus
+`accessibility_by_service_pooled.csv` and
+`accessibility_by_service_cities.csv` — the facility counts and
+deprivation-free travel times per service, pooled over cities and per
+city. Pooling is over CITIES, not cells: each city contributes one
+observation per service, which is the right unit for "what does a
+European FUA look like" and is not a population-weighted European
+average.
+
+Those per-service counts are also the completeness check the DE-only
+registry benchmark (§7, E.2) cannot give, and on the 67-city sample they
+surface two things that belong in the limitations rather than in a
+footnote. **GP mapping density is a country artefact**: a median 10.8
+mapped GPs per 100 k across the sample, but 2.1 (SE), 2.3 (PT), 2.6 (FI)
+and 3.5 (IT) against 24.5 across the West, because primary care in those
+countries sits in health centres OSM does not tag `amenity=doctors`.
+Everyday deprivation levels are correspondingly overstated there, so
+cross-country *level* comparisons of the everyday regime are not
+supported. The size gradients are unaffected: mapped GP density is
+uncorrelated with population (log-log +0.09, country-clustered p = 0.29;
+−0.00 under country fixed effects), and every scaling claim clusters on
+country. **Eight cities have only one of the two emergency services
+mapped** (Szeged no ED hospital; Athina, Brăila, Helsinki, Lahti,
+Norrköping, Talavera de la Reina and Žilina no ambulance station). The
+composite renormalises weights over the services actually present
+(`_weighted_row_mean`), so their emergency surface measures proximity to
+the one mapped service; their median mean-emergency deprivation is 0.197
+against 0.169 for the rest, and none is in the desert group.
+`cities_descriptives.csv` carries `n_emergency_services` so the reader
+sees it in Table 1.
 
 ## 5. Travel times
 
@@ -830,6 +979,43 @@ reported as a stable-vs-sensitive population share and mapped. Reported as
 rank-agreement (Spearman/Kendall of city orderings) and cluster agreement
 (adjusted Rand) versus baseline.
 
+**Reporting the deprivation sweep.** Two artefacts accompany the rank
+agreement and the specification curve.
+`sensitivity/deprivation_sensitivity_summary.csv` gives, per city ×
+sweep axis × target, the baseline value and the min/max the target takes
+over that axis's variants. The axes are kept apart deliberately: a
+curvature envelope and a "how high is high" threshold envelope are
+different claims, and pooling them would hide that curvature dominates
+the Ginis while the threshold dominates the class shares. On the 67-city
+sample the median envelope widths are 0.244 (everyday Gini) and 0.170
+(emergency Gini) under curvature against 0.014 for the compounding
+share, and 0.298 for the compounding share under the threshold axis —
+the quantitative form of "robust-to-g, meaning-from-g". (The form-swap
+axis is reported separately and is dominated by the emergency
+escalation swaps — see Layer 2 below for why its emergency envelope,
+0.649 across the three escalation hypotheses,
+is a boundary-of-validity statement rather than noise.)
+`sensitivity/deprivation_curves.png` draws the functions being varied —
+baseline, the Layer-1 grid and the Layer-2 anchor-calibrated swaps —
+together with the **linear loss implied by a pure-access minutes
+average**, matched to the baseline at each panel's anchor. Each panel
+stays on its own reporting scale (everyday raw on the Lmax = 1 scale,
+emergency in multiples of g(15); §3), so the figure never invites the
+cross-regime magnitude comparison the standardisation layer forbids. The
+figure is built from the same `expand_variants` the harness sweeps, so it
+cannot drift from what was actually run.
+
+**Which cities each cross-city sensitivity table covers.** The
+rank-agreement table and the specification curve are rebuilt from the
+*persisted per-city variant tables*, so they always span every city on
+`depacc-results`. The flip-cell and typology-share-envelope tables cannot
+be: they need the cell-level surfaces, which are not persisted, so a run
+can only recompute them for the cities it staged. They are therefore
+**merged** into the accumulated table (this run's rows win for the cities
+it recomputed, every other city is kept) rather than replacing it —
+without that, a single-city resume round silently shrinks a 67-city
+robustness table to one row.
+
 **Layer 2 (form swap) is ACTIVE, and it is calibrated the honest way — form
 transferred, *anchors* held fixed.** Where Layer 1 varies curvature within a
 fixed form, Layer 2 replaces the form itself while pinning the *same domain
@@ -841,8 +1027,60 @@ between/beyond the anchors differs:
   ceiling. `lam` is *solved* from the ratio anchor, `scale` from the ceiling
   anchor — not chosen.
 - Emergency: the convex **Box-Cox DCF → an exponential DCF** matching the
-  baseline at *both* 45 and 60 min, so the clinical-threshold ratio
-  `g(60)/g(45) ≈ 1.66` is identical. `beta` is *solved* from that ratio.
+  baseline at *both* 8 and 15 min, so the benchmark-window ratio
+  `g(15)/g(8) ≈ 2.85` is identical. `beta` is *solved* from that ratio.
+  The two forms coincide at the benchmark anchors by construction and
+  diverge only *beyond the 15-minute cut-off* — the region where no
+  benchmark exists (times out there measure only how bad things are, so
+  the escalation rate is genuinely unidentified by the anchors): the
+  exponential prices 30/45/60 min at 1.7×/3.9×/~11× the Box-Cox. Both
+  escalation hypotheses are literature-grounded — Box-Cox from the
+  ambulance-DCF estimates (Cantillo 2018; Delgado-Lindeman 2019),
+  exponential canonical in the goods-deprivation line (Holguín-Veras
+  et al. 2013) — so neither is a stress case, and **the emergency-Gini
+  size behaviour splits between them, which is itself a finding to
+  report**: size-flat under Box-Cox (λ 1.4–2.2, slopes −0.006..+0.014,
+  ns — agreeing with the deprivation-free travel-time Gini, itself
+  size-flat at −0.015, p = 0.42), rising under the exponential (+0.098,
+  p = 0.0003 on the specification curve), reversing the paired Gini
+  contrast. The mechanism is a change of measurand, verified in the
+  data: beyond-cut-off tail *shares* are size-flat (beyond-30-min
+  elasticity −0.003, p = 0.99), but under exponential pricing the Gini
+  decouples from the time distribution's inequality (Spearman 0.04 with
+  `gini_t_emergency`), tracks the extreme-tail beyond-45-min share
+  (0.45) and saturates near its ceiling (median 0.96 across cities,
+  > 0.9 in 43/67; Hamburg 0.44 → 0.94) — it becomes an index of how
+  many minutes past the cut-off the worst-served residents sit, which
+  grows with FUA size. Report H2's emergency half conditionally on the
+  beyond-benchmark escalation form; the form-independent statements are
+  that emergency inequality never *falls* with size and that the
+  everyday Gini rises under every parameterisation. (History: the
+  superseded 45/60-min anchoring flattened the exponential to
+  β = 0.024 — slope −0.001, p = 0.97 — by treating 45/60 min as a
+  benchmark window, which it is not; parameters in the config history
+  note.)
+- Emergency, third branch: the convex **Box-Cox DCF → a BOUNDED
+  survival-based curve** (`emergency_survival`) — deprivation read as
+  1 − survival prospect, a zero-anchored logistic with ceiling
+  `Lmax = 1` = **full deprivation**, answering "should 1 not correspond
+  to full deprivation?" empirically rather than by assertion. Motivated
+  by the EMS survival literature (survival benefit concentrated below
+  ~4 min, Pons 2005; response-time–mortality gradients, Blanchard 2012,
+  Nicholl 2007; survival essentially exhausted by ~25–30 min for the
+  most time-critical conditions), but its parameters come from the
+  *same* benchmark ratio anchors as every other swap — `t0, k` solved
+  from `D(4)/D(15) = 0.117` and `D(8)/D(15) = 0.351` →
+  `t0 = 12.55 min`, `k = 0.233/min` (unique solution). Notably the
+  saturation point is **not imposed**: with those anchors fixed, the
+  fitted curve reaches 98 % of full deprivation at 30 min and 99.9 % at
+  45 — the benchmark window itself places "full deprivation" at
+  ~30–45 min, consistent with the survival literature it is motivated
+  by. Beyond-cut-off escalation collapses to 1.61× g(15) at 60 min
+  (vs Box-Cox ~11×, exponential ~120×), so the three Layer-2 emergency
+  forms now span the escalation-hypothesis space — **saturating /
+  polynomial / exponential** — with the polynomial Box-Cox as the
+  published baseline by transfer provenance and by agreement with the
+  deprivation-free travel-time Gini.
 
 The calibrated parameters and their anchor equations live in
 `config/deprivation.yaml → deprivation.alternatives.*` (`note:` fields, exactly
