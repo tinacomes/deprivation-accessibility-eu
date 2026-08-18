@@ -7,4 +7,4 @@ size_elasticity,emergency,access,emergency_median_time,-0.043309625048384925,0.0
 size_elasticity,emergency,access,emergency_mean_time,-0.04335262340237703,0.022101034138444862,0.04981310633016975,0.03950827682471614,67,"log-log, country-clustered SE; cross-sectional space-for-time"
 size_elasticity,emergency,access,emergency_p90_time,-0.05901620969489299,0.024720317570619477,0.01697002847058443,0.04910115259007486,67,"log-log, country-clustered SE; cross-sectional space-for-time"
 gini_correlation,everyday,deprivation_vs_time,gini_everyday~gini_t_everyday,0.9654043805927878,,0.9702689759757364,,67,elasticity column = Pearson r; p column = Spearman rho
-gini_correlation,emergency,deprivation_vs_time,gini_emergency~gini_t_emergency,0.9763750504980976,,0.9482001755926253,,67,elasticity column = Pearson r; p column = Spearman rho
+gini_correlation,emergency,deprivation_vs_time,gini_emergency~gini_t_emergency,0.9763750504980977,,0.9482001755926253,,67,elasticity column = Pearson r; p column = Spearman rho

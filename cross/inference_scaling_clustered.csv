@@ -2,4 +2,4 @@ outcome,elasticity,se_cluster_country,p_cluster_country,p_wild_cluster_bootstrap
 mean_everyday,-0.196346387089927,0.022812216136966965,7.495036465460434e-18,0.0002,67,24,country-clustered; cross-sectional space-for-time
 mean_emergency,-0.05933961362089446,0.04253212843394655,0.16296412773213742,0.208,67,24,country-clustered; cross-sectional space-for-time
 gini_everyday,0.0620420275215634,0.018650650989453628,0.0008793324280386217,0.0012,67,24,country-clustered; cross-sectional space-for-time
-gini_emergency,0.003979443279497841,0.017714289837985064,0.8222547237755716,0.8392,67,24,country-clustered; cross-sectional space-for-time
+gini_emergency,0.003979443279497834,0.01771428983798609,0.822254723775582,0.8392,67,24,country-clustered; cross-sectional space-for-time
