@@ -32,6 +32,9 @@ everyday_k0.3_t020,gini_everyday,0.9170723920504431,0.7756671189507012,67
 formswap_emergency_exponential,divergence_gap,0.440976933514247,0.2980551786521936,67
 formswap_emergency_exponential,gini_emergency,0.19295235054673163,0.15061058344640435,67
 formswap_emergency_exponential,gini_everyday,1.0,1.0,67
+formswap_emergency_survival,divergence_gap,0.7012420415405491,0.5216783216783217,66
+formswap_emergency_survival,gini_emergency,0.4751278572174095,0.32773892773892777,66
+formswap_emergency_survival,gini_everyday,1.0,1.0,66
 formswap_everyday_box_cox,divergence_gap,0.945087397238407,0.8091361374943465,67
 formswap_everyday_box_cox,gini_emergency,1.0,1.0,67
 formswap_everyday_box_cox,gini_everyday,0.8957618325484877,0.7349615558570785,67
