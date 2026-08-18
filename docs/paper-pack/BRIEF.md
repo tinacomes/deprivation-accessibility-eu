@@ -89,6 +89,11 @@ RQ4. What does analysing deprivation add over mere access metrics?
 5. A robustness architecture usable as a template: rank-invariance by
    construction, specification curve, rank agreement, engine
    cross-check, access-based re-estimation of every headline.
+   `figures/robustness_architecture.png` shows the architecture in one
+   view (rank agreement; envelope widths; access re-estimation;
+   flip-cell vs class-share stability, with the engine check quoted
+   alongside); `figures/specification_curve.png` carries the slope
+   robustness on its own.
 
 ## Evidence map (claim → number → data file → figure)
 
@@ -347,7 +352,12 @@ is awaiting a rerun.
   whole pack surface from now on.
 - **Recomputed locally over that same state**:
   `cluster_feature_robustness.csv` (tools/cluster_feature_robustness.py,
-  also pushed to the branch). A local `depacc cross` reproduced the CI
+  also pushed to the branch);
+  `figures/robustness_architecture.png`
+  (tools/make_robustness_architecture_figure.py, drawn entirely from
+  this pack's own `data/` tables — rank_agreement,
+  deprivation_sensitivity_summary, deprivation_vs_access, flip_cells,
+  typology_share_envelope). A local `depacc cross` reproduced the CI
   cross tables to ~1e-13 in the pre-anchor verification, so local and CI
   are one state.
 - **Copied per city from `depacc-results`**: `figures/cities/<city>.png`,
@@ -418,7 +428,8 @@ ensure the results can be understood without having read materials and methods. 
    deprivation_curves: what is varied, and the pure-access line it is
    varied against; the envelope table: levels move, ranks do not), then
    the inventory block (spec curve, rank agreement, engine check,
-   threshold-vs-knob dominance). Most of it can live in SI with one
+   threshold-vs-knob dominance), summarised in one view by Fig
+   robustness_architecture (contribution claim 5; main text or SI). Most of it can live in SI with one
    summarising paragraph, but the curve figure earns a main-text slot in
    a paper whose contribution is the deprivation framing.
 3.2 Implications for theory and practice. Focus on resilience theory and urban analytics. 

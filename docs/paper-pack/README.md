@@ -28,7 +28,10 @@ paper-pack/
 │   │   typology_share_envelope.csv,
 │   │   deprivation_sensitivity_summary.csv           robustness
 │   └── scaling.csv, size_gradient.csv, regime_slope_difference.csv
-└── figures/          the publication-shaped figure set (10 PNGs)
+└── figures/          the publication-shaped figure set (11 PNGs,
+    │                 incl. robustness_architecture.png — the claim-5
+    │                 robustness overview, rebuilt from data/ by
+    │                 tools/make_robustness_architecture_figure.py)
     └── cities/       one compounding map per city (67) + an index README
 ```
 
