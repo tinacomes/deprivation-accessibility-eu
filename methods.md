@@ -997,24 +997,36 @@ between/beyond the anchors differs:
 - Emergency: the convex **Box-Cox DCF → an exponential DCF** matching the
   baseline at *both* 8 and 15 min, so the benchmark-window ratio
   `g(15)/g(8) ≈ 2.85` is identical. `beta` is *solved* from that ratio.
-  Beyond the anchors the exponential prices the tail far harder than the
-  Box-Cox (1.7× at 30 min, 3.9× at 45, ~11× at 60) — deliberately: the
-  swap tests whether the emergency conclusions survive a much harsher
-  pricing of the beyond-threshold tail, which is where the desert cities
-  live. **They do not all survive, and that is the finding**: under this
-  variant the emergency Gini becomes dominated by the beyond-threshold
-  tail (Hamburg 0.44 → 0.94), the city ranking reorders (Spearman vs
-  baseline 0.19), and the emergency-Gini size slope flips positive and
-  significant (+0.098, wild-family p = 0.0003 on the specification
-  curve) — reversing the everyday-vs-emergency Gini contrast. Under the
-  previous 45/60-anchored exponential (calibrated where the tail
-  actually lives; parameters in the config history note) the slope was
-  −0.001, p = 0.97. Both anchor windows are on the record. The honest
-  scope statement for H2's emergency half is therefore: size-flat under
-  the calibrated Box-Cox family (λ 1.4–2.2) and under form swaps
-  anchored to the range they are applied over; an exponential
-  extrapolated 4× beyond its 8/15-min anchor window effectively measures
-  tail-share inequality, which does grow with size.
+  The two forms coincide at the benchmark anchors by construction and
+  diverge only *beyond the 15-minute cut-off* — the region where no
+  benchmark exists (times out there measure only how bad things are, so
+  the escalation rate is genuinely unidentified by the anchors): the
+  exponential prices 30/45/60 min at 1.7×/3.9×/~11× the Box-Cox. Both
+  escalation hypotheses are literature-grounded — Box-Cox from the
+  ambulance-DCF estimates (Cantillo 2018; Delgado-Lindeman 2019),
+  exponential canonical in the goods-deprivation line (Holguín-Veras
+  et al. 2013) — so neither is a stress case, and **the emergency-Gini
+  size behaviour splits between them, which is itself a finding to
+  report**: size-flat under Box-Cox (λ 1.4–2.2, slopes −0.006..+0.014,
+  ns — agreeing with the deprivation-free travel-time Gini, itself
+  size-flat at −0.015, p = 0.42), rising under the exponential (+0.098,
+  p = 0.0003 on the specification curve), reversing the paired Gini
+  contrast. The mechanism is a change of measurand, verified in the
+  data: beyond-cut-off tail *shares* are size-flat (beyond-30-min
+  elasticity −0.003, p = 0.99), but under exponential pricing the Gini
+  decouples from the time distribution's inequality (Spearman 0.04 with
+  `gini_t_emergency`), tracks the extreme-tail beyond-45-min share
+  (0.45) and saturates near its ceiling (median 0.96 across cities,
+  > 0.9 in 43/67; Hamburg 0.44 → 0.94) — it becomes an index of how
+  many minutes past the cut-off the worst-served residents sit, which
+  grows with FUA size. Report H2's emergency half conditionally on the
+  beyond-benchmark escalation form; the form-independent statements are
+  that emergency inequality never *falls* with size and that the
+  everyday Gini rises under every parameterisation. (History: the
+  superseded 45/60-min anchoring flattened the exponential to
+  β = 0.024 — slope −0.001, p = 0.97 — by treating 45/60 min as a
+  benchmark window, which it is not; parameters in the config history
+  note.)
 
 The calibrated parameters and their anchor equations live in
 `config/deprivation.yaml → deprivation.alternatives.*` (`note:` fields, exactly

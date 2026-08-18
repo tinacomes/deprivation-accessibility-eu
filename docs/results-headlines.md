@@ -59,23 +59,45 @@ wild p = 0.029** over all 67 cities. Robustness: the everyday-Gini slope
 is positive under **all 13 deprivation parameterisations** of the
 specification curve (+0.026 to +0.075), significant in 12/13 — the
 exception is the concave Box-Cox form swap (+0.026, p = 0.082), a caveat
-to state. The emergency-Gini slope stays within −0.006 to +0.014 and
-non-significant under the full curvature grid and the everyday form
-swap — **with one exception that must be stated, not smoothed over**:
-under the benchmark-anchored (8/15-min) exponential form swap, which
-prices the beyond-threshold tail ~10× harder than the Box-Cox at 60 min,
-the emergency-Gini slope turns **positive and significant (+0.098,
-p = 0.0003)** and the everyday-vs-emergency Gini contrast reverses. The
-same variant reorders the city ranking (Spearman vs baseline 0.19 for
-the emergency Gini) — under extreme tail-pricing the emergency Gini
-effectively becomes a tail-share measure, which *does* grow with city
-size. So phrase H2's emergency half as: "size-flat under the calibrated
-Box-Cox family (λ 1.4–2.2) and under form swaps anchored where the tail
-lives; under an exponential extrapolated far beyond its 8/15-min anchor
-window the sign flips — the null is a property of the calibrated family,
-not of every conceivable cost curve." (Under the previous 45/60-anchored
-exponential the slope was −0.001, p = 0.97; both anchor windows are on
-the record — this state and 39f1e58.) Note what this robustness
+to state.
+
+**The emergency half is conditional on beyond-benchmark escalation, and
+must be reported as such.** The EMS benchmarks (negligible ≤3–4 min,
+8-min urban standard, 15-min cut-off) define the cost scale up to
+15 minutes, and both literature-grounded DCF forms are calibrated to
+coincide at the 8-minute standard and the 15-minute cut-off. *Beyond*
+the 15-minute cut-off no benchmark exists —
+times out there measure only "how bad things are" — and this is exactly
+where the two forms diverge, so the emergency-Gini size behaviour splits
+by escalation hypothesis:
+
+- **Polynomial escalation (Box-Cox, the Cantillo/Delgado-Lindeman line;
+  λ 1.4–2.2): size-flat** (slopes −0.006 to +0.014, all ns) — in
+  agreement with the deprivation-FREE travel-time Gini, which is itself
+  size-flat (−0.015, p = 0.42): a benchmark-free anchor point.
+- **Exponential escalation (the Holguín-Veras line): rising** (+0.098,
+  p = 0.0003), reversing the everyday-vs-emergency contrast. Mechanism,
+  verified in the data: the beyond-cut-off tail *shares* are size-flat
+  (beyond-30-min elasticity −0.003, p = 0.99), but exponential pricing
+  makes the Gini track extreme-tail *depth* — it decouples from the time
+  distribution's inequality (ρ = 0.04 with the travel-time Gini),
+  correlates with the beyond-45-min share (ρ = 0.45), and saturates near
+  its ceiling (median 0.96; above 0.9 in 43 of 67 cities). How many
+  minutes past the cut-off a city's worst-served residents sit grows
+  with FUA size, and only exponential-in-minutes pricing makes that
+  dominate the Gini.
+
+Form-independent statements, safe under everything: everyday inequality
+rises with size under all 13 parameterisations; emergency inequality
+**never falls** with size under any of them; and whether it is flat or
+rising is decided by the beyond-benchmark escalation form, which no
+benchmark pins down. The Box-Cox is the baseline by transfer provenance
+(the ambulance-DCF line) and by its agreement with the raw-minutes Gini
+— not because the exponential is extreme. (History: the superseded
+45/60-min anchor window flattened the exponential to β = 0.024, slope
+−0.001, p = 0.97 — i.e. the old calibration under-priced
+beyond-benchmark escalation because it treated 45/60 min as a benchmark
+window, which it is not.) Note what this robustness
 is *not*: the Gini **levels** move a great deal under the same sweep
 (median envelope width 0.24 everyday, 0.17 emergency under curvature alone), which is the point
 — the calibration carries information, and the slope claim is defended by
@@ -207,14 +229,16 @@ never headline a grade-specific size gradient
   cross-sectional space-for-time.
 - **An everyday-Gini regional contrast** (H3) and **elderly compounding
   at the European level** (H5).
-- **A form-universal emergency-Gini null** (H2: under the
-  benchmark-anchored exponential the slope is +0.098, p = 0.0003, and
-  the Gini contrast reverses — scope the null to the calibrated family
-  and state the exception).
+- **An unconditional emergency-Gini trend** (H2: flat under polynomial
+  beyond-benchmark escalation and under the raw-minutes Gini, rising
+  under exponential escalation — always report the conditionality; the
+  safe unconditional statements are "never falls with size" and "the
+  everyday Gini rises under everything").
 - **Rank-agreement universality** (min ρ 0.90+ holds over the curvature
-  grid and the everyday form swap; the benchmark-anchored exponential
-  reorders the emergency-Gini city ranking to ρ = 0.19 — cite the
-  exclusion explicitly).
+  grid and the everyday form swap; under exponential escalation the
+  emergency-Gini ranking becomes an extreme-tail-depth ordering, ρ =
+  0.19 vs baseline — report it as a change of measurand, with the
+  saturation numbers, not as noise).
 - **Two clustering algorithms agreeing on one desert group** (H4: Ward's
   cut nests inside k-means', it does not coincide with it).
 
@@ -298,7 +322,7 @@ never headline a grade-specific size gradient
 | Gaussian silhouette null | Parametric null: same-covariance multivariate-normal samples put through the same k-selection — is the observed silhouette surprising with NO cluster structure? |
 | peeled clustering | The re-clustering with the flagged outlier group removed (fresh scaling, full diagnostics) — "is there a typology among ordinary cities?" |
 | specification curve | The headline regression re-estimated under every deprivation parameterisation (curvature grid + form swaps); a claim is robust when the whole curve sits on one side of zero. |
-| rank agreement (ρ/τ) | Spearman/Kendall correlation of the *city ranking* under a variant vs baseline — "do city orderings survive the assumption?" (min ρ 0.90 across the curvature grid and everyday form swap; the benchmark-anchored exponential is the flagged exception — emergency-Gini ρ 0.19). |
+| rank agreement (ρ/τ) | Spearman/Kendall correlation of the *city ranking* under a variant vs baseline — "do city orderings survive the assumption?" (min ρ 0.90 across the curvature grid and everyday form swap; under the exponential escalation form the emergency-Gini ordering becomes an extreme-tail-depth ordering, ρ 0.19 — a change of measurand, reported as such). |
 | flip cells | Cells whose typology class changes under any deprivation variant — the spatial footprint of an assumption. Over all 67 cities the population-weighted sensitive share averages 15.8 % (5.2–36.1 %); the complementary ~84 % keeps its class under every parameterisation (the typology is rank-based, so even the harsh exponential form swap barely moves it). Distinct from the ~24 % *engine* flip (E.1), which is a routing artifact, not an assumption. |
 | Layer 1 / 2 / 3 | Sensitivity layers: deprivation curvature / functional-form swap / accessibility model (κ, γ, bandwidth, k-nearest, mode set, unreachable policy). |
 | threshold axis | The "how high is high" percentile cut sweep — the dominant lever on the HH share (hence the continuous intensity as headline). |

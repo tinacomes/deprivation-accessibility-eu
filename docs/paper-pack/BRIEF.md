@@ -45,7 +45,10 @@ nearest-facility time under a convex cost anchored on EMS response
 benchmarks) on a 100 m grid across 67 European functional urban areas in 24 countries.
 City size buys everyday access (elasticity −0.20) but not emergency
 relief (−0.06, bounded within ±0.13), and everyday inequality *rises*
-with size while emergency inequality is size-flat; the divergence is
+with size while emergency inequality never falls — size-flat under
+polynomial beyond-cut-off cost escalation, rising under exponential (a
+conditionality the benchmarks cannot resolve and the paper reports as a
+result); the divergence is
 structured by country and macro-region, not size — culminating in a
 one-dimensional severity ordering of emergency-periphery coverage whose
 extreme is five capital-city "emergency deserts" invisible to access
@@ -94,7 +97,7 @@ RQ4. What does the deprivation framing add over pure access?
 | # | Claim | Key numbers | Table (data/) | Figure (figures/) |
 |---|---|---|---|---|
 | H1 | Size buys everyday access, not emergency care | ev elasticity −0.196 (wild p 2e-4, R² .44); em −0.059 (clustered p .16, wild p .21; TOST bound ±0.13); paired diff +0.137 (wild p .002); LOO [−.204,−.185] | inference_scaling_clustered, inference_equivalence, inference_regime_paired, inference_influence | scaling_elasticity.png |
-| H2 | Everyday inequality grows with size, emergency doesn't | gini_ev slope +0.062 (wild p .0012); gini_em +0.004 (wild p .84); paired diff −0.058 (wild p .029, 67 cities); spec curve +0.026..+0.075, 12/13 significant; emergency null holds under curvature + everyday swap, FLIPS under the benchmark-anchored exponential (+0.098, p .0003 — state it) | inference_scaling_clustered, inference_regime_paired, specification_curve | specification_curve.png |
+| H2 | Everyday inequality grows with size, emergency doesn't | gini_ev slope +0.062 (wild p .0012); gini_em +0.004 (wild p .84); paired diff −0.058 (wild p .029, 67 cities); spec curve +0.026..+0.075, 12/13 significant; emergency-Gini size behaviour is CONDITIONAL on the beyond-cut-off escalation form: flat under Box-Cox (−.006..+.014, ns; matches the raw-minutes Gini, −.015 p .42), rising under exponential (+.098, p .0003) — report both, never one | inference_scaling_clustered, inference_regime_paired, specification_curve | specification_curve.png |
 | H3 | Country-level regional structure | gini_em f .74 p_perm .0024; gap p_perm .010; ρ p_perm .0015; compounding p_perm .0008 / .0023; gini_ev NOT regional (p_perm .27) | inference_regional | region_strips.png |
 | H4 | No city types — a coverage severity gradient + desert group | main k-means 62/5 (sil .65, bootstrap ARI .87, null p .001, ARI-vs-region .001); Ward nests inside it 65/2; peeled 48/14 same axis (sil .38, ARI .74, p .001, ARI-vs-region .07), Ward nested 56/6; feature-set robustness: main ARI 1.00, peeled ARI .97 (cluster_feature_robustness) | cluster_null, cluster_null_peeled, cityvector_clustered(_peeled) | cityplane.png |
 | H5 | Children carry it almost everywhere; elderly locally | children ratio 1.27, >1 in 88 % of cities, HH gap +0.13 (CEE 1.44, North 1.30); elderly 0.96, 37 % | vulnerability_summary, vulnerability | vulnerability_strata.png |
@@ -131,13 +134,16 @@ per city × sweep axis, baseline / min / max / width:
 | form swap (Layer 2) | 0.035 | 0.484 | 0.007 |
 | "how high is high" threshold | — | — | 0.298 |
 
-The form-swap gini_emergency envelope (0.484) is dominated by the
-benchmark-anchored exponential, which prices the beyond-threshold tail
-~10× harder than the Box-Cox at 60 min — see the H2 exception in
-`docs/results-headlines.md`: under that variant the emergency-Gini size
-slope flips positive and significant and the city ranking reorders
-(ρ = 0.19). State it as the boundary of the null's validity, never
-average over it.
+The form-swap gini_emergency envelope (0.484) is the two
+literature-grounded escalation hypotheses disagreeing beyond the
+15-minute cut-off, where no benchmark exists: Box-Cox (ambulance-DCF
+line) gives a size-flat Gini in agreement with the raw-minutes Gini;
+exponential (Holguín-Veras line) makes the Gini an extreme-tail-depth
+index (saturating at median 0.96, decoupled from the time
+distribution's inequality, ρ 0.04) that rises with size (+0.098,
+p .0003). See H2 in `docs/results-headlines.md` for the full
+conditional statement — report the split, never average over it and
+never present either branch as the only case.
 
 (median envelope width across the 67 cities.) Read it as the two-sided
 claim the framing rules demand. **Levels are not robust and are not meant
@@ -229,10 +235,12 @@ external benchmark E.3 passed (`docs/validation.md`).
   interaction is p = 0.010 under the current 48/14/5 grades but was
   p = 0.17 under the pre-refresh 50/12/5 — a two-city membership change
   flips it, so treat it as boundary-sensitive and never headline it.
-- Emergency-Gini null and rank agreement: always scope to "the
-  calibrated Box-Cox family and anchor-matched form swaps", and state
-  the benchmark-anchored-exponential exception (slope +0.098, p .0003;
-  emergency rank ρ .19). Never claim form-universality.
+- Emergency-Gini size behaviour: always report it conditionally on the
+  beyond-cut-off escalation form (flat under Box-Cox, rising under
+  exponential, +0.098 p .0003; ranking under the exponential is an
+  extreme-tail-depth ordering, ρ .19 vs baseline). The unconditional
+  statements are "never falls with size" and "everyday rises under
+  everything". Never claim form-universality in either direction.
 - Level indicators (`pop_share_beyond_*`) contain the finite-fill
   constant — footnote when used.
 - The everyday composite time above the walk cutoff behaves as a count

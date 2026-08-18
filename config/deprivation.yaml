@@ -214,10 +214,14 @@ deprivation:
       # passes through the baseline Box-Cox at BOTH 8 and 15 min (the
       # 8-min urban response standard and the upper-bound target), so
       # the g(15)/g(8) escalation across the benchmark window is identical.
-      # Beyond the anchors the exponential diverges hard (1.7x the Box-Cox
-      # at 30 min, 3.9x at 45) — deliberately so: the swap now tests whether
-      # the emergency conclusions survive a much harsher pricing of the
-      # beyond-threshold tail, which is where the desert cities live.
+      # The two forms coincide at the benchmark anchors and diverge only
+      # BEYOND the 15-min cut-off (1.7x at 30 min, 3.9x at 45, ~11x at 60)
+      # — the region no benchmark constrains. Both escalation forms are
+      # literature-grounded (Box-Cox: Cantillo/Delgado-Lindeman ambulance
+      # DCFs; exponential: Holguin-Veras 2013 line), so this variant is the
+      # other escalation HYPOTHESIS, not a stress case; the emergency-Gini
+      # size behaviour splits between them (flat vs rising) and is reported
+      # conditionally (methods §7a Layer 2).
       kind: "DCF"
       form: "exponential"
       params: { beta: 0.10084, scale: 22.9257 }
