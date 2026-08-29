@@ -35,7 +35,7 @@ verification (a controlled rescale, machine-precision checked).
    and this brief win).
 
 ## The paper in one paragraph (abstract seed)
-# writing note: ensure that a non-expert reader can understand the full expert, this is to make them read the paper. Give headline results here, backed up with some detail. 
+# writing note: ensure that a non-expert yet academic reader can understand the full abstract, this is to make them read the paper for an interdisciplinary journal. Give headline results here, backed up with some detail, but few numbers. stress academic contribution to different disciplines - urban? climate?
 
 Critical infrastructures are vital for urban populations. Many papers have attempted to measure access to everyday services or to emergency care. Yet access as a uniform function does not take into account potential deprivation that measure the impact on welfare. We aim to understand how deprivation co-evolves for for two regimes (everyday walkable
 services via a congestion-adjusted soft-minimum; emergency care via
