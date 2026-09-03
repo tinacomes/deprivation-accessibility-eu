@@ -1,6 +1,8 @@
 # Revision protocol — round 2 (PI review, 2026-09-03)
 
 **Status: proposal for agreement. Nothing in `main.tex` has been changed.**
+Updated 2026-09-03 after reading Musso et al. (arXiv 2510.12417v3) from
+the supplied PDF; R1, R3 and R11 now quote it.
 Each numbered block maps one review point to a diagnosis, a proposed
 edit, and what it needs (text only / new figure / new analysis / your
 decision). The decisions are collected at the end. Numbers quoted here
@@ -18,20 +20,24 @@ access.
 
 ## R1 — Framing of the abstract and the paper (Musso et al. as the model)
 
-**What could be checked.** arXiv, PNAS, Semantic Scholar, ResearchGate,
-the Utrecht working-paper mirror and the press releases are all blocked by
-the egress proxy, so the Musso abstract could not be read verbatim. Its
-structure is recoverable from indexed snippets and is, sentence by
-sentence: (1) a striking stylised fact ("the share of the world population
-living in cities of more than one million rose from 11 % in 1975 to 24 %
-in 2025"); (2) the open question that fact raises ("will this continue?");
-(3) two competing theories named in one sentence each (increasing returns
-vs proportional growth); (4) "we introduce two new datasets with
-consistent city definitions across countries and over time"; (5) the
-finding as a law-like statement ("urban growth follows a life cycle...");
-(6) a forward-looking implication with one number (38 % by 2100). **Please
-check this against the actual abstract once**; the draft below is built to
-that skeleton.
+**The Musso abstract, read from the v3 PDF you supplied.** Nine
+sentences, 170 words, no citations, no jargon: (1) one stylised fact with
+a number ("the share of the world population living in cities with more
+than one million people rose from 11 % in 1975 to 24 % in 2025"); (2) the
+question in plain words ("Will this trend ... continue or level off?");
+(3) the contribution as an object ("We introduce two new city population
+datasets that use consistent city definitions across countries and over
+time"), then two sentences saying what each covers; (4) the finding as a
+law ("We find that urban growth follows a characteristic life cycle"),
+unpacked in two short sentences (early stage / later stage); (5) what the
+finding is used for and one projected number (38 % by 2100); (6) that
+number positioned between the two theories' predictions (33 % vs 42 %).
+The theories are never named in the abstract; they appear in the
+introduction, one paragraph each, each ending in its quantitative
+prediction, then a sentence on the stakes ("This 14 percentage point gap
+... represents 1.4 billion people"), then "In this paper, we analyze which
+of these two scenarios is more likely, using ...". The introduction ends
+with "First ... Second ... Third ..." contributions.
 
 **Diagnosis of the current abstract.** It opens with generic context
 ("cities concentrate people..."), names the gap as a measurement flaw
@@ -40,39 +46,54 @@ never appears, the two regimes are not framed as regimes, and the
 deprivation-theory import reads as a technical fix. Result: the abstract
 sounds like an accessibility paper with a better metric.
 
-**Proposed abstract (draft, 232 words, no citations, for your reaction):**
+**Proposed abstract (draft, 214 words, no citations, built to the Musso
+skeleton, for your reaction):**
 
-> Cities are built for an everyday in which residents reach shops, schools
-> and doctors at their own pace. A growing share of urban life is spent
-> under disruption, when what matters is how fast help reaches people.
-> Urban research measures both kinds of need in the same currency, travel
-> minutes, and therefore cannot say how bad it is that some residents need
-> more time than others. Welfare economics offers an answer. Deprivation
-> cost theory, developed for disaster relief, values time without a service
-> by the welfare it destroys. Here we bring that theory into urban analysis
-> and ask whether the welfare cities deliver follows the same laws in the
-> everyday and in the emergency regime. We measure deprivation for 67
-> European city regions in 24 countries on a 100 m population grid: a
-> bounded level for substitutable everyday services, anchored on the
-> 15-minute city, and an unbounded cost for emergency care, anchored on
-> clinical response benchmarks. The two regimes obey different laws. Larger
-> cities lower everyday deprivation but not emergency deprivation, and
-> everyday inequality widens with size while emergency inequality never
-> narrows. Emergency deprivation is set by national coverage rather than by
-> size, and its extreme, five capital-city emergency deserts, is invisible
-> to travel-time averages. The same residents carry both deprivations in
-> nearly every city, and children carry the compounded burden most
-> consistently. Cities built around the everyday regime deliver welfare
-> there and leave the emergency regime to national systems, a division that
-> disruption is now testing.
+> Europe plans its cities for the everyday: the 15-minute city, in which
+> every daily need is a short walk away, has become planning doctrine
+> across the continent. Yet in 2024 alone, floods affected 413,000
+> Europeans, and when roads, power or hospitals fail, what matters is how
+> fast help reaches people. How bad is it that some residents need more
+> time than others? Urban research cannot say, because it measures every
+> need in the same currency, travel minutes. We bring deprivation cost
+> theory from welfare economics into urban analysis. It values time
+> without a service by the welfare that time destroys: bounded for
+> substitutable everyday needs, unbounded for time-critical care. We
+> measure both for 67 European city regions in 24 countries on a 100 m
+> population grid. We find that cities deliver welfare in two regimes that
+> obey different laws. Larger cities lower everyday deprivation but not
+> emergency deprivation, and everyday inequality widens with size while
+> emergency inequality never narrows. Emergency deprivation is set by
+> national coverage, not by size: five capital cities that look average by
+> travel time carry 2.4 to 4.7 times the sample's emergency deprivation.
+> The same residents carry both deprivations in 66 of 67 cities, children
+> most consistently. Cities built for the everyday regime deliver welfare
+> there; the emergency regime depends on national systems that disruption
+> is now testing.
 
-**Introduction, same skeleton.** Paragraph 1: the stylised fact and the
-question (the disruption statistics of R2b go here, two or three of them,
-not a list). Paragraph 2: the two positions, access measurement vs welfare
-economics, and the big theoretical move (R2a). Paragraph 3: the two
-regimes as regimes (R2b). Paragraph 4: why Europe (R3). Paragraph 5: what
-we do and find, in four sentences. Research questions reduced from four
-to three (see R2a); RQ4 becomes the first results section (R6).
+**Introduction, on the Musso skeleton.**
+Paragraph 1: the stylised fact and the question (cities planned for the
+everyday; disruption statistics of R2b, two of them; "how bad is it that
+some residents need more time than others?").
+Paragraph 2: position A, access measurement: uniform minutes, its
+mechanisms (proximity doctrine, global travel-time mapping), and the
+prediction it implies (size improves access for every service alike,
+the scaling benchmark).
+Paragraph 3: position B, deprivation cost theory from welfare economics:
+what it says, and the prediction it implies (welfare follows the need,
+so the everyday and the emergency regime need not obey the same law).
+Paragraph 4: the stakes, in one number, the way Musso uses the 1.4
+billion people: by travel time Bucharest looks better served than the
+typical European city; by deprivation cost it carries 2.8 times the
+typical burden. "In this paper we measure which of the two positions
+describes urban Europe, using ..."
+Paragraph 5: the data and why Europe (R3), and why this was not possible
+before (no welfare-anchored loss functions for urban services; no
+harmonised grid outside Europe).
+Paragraph 6: "First ... Second ... Third ..." (the three questions of
+R2a, each with its answer in one sentence).
+The research-question list is dropped as a device; the three questions
+live in paragraph 6 and return as the three results headings' logic.
 
 Needs: text only. Decision D1 (abstract draft), D2 (title, see end).
 
@@ -189,13 +210,28 @@ echoed once in the Discussion:
    vulnerability analysis, and its friction-surface engine is exactly the
    one our engine cross-check demoted to a sensitivity variant (E.1).
 2. **A mature urban system.** Musso et al. show that large cities lose
-   their growth advantage as urban systems mature. Europe is the mature
-   end of that life cycle, so its cross-sectional size gradient is a
-   clean reading of *what size delivers* once growth no longer favours
-   the large city; a global sample would mix urban systems at different
-   life-cycle stages, which their paper shows changes the exponents.
-   This is the one place the Musso paper is a substantive benchmark for
-   ours rather than a style model.
+   their growth advantage as urban systems mature; in their data "the
+   size-growth relationship is nearly flat in more urbanized countries"
+   and Europe's large cities "grew modestly faster than the rest" over
+   1975–2025. Europe is the mature end of that life cycle, so its
+   cross-sectional size gradient is a clean reading of *what size
+   delivers* once growth no longer favours the large city; a global
+   sample would mix urban systems at different life-cycle stages, which
+   their paper shows changes the exponents. Two further points from
+   their paper serve us. They define cities morphologically because no
+   functional definition exists globally, and their own discussion
+   concedes that this "may fail to fully capture the true gravitational
+   pull of large cities" and that FUA-based slopes are steeper; Europe
+   is where the functional definition they lack is available and
+   harmonised, and we use it. And their fifth limitation states that
+   their projections are "conditional on the absence of major external
+   shocks", naming geopolitical disruptions, climate-driven migration
+   and pandemics as forces outside the model; our emergency regime is
+   precisely the capability those shocks exercise, so the two papers
+   are complementary readings of the same mature urban system: theirs
+   of its growth, ours of the welfare that growth delivers on both
+   clocks. This is the one place the Musso paper is a substantive
+   benchmark for ours rather than a style model.
 3. **Legal and policy comparability.** Access to services of general
    interest is a right in the EU legal order (Charter of Fundamental
    Rights Art. 36; TFEU Art. 14; European Pillar of Social Rights
@@ -494,8 +530,52 @@ the fill colour).
 
 ## R11 — Discussion headings and structure
 
-Replace "What the results change for theory" and the numbered
-"1./2./3." paragraph labels. Proposed structure and headings:
+**How Musso et al. do it (read from the PDF).** Their Discussion has no
+subsection headings and three moves: (1) one paragraph restating the
+finding with its headline numbers ("Using a robust geographic definition
+of cities and a comprehensive database ..., we show that urban growth
+follows a typical life cycle. ... Relative to an extrapolation of
+1975–2025 trends, our model projects 450 million fewer residents ..."),
+(2) limitations as "First ... Fifth", each stated and then bounded (why
+it does not overturn the finding, with a pointer to the SI check), and
+(3) "Despite the above limitations, our results have relevant
+implications when viewed through the lens of urban scaling theory",
+followed by "The policy implications are mixed. On the one hand ... On
+the other hand ...", ending "a question that research can inform but not
+resolve." Robustness lives entirely in the SI; the main text only points
+to it. Limitations come *before* implications, so the implications are
+the last thing read.
+
+**Two options for ours.**
+
+*Option A, Musso order, no headings.* Finding paragraph (the two regimes,
+the two laws, the five capitals, the 66 of 67, children) → limitations
+"First ... Fifth" (cross-sectional; walk/drive only; OSM GP tagging with
+the R9 country finding; per-cell flip share; the emergency-Gini
+conditionality beyond the benchmark) each bounded by its SI check →
+"Despite these limitations, the results bear on three literatures":
+scaling, accessibility and urbanism, resilience, one paragraph each →
+policy in one paragraph with the Preparedness Union Strategy as the
+address. The current robustness subsection (envelope table, inventory)
+moves to the SI beside Fig S1.
+
+*Option B, headed sections, same content order.* Headings proposed:
+- **Deprivation as the welfare measure of urban proximity** (the
+  theoretical contribution stated once as a result);
+- **What urban growth delivers, regime by regime** (the scaling
+  benchmark revised; the Musso tie-in: in a mature urban system what
+  size still delivers is everyday welfare);
+- **Built for the everyday, tested by the emergency** (resilience; the
+  disruption statistics return here; the Strategy as policy address);
+- **Implications for planning and preparedness**;
+- **Limitations** (robustness to the SI).
+
+Recommendation: Option A. It reads as a PNAS discussion, it removes the
+"1./2./3." paragraph labels and the "What the results change" heading
+you objected to, and it puts robustness where Musso put theirs. If you
+prefer signposting, Option B with the same paragraphs.
+
+The Option B headings, for reference, replace the current ones:
 
 - **3.1 Deprivation as the welfare measure of urban proximity.** The
   theoretical contribution stated once as a result: welfare economics
@@ -518,19 +598,11 @@ Replace "What the results change for theory" and the numbered
   as the policy address.
 - **3.4 Implications for planning and preparedness** (current 3.3,
   unchanged content, heading changed).
-- **3.5 Robustness and limitations** (current 3.1 and 3.4 merged; the
-  envelope table stays, the robustness inventory shortens to one
-  paragraph with the SI figure as its home). Moving robustness after the
-  theory sections follows the Musso pattern of leading the Discussion
-  with the finding rather than the defence; if you prefer robustness
-  first (as the round-1 brief asked), it stays as 3.1 with a new heading
-  "How much of this depends on the deprivation functions".
+- **3.5 Limitations** (current 3.4, with the R9 country finding added;
+  the robustness subsection and its envelope table move to the SI, with
+  one sentence in the limitations pointing to them).
 
-The Musso discussion itself could not be read (egress block); the
-structure above follows the PNAS convention their abstract implies
-(finding → theory → implication → caveat). Please check once.
-
-Needs: text; decisions D11 (headings), D12 (robustness first or last).
+Needs: text; decisions D11 (Option A or B), D12 (robustness to the SI).
 
 ---
 
@@ -597,8 +669,8 @@ The brief forbids citations from memory; each of these would be added to
 | D8 | Fig 4 (specification curve) to SI, no inset | Yes |
 | D9 | R9 analyses: variance decomposition, dispersion test, no-desert re-test | All three (one script) |
 | D10 | New map figure of grades × regions; grade as fill colour | Yes, grade as fill |
-| D11 | Discussion headings of R11 | Yes |
-| D12 | Robustness first (3.1) or last (3.5) in the Discussion | Last |
+| D11 | Discussion: Option A (Musso order, no headings) or Option B (headed) | A |
+| D12 | Robustness subsection and envelope table to the SI, one pointer sentence in limitations | Yes |
 
 Once agreed, the implementation order is: R9 analyses and audit checks →
 figures (R4, R6, R9, R10) → text in the order abstract, introduction,
