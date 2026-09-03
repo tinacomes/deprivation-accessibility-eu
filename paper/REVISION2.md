@@ -1,8 +1,8 @@
 # Revision protocol — round 2 (PI review, 2026-09-03)
 
-**Status: proposal for agreement. Nothing in `main.tex` has been changed.**
+**Status: proposal for agreement. Nothing in `main.tex` has been changed. Reviewed and approved by the user. Ready for implementation**
 Updated 2026-09-03 after reading Musso et al. (arXiv 2510.12417v3) from
-the supplied PDF; R1, R3 and R11 now quote it.
+the supplied PDF; R1, R3 and R11 now quote it. Updated by the user. 
 Each numbered block maps one review point to a diagnosis, a proposed
 edit, and what it needs (text only / new figure / new analysis / your
 decision). The decisions are collected at the end. Numbers quoted here
@@ -46,35 +46,54 @@ never appears, the two regimes are not framed as regimes, and the
 deprivation-theory import reads as a technical fix. Result: the abstract
 sounds like an accessibility paper with a better metric.
 
-**Proposed abstract (draft, 214 words, no citations, built to the Musso
-skeleton, for your reaction):**
+**Proposed abstract (draft, reviewed by user. User comments in plain, often in CAPS, abstract text starts with >. Commented across the abstract. this needs substantial revision! ):**
 
-> Europe plans its cities for the everyday: the 15-minute city, in which
-> every daily need is a short walk away, has become planning doctrine
+> Europe plans its cities for everyday life: the 15-minute city, in which
+> every daily need is a short walk away, has become the major planning template for cities
 > across the continent. Yet in 2024 alone, floods affected 413,000
 > Europeans, and when roads, power or hospitals fail, what matters is how
-> fast help reaches people. How bad is it that some residents need more
-> time than others? Urban research cannot say, because it measures every
-> need in the same currency, travel minutes. We bring deprivation cost
+> fast help reaches people. 
+QUESTION by user: IS THERE NOTHING BETTER ON URBAN POPULATIONS? THIS COULD ALSO BE RURAL - FIND A BETTER EXAMPLE OF DISRUPTIONS THAT CLEARLY AFFECTS MANY EUROPEANS, I would actually argue that 400,000 is unrealistically low for a continent of 452 mio people - so this is nothing! 
+
+> How bad is it that some residents need more
+> time than others? 
+REPHRASE THIS QUESTION, This is not sharp enough. More time for what? is this everyday or emergency?? And why is this relevant? 
+
+>Urban research cannot say, because it measures every
+> need in the same currency, travel minutes.
+TERRIBLE. REPHRASE. Travel time is not a currency, and use ACCESS as wording. Say WHY this is insufficient, drawing on welfare literature. 
+
+> We bring deprivation cost
 > theory from welfare economics into urban analysis. It values time
-> without a service by the welfare that time destroys: bounded for
-> substitutable everyday needs, unbounded for time-critical care. We
+> without a service by the welfare that time destroys
+REPHRASE destroy: 
+>bounded for
+> substitutable everyday needs, unbounded for time-critical care.
+USER: I do not get what you mean here???
+
+>We
 > measure both for 67 European city regions in 24 countries on a 100 m
 > population grid. We find that cities deliver welfare in two regimes that
 > obey different laws. Larger cities lower everyday deprivation but not
-> emergency deprivation, and everyday inequality widens with size while
+> emergency deprivation, and everyday inequality widens with city size while
 > emergency inequality never narrows. Emergency deprivation is set by
 > national coverage, not by size: five capital cities that look average by
 > travel time carry 2.4 to 4.7 times the sample's emergency deprivation.
+
+WHAT DO YOU MEAN BY "IS SET"??? I Do not understand the sentence. Why is it important that they are capitals?? what about the other cities? I do not get it...
+
 > The same residents carry both deprivations in 66 of 67 cities, children
-> most consistently. Cities built for the everyday regime deliver welfare
+> most consistently.
+Haeh? Surely, there are different people in the different cities? is this about vulnerable populations? Not clear!!
+
+> Cities built for the everyday regime deliver welfare
 > there; the emergency regime depends on national systems that disruption
 > is now testing.
 
 **Introduction, on the Musso skeleton.**
 Paragraph 1: the stylised fact and the question (cities planned for the
 everyday; disruption statistics of R2b, two of them; "how bad is it that
-some residents need more time than others?").
+some residents need more time than others to reach essential services, and under which urban regime?"). Explain what we mean with the two urban regimes, and especially motivate the need for emergency planning. Add adequate numbers and figures if you can find them. 
 Paragraph 2: position A, access measurement: uniform minutes, its
 mechanisms (proximity doctrine, global travel-time mapping), and the
 prediction it implies (size improves access for every service alike,
@@ -115,9 +134,9 @@ in the Discussion:
   provisioning improves with size, and we test whether *welfare* does.
 - **Accessibility** is not a theory. It is a measurement tradition (Hansen
   1959 defined it as "a measurement of the spatial distribution of
-  activities about a point") and a planning doctrine (the 15-minute city).
+  activities about a point") and a planning paradigm (the 15-minute city). USE PARADIGM, never doctrine! 
   The paper should stop positioning it as a theory being advanced and
-  position it as **the measurement convention being replaced**.
+  position it as **the metric or measurement convention being replaced**.
 - **Deprivation cost theory** is the theory. It comes from welfare
   economics via humanitarian logistics (Holguín-Veras et al. 2013, 2016),
   it has axioms (deprivation as a function of time without the good, value
@@ -130,16 +149,18 @@ in the Discussion:
   rather than two travel-time maps. Two hitherto separate strands,
   welfare economics of disaster relief and urban science of proximity, are
   joined; that is the sentence the introduction should build to.
+  - ADD EQUITY and URBAN VULNERABILITY AND RESILIENCE LITERATURE. 15 Minute cities are used as an argument for more resilience, and there is lots on urban vulnerability. Here, we show that 15 MC is not sufficient for real resilience, include this as a major framing - to be resilient, we need both. And also urban resilience is a major theory., Think about how to weave this in!
 
 The three big questions the paper then answers, replacing RQ1–RQ4:
 
 1. **How bad is it that some urban residents need more time than others?**
    (the welfare question; answered by the deprivation measurement and by
-   what it reveals that minutes cannot: Section R6's first results block)
+   what it reveals that minutes cannot: Section R6's first results block). Avoid phrasing this too colloquially. "How bad?" is not sufficiently academic. Rephrase. 
 2. **Does the city that works every day also work in the emergency, and
    does urban growth deliver welfare in both regimes?** (the regime
    question; scaling of levels and inequality, the geography of divergence)
-3. **Who carries the burden where the city fails on both clocks?**
+3. **Who carries high deprivation?**
+   Rephrase slightly, also use framing of equity and vulnerability. Check out the related literature when you frame this. 
    (compounding and its carriers)
 
 Needs: text only, plus two bibliography entries to be verified before use
@@ -244,7 +265,7 @@ echoed once in the Discussion:
    size" a policy finding rather than a curiosity.
 
 Needs: text; entries for the Charter / Pillar to verify (primary legal
-texts, citable by URL). Decision D5 (use all three, or comparability plus
+texts, citable by URL). Avoid only building on one single paper (musso), check for other sources. Decision D5 (use all three, or comparability plus
 maturity only).
 
 ---
@@ -324,7 +345,7 @@ group belongs to 2.3/2.5. Five results sections with the core argument
 **Proposed structure (four sections):**
 
 **2.0 What is measured** (kept, shortened per R4): the two objects, Fig 1,
-Table 1. No Gini plane here.
+Table 1. No Gini plane here. No numbering or subsection of 2.0, just sits under 2
 
 **2.1 Deprivation, not access: what the welfare layer reveals**
 (current 2.5, moved to the front as the core; Fig 10 becomes Fig 2; the
@@ -341,6 +362,8 @@ the end of 2.2 where it belongs. Forward references to 2.2 and 2.3 are
 explicit.
 
 **2.2 Urban growth delivers everyday welfare, not emergency welfare**
+CHECK IF WE CAN CLAIM this - we only measure deprivation, not WELFARE. Avoid WRONG CLAIMS!!! REPHRASE!!!
+
 (current 2.1 + 2.2 merged, as suggested last round). One figure: Fig 3
 (scaling of means) gains a second panel with the Gini elasticities
 (everyday +0.062, emergency +0.004, with the paired difference), so the
@@ -354,6 +377,7 @@ forms, rising under the third).
 (current 2.3, reordered per R10: coverage grades first, then regions,
 with a map; Fig 2 Gini plane moves here, redrawn with coverage-grade
 markers; Fig 5 strips redrawn per R9; Fig 6 kept).
+Explain what you mean w geography of coverage. That is not evident. 
 
 **2.4 Compounding is the norm, and children carry it** (current 2.4,
 unchanged in content; Figs 7–9). Consider dropping Fig 7 (ρ ranked by
@@ -659,17 +683,17 @@ The brief forbids citations from memory; each of these would be added to
 
 | # | Decision | My recommendation |
 |---|---|---|
-| D1 | Abstract draft in R1: right skeleton and register? | Yes, refine wording after your read |
-| D2 | Title. Current: "The two geographies of urban deprivation: everyday services and emergency care in 67 European cities". Alternatives in the new framing: "How bad is far? The welfare of urban proximity in the everyday and the emergency regime"; "Cities built for the everyday: deprivation in two regimes across 67 European cities" | Second alternative |
+| D1 | Abstract draft in R1: right skeleton and register? | Not really, extensive comments in the abstract text in CAPS |
+| D2 | Title. I like "The welfare of urban proximity in the everyday and the emergency regime" - however, this puts the paper squarely into the economics literature, where it should not be positioned. other options: Geographies of deprivation? And the question "How bad is far?" is not understandable as such. Think of a better title. 
 | D3 | Replace RQ1–4 with the three questions of R2a | Yes |
-| D4 | Which disruption statistics enter the introduction; include the Ukraine conflict statistic? | EEA acceleration + 2025 heat + Valencia; conflict only as one clause in the Discussion |
+| D4 | Which disruption statistics enter the introduction; include the Ukraine conflict statistic? | EEA acceleration + 2025 heat + Valencia; conflict only as one clause in the Discussion. Add a sentence on the extensive heat in 2026, check for numbers there already. It was dramatic! |
 | D5 | Europe justification: comparability + maturity + legal, or drop legal | Keep all three, legal in one sentence |
 | D6 | Results order: 2.1 deprivation vs access, 2.2 growth (levels + inequality merged), 2.3 geography (grades then regions), 2.4 compounding | Yes |
 | D7 | Fig 7 (ρ ranked) to SI | Yes |
 | D8 | Fig 4 (specification curve) to SI, no inset | Yes |
 | D9 | R9 analyses: variance decomposition, dispersion test, no-desert re-test | All three (one script) |
 | D10 | New map figure of grades × regions; grade as fill colour | Yes, grade as fill |
-| D11 | Discussion: Option A (Musso order, no headings) or Option B (headed) | A |
+| D11 | Discussion: Option A (Musso order, no headings) or Option B (headed) | B |
 | D12 | Robustness subsection and envelope table to the SI, one pointer sentence in limitations | Yes |
 
 Once agreed, the implementation order is: R9 analyses and audit checks →
