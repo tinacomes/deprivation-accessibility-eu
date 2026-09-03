@@ -1,0 +1,19 @@
+city,name,country,population,gini_everyday,mean_everyday,coverage_grade
+athina,Athina,EL,3522264,0.6087,0.1032,covered
+bilbao,Bilbao,ES,1053444,0.57,0.1603,covered
+barcelona,Barcelona,ES,5945709,0.5447,0.1748,covered
+jaen,Jaén,ES,249477,0.5432,0.2912,covered
+madrid,Madrid,ES,7601394,0.5332,0.1908,covered
+alicante,Alicante,ES,996867,0.5298,0.3107,covered
+talavera_de_la_reina,Talavera de la Reina,ES,101050,0.5216,0.3778,covered
+palma_de_mallorca,Palma de Mallorca,ES,818202,0.5035,0.2507,covered
+roma,Roma,IT,4432845,0.4239,0.2875,covered
+arezzo,Arezzo,IT,146788,0.4121,0.3808,covered
+cosenza,Cosenza,IT,239305,0.4068,0.5051,covered
+milano,Milano,IT,5030024,0.4003,0.1827,covered
+vicenza,Vicenza,IT,280054,0.3914,0.2749,covered
+palermo,Palermo,IT,1006055,0.3828,0.3172,partial desert
+lisboa,Lisboa,PT,3132904,0.3669,0.2395,covered
+napoli,Napoli,IT,3457649,0.3049,0.326,covered
+caserta,Caserta,IT,298402,0.2979,0.2828,covered
+porto,Porto,PT,1531690,0.2723,0.3242,covered

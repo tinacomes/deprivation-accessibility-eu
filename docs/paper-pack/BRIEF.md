@@ -360,6 +360,13 @@ is awaiting a rerun.
   typology_share_envelope). A local `depacc cross` reproduced the CI
   cross tables to ~1e-13 in the pre-anchor verification, so local and CI
   are one state.
+- **Recomputed locally over that same state (revision 2, 2026-09-03)**:
+  `regional_variance_decomposition.csv`, `regional_dispersion.csv`,
+  `inference_regional_no_deserts.csv`, `south_everyday_gini_by_country.csv`
+  and `coverage_grade_by_region.csv` (paper/analysis_regional_structure.py,
+  reading only `cities_descriptives.csv` and the two clustering tables;
+  country permutation as in `depacc.cityvector.inference`, 10,000 draws,
+  study seed). Audited by `tools/audit_paper_pack.py`.
 - **Copied per city from `depacc-results`**: `figures/cities/<city>.png`,
   the median-split compounding map of each of the 67 cities, with an
   index in `figures/cities/README.md`. The percentile surfaces, the p75

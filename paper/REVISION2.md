@@ -1,6 +1,6 @@
 # Revision protocol — round 2 (PI review, 2026-09-03)
 
-**Status: proposal for agreement. Nothing in `main.tex` has been changed. Reviewed and approved by the user. Ready for implementation**
+**Status: implemented on 2026-09-03 (see the implementation note at the end).** Original status line: proposal for agreement, reviewed and approved by the user, ready for implementation.
 Updated 2026-09-03 after reading Musso et al. (arXiv 2510.12417v3) from
 the supplied PDF; R1, R3 and R11 now quote it. Updated by the user. 
 Each numbered block maps one review point to a diagnosis, a proposed
@@ -699,3 +699,41 @@ The brief forbids citations from memory; each of these would be added to
 Once agreed, the implementation order is: R9 analyses and audit checks →
 figures (R4, R6, R9, R10) → text in the order abstract, introduction,
 results, discussion → cross-check pass → compile → push.
+
+
+---
+
+## Implementation note (2026-09-03)
+
+Implemented per the decisions above and the PI's follow-up message:
+
+- Abstract and significance rewritten on the Musso skeleton (planning
+  paradigm, general exposure statistics rather than a single event, the
+  question names the two regimes, "access" wording, no monetary framing,
+  deprivation proper); 250 words, no citations.
+- Introduction: six paragraphs (stylised facts and question; access
+  position; deprivation-theory position with the humanitarian literature
+  and the clinical survival evidence, value-of-time explicitly rejected
+  for the emergency regime; resilience and social-vulnerability framing as
+  context; the Bucharest stakes sentence; Europe on comparability,
+  maturity and legal obligation; First/Second/Third). RQ list dropped.
+- Results: unnumbered measurement block with the level-vs-cost argument
+  and calibration moved to Methods; 2.1 deprivation vs access (core);
+  2.2 size for means and Ginis in one two-panel figure; 2.3 coverage
+  ordering first, then geography (new map), then country-level regional
+  tests with the new variance decomposition, dispersion test and
+  no-desert re-test, and the South split explained by country; 2.4
+  compounding and children. Specification curve and ranked-rho figures
+  to the SI.
+- Discussion Option B with the agreed headings; robustness subsection and
+  envelope table moved to the SI with a pointer in Limitations.
+- Title: "Two geographies of urban deprivation: everyday services and
+  emergency care across European cities".
+- Resilience used as framing context (introduction paragraph 3, Discussion
+  3.3), not as a second theoretical pillar: the theory imported is
+  deprivation theory.
+- New bibliography entries verified by DOI or official URL (see
+  docs/paper-pack/REFERENCES.md). The 2026 heat season is cited through
+  the Copernicus May-2026 piece only; seasonal mortality estimates for
+  2026 are not yet in a citable source.
+- New pack tables and audit checks: see BRIEF.md provenance.
