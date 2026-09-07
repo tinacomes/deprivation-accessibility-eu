@@ -1,0 +1,5 @@
+pair,pearson_r,p,note
+residuals (means),0.511014923944219,9.930252334856752e-06,identical regressors: SUR = OLS; this correlation is what joint estimation adds
+residuals (ginis),0.1858193279783334,0.1321907372613659,identical regressors: SUR = OLS; this correlation is what joint estimation adds
+gini_everyday vs gini_emergency (Pearson),0.12328922268459587,0.3202360693140134,cross-city
+gini_everyday vs gini_emergency (Spearman),0.11744752174954108,0.3438737302904863,cross-city

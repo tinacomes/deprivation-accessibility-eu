@@ -214,3 +214,32 @@ predictions.
    reference; attributed via Khan + primary literature), and the two
    window-anchor sources added (`peleg2004ems`,
    `blanchard2012response`).
+
+## Added in revision round 2 (2026-09-03)
+
+Verified against the publisher's DOI record or the official EU/EEA page
+on the day of addition. Grouped by the claim each supports.
+
+### Theory positioning (introduction, discussion)
+
+| cite | supports |
+|---|---|
+| `bettencourt2013origins` | Urban scaling as a theory (the generative model), distinct from the 2007 regularity; cited when the paper says "urban scaling theory". |
+| `hansen1959accessibility` | Accessibility as a measurement tradition ("a measurement of the spatial distribution of activities about a point"), not a theory. |
+| `allam2022fifteenminute` | The 15-minute city advanced as a framework for sustainability, liveability and health (with `moreno2021fifteenminute`, which claims resilience): the planning paradigm the paper tests against the emergency regime. |
+| `cutter2003vulnerability` | Social vulnerability as the equity lens for "who carries the burden". |
+| `dijkstra2019fua` | The harmonised EU-OECD functional urban area definition (why Europe is comparable). |
+
+### Motivation: exposure of urban Europe to emergencies (introduction, 3.3)
+
+| cite | supports |
+|---|---|
+| `naumann2020heat` | About 10 million Europeans exposed to extreme heat per year today, near 300 million per year at 3 °C; heat deaths 2,750 per year today, 96,000 at 3 °C. |
+| `garcialeon2024mortality` | About 44,000 heat-related deaths per year in Europe at present, tripling by 2100 under current policies. |
+| `masselot2025cities` | City-level projections for 854 European cities; 2.3 million cumulative climate-change-related temperature deaths 2015--2099 under the lowest mitigation scenario. |
+| `eea2024urbanadaptation` | 74 % of Europeans live in urban areas, projected above 83 % by 2050. |
+| `copernicus2026mayheat` | The early, intense May 2026 heatwave (the 2026 season; seasonal mortality estimates not yet in a citable source). |
+| `grasner2020eureca`, `grasner2025eureca3` | Out-of-hospital cardiac arrest in Europe: about 8 % survive to discharge; mean EMS response 12.2 min; response time associated with survival. |
+| `larsen1993survival` | Survival falls by roughly 1--2 percentage points per minute of delay to CPR, defibrillation and advanced care: why value-of-time from routine travel is the wrong valuation for the emergency regime. |
+| `ec2025preparedness` | The Preparedness Union Strategy (72-hour household self-sufficiency; actions on hospitals, schools, transport): the policy address of the emergency regime. |
+| `eu2012charter`, `eu2017pillar` | Access to services of general economic interest (Charter Art. 36) and to essential services (Pillar principle 20): the legal comparability argument for a European sample. |

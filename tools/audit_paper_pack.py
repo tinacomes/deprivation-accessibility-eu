@@ -536,6 +536,94 @@ def run(data: Path) -> int:
             "figures/cities",
             sum((data.parent / "figures" / "cities" / f"{c}.png").exists()
                 for c in plane.city), 67)
+
+    # ---- regional structure (revision 2: paper/analysis_regional_structure) -
+    var = a.table("regional_variance_decomposition").set_index("indicator")
+    for ind, col, exp in (("mean_emergency", "share_between_regions", 0.25),
+                          ("mean_emergency",
+                           "share_between_countries_within_region", 0.54),
+                          ("mean_emergency", "share_within_country", 0.22),
+                          ("gini_emergency", "share_country_level_total", 0.70),
+                          ("gini_everyday", "share_country_level_total", 0.75),
+                          ("divergence_gap", "share_country_level_total", 0.76),
+                          ("gini_everyday",
+                           "share_between_countries_within_region", 0.515),
+                          ("compounding_intensity",
+                           "share_country_level_total", 0.40)):
+        a.check(f"variance share: {ind} {col}",
+                "regional_variance_decomposition",
+                round(float(var.loc[ind, col]), 3), exp, 0.0055)
+    disp = a.table("regional_dispersion").set_index("indicator")
+    a.check("dispersion p_perm: gini_emergency", "regional_dispersion",
+            round(float(disp.loc["gini_emergency",
+                                 "p_permutation_countries"]), 3), 0.028, 0.0005)
+    a.check("dispersion p_perm: divergence_gap", "regional_dispersion",
+            round(float(disp.loc["divergence_gap",
+                                 "p_permutation_countries"]), 3), 0.010, 0.0005)
+    a.check("dispersion sd CEE gini_emergency", "regional_dispersion",
+            round(float(disp.loc["gini_emergency", "sd_CEE"]), 2), 0.13, 0.005)
+    nod = a.table("inference_regional_no_deserts").set_index("outcome")
+    for ind, exp in (("spearman_rho", 0.003), ("gini_emergency", 0.006),
+                     ("divergence_gap", 0.035),
+                     ("compounding_pop_share_50", 0.0016),
+                     ("compounding_intensity", 0.0023),
+                     ("gini_everyday", 0.26)):
+        a.check(f"no-desert regional p_perm: {ind}",
+                "inference_regional_no_deserts",
+                round(float(nod.loc[ind, "p_permutation_countries"]),
+                      4 if exp < 0.01 else 3 if exp < 0.1 else 2), exp,
+                0.00005 if exp < 0.01 else 0.0005 if exp < 0.1 else 0.005)
+    south = a.table("south_everyday_gini_by_country")
+    hi = south[south.country.isin(["ES", "EL"])].gini_everyday
+    lo = south[south.country.isin(["IT", "PT"])].gini_everyday
+    a.check("South split: ES+EL everyday Gini min", "south_everyday_gini",
+            round(float(hi.min()), 2), 0.50, 0.005)
+    a.check("South split: ES+EL everyday Gini max", "south_everyday_gini",
+            round(float(hi.max()), 2), 0.61, 0.005)
+    a.check("South split: IT+PT everyday Gini max", "south_everyday_gini",
+            round(float(lo.max()), 2), 0.42, 0.005)
+    a.check("South split: IT+PT everyday Gini min", "south_everyday_gini",
+            round(float(lo.min()), 2), 0.27, 0.005)
+    a.check("South split: no overlap", "south_everyday_gini",
+            bool(hi.min() > lo.max()), True)
+    gr = a.table("coverage_grade_by_region").set_index("region")
+    for reg, cov, part, des in (("North", 6, 7, 0), ("West", 15, 1, 0),
+                                ("South", 17, 1, 0), ("CEE", 10, 5, 5)):
+        a.check(f"grade x region: {reg}", "coverage_grade_by_region",
+                (int(gr.loc[reg, "covered"]), int(gr.loc[reg, "partial desert"]),
+                 int(gr.loc[reg, "desert"])), (cov, part, des))
+
+    # ---- scaling robustness extras (revision 3) ---------------------------
+    ex = a.table("scaling_robustness_extra").set_index("outcome")
+    for ind, col, exp, tol in (
+            ("mean_everyday", "moran_p_perm", 0.41, 0.02),
+            ("mean_emergency", "moran_I_resid", 0.23, 0.005),
+            ("mean_emergency", "moran_p_perm", 0.0015, 0.0006),
+            ("gini_emergency", "moran_I_resid", 0.39, 0.005),
+            ("mean_everyday", "elasticity_gp_control", -0.185, 0.0015),
+            ("mean_everyday", "p_wild_gp_control", 0.0002, 0.0002),
+            ("gini_everyday", "elasticity_gp_control", 0.051, 0.0015),
+            ("gini_everyday", "p_wild_gp_control", 0.0006, 0.0004),
+            ("mean_emergency", "elasticity_gp_control", -0.048, 0.0015),
+            ("mean_emergency", "mde_80pct_power", 0.119, 0.0015),
+            ("mean_emergency", "quadratic_coef", -0.169, 0.0015),
+            ("mean_emergency", "p_wild_quadratic", 0.001, 0.0006),
+            ("mean_everyday", "p_wild_quadratic", 0.24, 0.02),
+            ("mean_emergency", "quadratic_coef_grade_ctrl", -0.104, 0.0015),
+            ("mean_emergency", "p_wild_quadratic_grade_ctrl", 0.010, 0.0015)):
+        a.check(f"scaling extra: {ind} {col}", "scaling_robustness_extra",
+                float(ex.loc[ind, col]), exp, tol)
+    cq = a.table("scaling_crossequation").set_index("pair")
+    a.check("cross-equation residual r (means)", "scaling_crossequation",
+            round(float(cq.loc["residuals (means)", "pearson_r"]), 2), 0.51, 0.005)
+    a.check("cross-equation residual r (ginis)", "scaling_crossequation",
+            round(float(cq.loc["residuals (ginis)", "pearson_r"]), 2), 0.19, 0.005)
+    a.check("cross-city Gini correlation r", "scaling_crossequation",
+            round(float(cq.loc["gini_everyday vs gini_emergency (Pearson)",
+                               "pearson_r"]), 2), 0.12, 0.005)
+    a.check("cross-city Gini correlation p", "scaling_crossequation",
+            round(float(cq.loc["gini_everyday vs gini_emergency (Pearson)",
+                               "p"]), 2), 0.32, 0.005)
     return a.report()
 
 
