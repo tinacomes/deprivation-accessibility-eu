@@ -28,6 +28,7 @@
 \usepackage[numbers,sort&compress]{natbib}
 \usepackage[hidelinks]{hyperref}
 \usepackage{url}
+\usepackage{float}
 
 % break long DOIs in the bibliography instead of overflowing the margin
 \newcommand{\doi}[1]{doi:~\href{https://doi.org/#1}{\nolinkurl{#1}}}
@@ -978,32 +979,71 @@ emergency cost is 0.197 against 0.169 for the rest, the expected direction
 at a modest size, and none of them is in the desert group, so no headline
 turns on it. Table~\ref{tab:si-cities} reports the count per city.
 
+% ==========================================================================
 \section{Materials and Methods}\label{sec:methods}
 % ==========================================================================
 
-\paragraph{Design and sample.}
-Cross-sectional multi-city design with one harmonised city definition
-(Eurostat/OECD functional urban areas) and trajectories read from the
-cross-sectional size gradient
-\citep{musso2026cities,bettencourt2007growth}; no longitudinal component
-exists, and all outputs are labelled space-for-time. The sample is a
-stratified draw over 4 macro-regions $\times$ 4 population strata: 67
-FUAs, 24 countries, 113.9 million residents, 101{,}050 to 12.9 million
-inhabitants (Table~\ref{tab:sample}; Table~\ref{tab:si-cities}).
+\subsection{Study design and sample}\label{sec:m-design}
 
-\paragraph{Grid, facilities, routing.}
-The analysis grid is the GHS-POP 100\,m population grid
-\citep{schiavina2023ghspop}, cells clipped to each FUA. Facilities come
-from OpenStreetMap via Overpass queries with expiry-refreshed
-extractions; Table~\ref{tab:services} summarises the routed facility
-sets. Travel times are computed with the R5 routing engine via r5py
-\citep{fink2022r5py} over the OSM street network: walking at 4.8\,km/h for
-the everyday regime, driving for the emergency regime, with emergency
-matrices reverse-routed (station-to-cell, the substantively correct
-direction for ambulance response; measured car asymmetry median 1
-minute). A friction-surface engine \citep{weiss2020healthcare} is
-retained as a declared sensitivity variant after a two-city cross-check
-showed city-specific, uncorrectable level bias (E.1).
+The study is a cross-sectional comparison of 67 functional urban areas
+(FUAs) in 24 European countries under one harmonised city definition, with
+trajectories read from the cross-sectional size gradient. The design
+follows the logic of Musso et al.\ \citep{musso2026cities}, who show that
+what a size gradient means depends on comparing cities defined the same
+way; we use the Eurostat--OECD functional urban area, a densely populated
+core plus its commuting zone \citep{dijkstra2019fua}, because it is the
+one definition that exists for every European city and follows the
+labour-market extent of the city rather than an administrative line. There
+is deliberately no longitudinal component. Every statement about what
+happens ``as cities grow'' is the space-for-time reading of a
+cross-sectional elasticity and is labelled as such.
+
+The sample is a stratified draw over four macro-regions (North, West,
+South, Central-Eastern Europe) and four population strata
+(100{,}000--250{,}000; 250{,}000--1 million; 1--5 million; above 5
+million), seeded once and fixed before any deprivation surface was
+computed; 15, 18, 30 and 4 cities fall in the four strata, from
+101{,}050 to 12.9 million inhabitants and 113.9 million residents in
+total (Table~\ref{tab:sample}; every city in Table~\ref{tab:si-cities}).
+Macro-region is a property of the country, so the 24 countries nest
+inside the four regions, and every cross-city test below is built around
+that nesting.
+
+\subsection{Data}\label{sec:m-data}
+
+\paragraph{Population grid.} The analysis unit is the populated 100\,m cell
+of the GHS-POP R2023A population grid \citep{schiavina2023ghspop}, clipped
+to each FUA. Cells with zero population enter no statistic; every
+aggregate in the paper is population-weighted over the populated cells.
+
+\paragraph{Facilities.} Facilities come from OpenStreetMap through Overpass
+queries with one harmonised tag taxonomy for all cities and an
+expiry-refreshed extraction date. Five everyday service categories are
+routed on foot (general practitioners, pharmacies, supermarkets, schools
+and green spaces, the last two split into a local and a district sub-type
+that share one extraction and weigh 0.5 each so that each category counts
+once) and two emergency services by car (hospitals with an emergency
+department, and ambulance stations). Table~\ref{tab:services} gives the
+median facility counts per FUA. Completeness was benchmarked against
+national registries where available (Germany: pharmacies 0.976, hospitals
+1.24 of the registry count) and characterised per country through the
+per-city facility counts, which surface the general-practitioner tagging
+artefact discussed in the limitations.
+
+\paragraph{Street networks.} Travel times are computed over the
+OpenStreetMap street network (Geofabrik extracts, clipped to the FUA
+window) with the R5 routing engine via r5py \citep{fink2022r5py}. A
+friction-surface engine \citep{weiss2020healthcare} was the planned
+primary and is retained as a declared sensitivity variant after a
+two-city cross-check showed city-specific level bias (SI~\ref{si:validation}).
+
+\paragraph{Census strata.} Vulnerability strata come from the Eurostat
+Census 2021 1\,km grid (broad age groups, harmonised under Regulation
+2018/1799 for every city) and, where a country publishes one, from national
+fine grids (for Germany the Zensus 2022 100\,m grid with age, rent, tenure
+and vacancy). The 1\,km census values are broadcast to the 100\,m analysis
+cells inside each kilometre and are therefore neighbourhood attributes.
+Withheld census counts are treated as missing, never as zero.
 
 \begin{table}[t]
 \centering
@@ -1028,130 +1068,278 @@ Emergency & ambulance station      & 6   & 12.0 \\
 \end{tabular}
 \end{table}
 
-\paragraph{Everyday deprivation (a level).}
-Per service, travel time is congestion-adjusted by a two-step floating
-catchment area (2SFCA) factor \citep{luo2003measures,luo2009enhanced}:
-facilities serving many people relative to capacity inflate the
-effective time of their users. A soft-minimum over reachable facilities
-then rewards substitutability (several similar options count as slightly
-closer than the nearest alone). The effective time passes through a
-logistic deprivation level function \citep{wang2017deprivation} with
-ceiling 1, inflection $t_0 = 15$ minutes (the 15-minute-city threshold
-\citep{moreno2021fifteenminute}) and steepness $k = 0.2$ per minute; the
-city surface is the weighted mean over the five service categories
-(school and green-space sub-types weigh 0.5 each). Because network
-walking time scales inversely with speed, the slower 3.5\,km/h often
-assumed for elderly and mobility-impaired residents is equivalent to
-lowering the inflection from 15 to about 11 minutes at the baseline speed,
-which the 10-minute inflection variant of the sensitivity grid covers.
-Cells with no network
-path to any facility are masked; routable cells beyond a service's
-cutoff receive a large finite time so they stay on the map at
-near-maximal deprivation.
+\subsection{Travel times}\label{sec:m-travel}
 
-\paragraph{Emergency deprivation (a cost).}
-The emergency surface applies a convex Box-Cox deprivation cost function
-\citep{cantillo2018discrete,delgadolindeman2019ambulance} with
-$\lambda = 1.8$ (transferred; solving $\lambda$ from the anchors gives
-1.89--1.95, inside the sensitivity sweep) to the drive time to the
-nearest emergency facility. The anchors are the EMS response benchmarks:
-cost negligible below the 3--4 minute ideal
-\citep{pons2005response,vo2020vulnerable}, about a third of the
-benchmark cost at the 8-minute urban standard (contested: no survival
-effect for most patients in \citep{pons2005response}, supported in
-\citep{blanchard2012response}; attributed via \citep{khan2026melbourne},
-whose WHO 2020 reference is an unpinnable URL), and 1 at the 15-minute
-upper target \citep{peleg2004ems,khan2026melbourne}; convexity is
-supported independently by distance-mortality evidence
-\citep{nicholl2007distance}. The 8-minute mark cannot carry a half-max
-anchor: convexity caps $g(8)/g(15)$ at 0.427 given $g(4)/g(15) = 0.10$,
-so the two regimes' anchor structures are genuinely different. All costs
-are reported in multiples of $\gref$. Free-flow civilian drive times
-anchor the cost scale and are not literal response-time predictions
-(dispatch and turnout are unmodelled; lights-and-siren travel is faster
-than civilian flow; free-flow understates congested cores, which is
-conservative for the periphery findings).
+For every populated cell we compute the travel time to the 30 nearest
+facilities of each service, walking at 4.8\,km/h for the everyday regime
+and driving at free-flow speed for the emergency regime, with a 30-minute
+cut-off on foot and a 60-minute cut-off by car. Matrices are routed from
+facilities to cells and transposed. For walking the network is symmetric;
+for driving the transposed direction is the substantively correct one for
+an ambulance, which travels from its station to the patient, and the
+measured asymmetry of the car network is a median of one minute. Free-flow
+civilian drive times anchor the emergency cost scale but are not
+response-time predictions: dispatch and turnout are unmodelled,
+lights-and-siren travel is faster than civilian flow, and free-flow
+understates congested cores relative to the periphery, which is
+conservative for the periphery findings and pushes the emergency size
+elasticity toward a size benefit (Section~\ref{sec:limitations}). Cells
+that reach no facility of any service in any mode have no network path;
+they are masked from every surface under one shared mask, and their
+population share is reported. Cells that are routable but have no facility
+of a given service within its cut-off are service-deprived rather than
+unreachable: they receive a large finite time so that the everyday level
+saturates and the cell stays on the map. The two situations are kept
+apart because merging them lets one sparse service mask a whole city.
 
-\paragraph{Cross-regime standardisation.}
-The everyday level and the emergency cost are on incomparable scales by
-design. Only unit-invariant statistics cross regimes: elasticities,
-Ginis (mean-normalised, the same move as comparing an income Gini with a
-wealth Gini) and rank-based measures. The co-location typology is built
-on population-weighted mid-rank percentile surfaces; at the median split
-the 2$\times$2 class table has one free number, the HH share, and
-statistical independence corresponds to HH $= 25\,\%$. The continuous
-compounding intensity is the population-weighted mean of the smaller of
-the two percentile ranks (1/3 independence, 1/2 perfect coupling, 1/4
-perfect divergence). The divergence gap (emergency Gini minus everyday
-Gini) is the one cross-regime subtraction, a difference of dimensionless
-indices, form-dependent, and never a standalone headline.
+\subsection{Deprivation functions}\label{sec:m-deprivation}
 
-\paragraph{Equity strata.}
-Census-2021 1\,km strata (broad age groups) are broadcast to the grid
-and pooled across cities against covered-cell references (cells where
-the stratum's variable is published); national fine-grid strata (rent,
-tenure) are per-city depth and never pooled. Inequality within strata
-uses the concentration index \citep{wagstaff1991measurement}.
+Deprivation is a function of the time a resident is without a service, and
+it takes a different form for the two kinds of need
+\citep{holguinveras2013objective,holguinveras2016econometric}. In both
+regimes the functional form is transferred from the estimated literature
+and the curvature is calibrated to domain anchors, because the published
+coefficients were estimated on an hours-scale deprivation time (hours
+without water, food or care) that does not transfer to intra-urban
+minutes. The curvature parameters are the primary targets of the
+sensitivity analysis.
 
-\paragraph{Cross-city inference.}
-Cities nest in 24 countries, so scaling regressions report
-country-clustered standard errors with wild cluster bootstrap p-values
-(null imposed) \citep{cameron2008bootstrap,mackinnon2023cluster};
-regional contrasts are tested by permuting whole countries across
-macro-regions, with a country-random-intercept mixed model as
-triangulation; city-level ANOVA p-values are anti-conservative for such
-questions and are never cited as evidence. The emergency null is bounded
-by TOST equivalence tests \citep{lakens2017equivalence}; slope
-robustness uses a specification curve over all 14 deprivation
-parameterisations \citep{simonsohn2020specification}; clustering
-diagnostics report silhouette \citep{rousseeuw1987silhouettes},
-bootstrap and cross-partition adjusted Rand indices
-\citep{hubert1985comparing} and a Gaussian silhouette null. Every
-headline elasticity carries leave-one-out, Cook's-distance, Huber and
-median-regression diagnostics. Because the everyday and emergency
+\paragraph{Everyday deprivation level.} For each everyday service $s$ the
+travel times to the reachable facilities $j$ are first adjusted for
+congestion by a two-step floating catchment area factor
+\citep{luo2003measures,luo2009enhanced}: the supply-to-demand ratio of a
+facility, $R_j = S_j / \sum_i P_i K(t_{ij})$ with a Gaussian kernel $K$,
+is converted into a time inflation $c_j = (R_{\mathrm{ref}} / R_j)^{\gamma}$
+relative to the demand-weighted median ratio of the city, so that crowded
+facilities count as further away. The effective time of a cell is then a
+soft minimum over its reachable facilities,
+\begin{equation}
+t^{\mathrm{eff}}_{is} = -\frac{1}{\kappa}\,\ln \sum_j \exp\!\big(-\kappa\, t_{ij}\, c_j\big),
+\label{eq:softmin}
+\end{equation}
+which lies between the nearest adjusted time and that time less
+$\ln(n)/\kappa$: several similar options count as slightly closer than the
+nearest alone, which is what substitutability means. The deprivation
+level of the cell for that service is the logistic
+\begin{equation}
+D_{is} = \frac{1}{1 + \exp\!\big(-k\,(t^{\mathrm{eff}}_{is} - t_0)\big)},
+\qquad t_0 = 15\ \mathrm{min},\; k = 0.2\ \mathrm{min}^{-1},
+\label{eq:dlf}
+\end{equation}
+the saturating S-curve of needs-based severity \citep{wang2017deprivation},
+with its inflection at the 15-minute-city threshold
+\citep{moreno2021fifteenminute} and a ceiling of 1 that the surface
+reaches by about 45 minutes. The everyday deprivation level of a cell is
+the weighted mean of $D_{is}$ over the service categories reachable from
+it. Because network walking time scales inversely with speed, the
+3.5\,km/h often assumed for elderly and mobility-impaired residents is
+equivalent to lowering $t_0$ from 15 to about 11 minutes at the baseline
+speed, which the 10-minute inflection variant of the sensitivity grid
+covers.
+
+\paragraph{Emergency deprivation cost.} The emergency surface uses the
+nearest facility only and a convex Box-Cox deprivation cost function
+\citep{cantillo2018discrete,delgadolindeman2019ambulance},
+\begin{equation}
+C_i = \frac{g(\min_j t_{ij})}{g(15)}, \qquad
+g(t) = \frac{(t + 1)^{\lambda} - 1}{\lambda}, \qquad \lambda = 1.8 .
+\label{eq:dcf}
+\end{equation}
+The anchors are the emergency-medical-service response benchmarks: the
+cost is negligible below the 3--4 minute ideal
+\citep{pons2005response,vo2020vulnerable}, about a third of the benchmark
+cost at the 8-minute urban standard, which the clinical literature
+contests (no survival effect for most patients in \citep{pons2005response},
+supported in \citep{blanchard2012response}; attributed via
+\citep{khan2026melbourne}), and equal to the benchmark cost at the
+15-minute upper target \citep{peleg2004ems,khan2026melbourne}. Convexity
+is supported independently by the distance-mortality evidence
+\citep{nicholl2007distance}. Solving $\lambda$ from the anchors gives
+1.89--1.95, inside the sensitivity sweep of 1.4--2.2, so the transferred
+and the anchor-calibrated curvature coincide. The 8-minute mark cannot
+play the half-maximum role the 15-minute inflection plays for the everyday
+level: convexity caps $g(8)/g(15)$ at 0.427 given $g(4)/g(15) = 0.10$, so
+the anchor structures of the two regimes are genuinely different. Dividing
+by $g(15)$ reports every cost in multiples of the deprivation of a
+resident whose ambulance arrives at the benchmark; it does not bound the
+function, and because it is division by a constant it leaves every
+rank-based statistic and both Ginis exactly unchanged.
+
+\subsection{City-level indicators and cross-regime comparison}\label{sec:m-indicators}
+
+The everyday level and the emergency cost are different mathematical
+objects on incomparable scales, and the analysis is built so that only
+unit-invariant statistics cross between them. Three families qualify.
+Elasticities (slopes of a log outcome on log population) are invariant to
+any rescaling of a surface. The within-city Gini,
+\begin{equation}
+G = \frac{\sum_i \sum_j P_i P_j\, |x_i - x_j|}{2\,(\sum_i P_i)^2\, \bar{x}},
+\label{eq:gini}
+\end{equation}
+computed on the raw values of one surface with population weights $P_i$,
+is mean-normalised and therefore unit-free, so comparing the inequality of
+a level with the inequality of a cost is the same move as comparing an
+income Gini with a wealth Gini. Rank-based statistics are invariant to any
+monotone transform. The rank layer is the population-weighted mid-rank
+percentile of each surface, which places a group of tied cells at the
+midpoint of its own weight span and tames the unbounded emergency tail.
+Raw magnitudes are never summed, differenced, co-plotted on one axis or
+clustered across regimes.
+
+The co-location typology cuts both percentile surfaces at their
+population-weighted medians. Because each marginal is then one half by
+construction, the 2$\times$2 table of low-low, high-low, low-high and
+high-high cells has a single free number, the high-high (HH) compounding
+share: $\mathrm{HL} = \mathrm{LH} = 0.5 - \mathrm{HH}$ and
+$\mathrm{LL} = \mathrm{HH}$. Statistical independence of the two surfaces
+gives $\mathrm{HH} = 0.25$, so the excess over one quarter is the
+co-location beyond chance. Alongside the thresholded share we report the
+Spearman coupling $\rho$ of the two percentile surfaces and the
+threshold-free compounding intensity, the population-weighted mean of
+$\min(p^{\mathrm{ev}}_i, p^{\mathrm{em}}_i)$ over cells, which equals 1/3
+under independence, 1/2 under perfect coupling and 1/4 under perfect
+divergence. The divergence gap, the emergency Gini minus the everyday
+Gini, is the one cross-regime subtraction; it is a difference of
+dimensionless indices, depends on the functional forms, and never carries a
+headline alone.
+
+\subsection{Vulnerability strata}\label{sec:m-vulnerability}
+
+Vulnerability is analysed on two strictly separated levels. The
+census-harmonised age strata (top quartile of the share of residents under
+15, top quartile of the share aged 65 and over) exist for every city and
+are pooled across cities. National fine-grid strata (lowest rent quartile,
+lowest ownership quartile, finer age cuts) exist only where a national
+grid does, use different definitions, and are reported per city and never
+pooled. Each stratum's mean deprivation and compounding share are compared
+against the cells on which its own census variable is published, because
+national grids are published where the population is large enough and
+that is not a random subset of a metropolitan area; a stratum whose
+variable covers less than half of a city's population is dropped from the
+pooled summary. Within-stratum inequality uses the concentration index
+\citep{wagstaff1991measurement}.
+
+\subsection{Cross-city analysis and inference}\label{sec:m-inference}
+
+\paragraph{Size regressions.} Following the scaling tradition
+\citep{bettencourt2007growth}, each city outcome $y_c$ is regressed on
+population,
+\begin{equation}
+\ln y_c = \alpha + \beta \ln P_c + \varepsilon_c ,
+\label{eq:scaling}
+\end{equation}
+so that $\beta$ is an elasticity. Because cities nest in 24 countries and
+every outcome has a national component, the citable inference clusters
+standard errors on country and reports a wild cluster bootstrap p-value
+with the null imposed, Rademacher weights per country and 4{,}999 draws
+\citep{cameron2008bootstrap,mackinnon2023cluster}; heteroskedasticity-robust
+and country-fixed-effect estimates are reported as references. The claim
+that emergency deprivation does not scale is stated positively through two
+one-sided equivalence tests \citep{lakens2017equivalence} at bounds of
+$\pm 0.10$ and $\pm 0.13$. The difference between the two regimes' slopes
+is tested within cities by stacking both outcomes and estimating a regime
+$\times$ log-population interaction with the same clustered inference.
+Every headline elasticity carries a leave-one-out envelope, the
+Cook's-distance top city, Huber and median-regression re-estimates, and
+re-estimation without the five desert capitals.
+
+\paragraph{Regional contrasts.} Region is a property of countries, so a
+regional contrast is tested by comparing country means and permuting whole
+countries across regions with the regional country counts held fixed
+(10{,}000 permutations); the city-level analysis of variance is printed
+only as an anti-conservative reference, and a country-random-intercept
+mixed model triangulates. Three further analyses characterise where the
+cross-city variance lies (SI~\ref{si:regional}). A nested sum-of-squares
+decomposition splits each indicator's variance into between-region,
+between-country-within-region and within-country shares. Dispersion by
+region is compared with a Fligner--Killeen test whose statistic is
+re-evaluated under the same country permutation. Every regional contrast is
+re-run without the five desert capitals.
+
+\paragraph{Clustering and coverage grades.} The city vector (means,
+Ginis, coupling, compounding, tail shares, within-city density slopes, log
+population) is robust-scaled, with the zero-inflated tail shares opened by
+$\log(1+x)$ so the scaler cannot manufacture separation, and clustered by
+k-means and by Ward's method with $k$ selected by silhouette over 2--6.
+Every partition carries the silhouette \citep{rousseeuw1987silhouettes},
+a bootstrap adjusted Rand index over resampled cities
+\citep{hubert1985comparing}, a Gaussian silhouette null built from
+same-covariance multivariate-normal draws pushed through the same
+selection, and the adjusted Rand index against the region partition,
+since with country nesting a cluster can be a region in costume. When the
+winning split isolates an outlier group below a quarter of the sample, a
+peeled second pass re-scales and re-clusters the remaining cities with the
+same diagnostics. The coverage grade of a city is read off the two passes
+and never from a hand-set threshold: desert is the main pass's outlier
+group, partial desert the peeled pass's smaller cluster, covered the rest.
+A feature-set check re-runs the whole procedure with the 8- and 15-minute
+benchmark shares added. The graded scaling model regresses log emergency
+cost on centred log population, grade dummies and their interaction with
+country-clustered errors; centring makes the dummy test a contrast between
+grades at a typical city size.
+
+\paragraph{Deprivation against access.} Every headline size regression is
+re-run on the deprivation-free travel-time indicators the accessibility
+literature would use (median, mean and, for the emergency regime, the
+90th-percentile minutes), the deprivation-based and time-based Gini
+families are correlated across cities, and the desert capitals' ratios to
+the sample are computed under both measures. The everyday 90th percentile
+is not regressed, because above the walking cut-off the everyday composite
+time behaves as a count of unmet service categories rather than a travel
+time.
+
+\paragraph{Additional robustness.} Because the everyday and emergency
 regressions share the same regressor, joint (seemingly unrelated)
-estimation coincides with equation-by-equation OLS; the cross-equation
-residual correlation, a Moran test of residual spatial dependence over the
-city coordinates, the elasticities with a mapped-facility-density
-control, non-linearity checks and the minimum detectable emergency
-elasticity are reported in SI~\ref{si:scaling-extra}
-(\texttt{paper/analysis\_scaling\_robustness.py}).
+estimation coincides with equation-by-equation least squares; what it
+would add is the cross-equation residual correlation, which we report.
+Residual spatial dependence is tested by Moran's $I$ over the city-centre
+coordinates (five nearest neighbours, row-standardised weights,
+permutation p). The elasticities are re-estimated with mapped
+general-practitioner density as a completeness control, with a centred
+quadratic in log population with and without coverage-grade dummies, and
+with size-stratum dummies in place of log population, and the minimum
+detectable emergency elasticity at 80\,\% power is derived from the
+clustered standard error (SI~\ref{si:scaling-extra}).
 
-\paragraph{Regional structure.}
-Three additive analyses characterise where the cross-city variance lies
-(\texttt{paper/analysis\_regional\_structure.py}; SI~\ref{si:regional}).
-A nested sum-of-squares decomposition splits each indicator's variance
-across the 67 cities into between-region, between-country-within-region
-and within-country shares. Dispersion by region is compared with a
-Fligner--Killeen test, whose statistic is re-evaluated under the same
-country permutation used for the medians. Every regional contrast is
-re-run without the five desert capitals with the same permutation test.
+\subsection{Robustness of the deprivation layer}\label{sec:m-robustness}
 
-\paragraph{Robustness harness.}
-A structured (non-probabilistic) sweep recomputes rank-based targets
-over a defensible envelope: Layer 1 varies curvature within fixed forms;
-Layer 2 swaps the forms while pinning the same anchors (concave Box-Cox
-everyday; exponential and bounded survival-based emergency escalations);
-Layer 3 sweeps the accessibility model (soft-min $\kappa$, congestion
-exponent $\gamma$, bandwidth, $k$-nearest, mode set, unreachable
-policy); a threshold axis sweeps the typology cut. Results are reported
-as rank agreement, class-share envelopes, flip-cell shares and the
-specification curve (SI~\ref{si:robustness}; Fig.~S\ref{fig:si-architecture}).
+A structured, non-probabilistic sweep recomputes the rank-based targets
+over a defensible envelope and reports how far they move
+(SI~\ref{si:robustness}). Layer 1 varies the curvature within the fixed
+forms ($k \in \{0.1, 0.2, 0.3\}$ per minute and $t_0 \in \{10, 15, 20\}$
+minutes for the everyday logistic; $\lambda \in \{1.4, 1.8, 2.2\}$ for
+the emergency Box-Cox). Layer 2 swaps the forms while pinning the same
+anchors: a concave Box-Cox everyday level through the same half-maximum
+and ceiling, and for the emergency regime an exponential escalation
+\citep{holguinveras2013objective} and a bounded survival-based curve, both
+solved from the 8- and 15-minute anchors, so that the three emergency
+forms coincide inside the benchmark window and diverge only beyond it,
+where no benchmark exists. Layer 3 sweeps the accessibility model
+(soft-minimum $\kappa$, congestion exponent $\gamma$, catchment bandwidth,
+number of nearest facilities, everyday mode set, unreachable fill,
+off-network policy) from the saved travel-time matrices. A threshold axis
+sweeps the typology cut from the 40th to the 75th percentile. Results are
+reported as rank agreement of city orderings against the baseline,
+min--max envelopes per city and axis, class-share envelopes, the share of
+population whose typology class flips, and the specification curve of
+the inequality slopes over all 14 deprivation parameterisations
+\citep{simonsohn2020specification}.
 
-\paragraph{Reproducibility.}
-The pipeline is config-driven with provenance sidecars on every derived
-matrix; all tables and figures in this paper trace to the persisted
-67-city state (main-text figures are drawn from the pack tables and the
-configuration by the \texttt{paper/make\_fig\_*.py} scripts) (every quoted number is checked against its source table
-by an automated audit of 190 checks run in CI). Code, configuration and
-the full result tables are available in the study repository.
+\subsection{Reproducibility and data availability}\label{sec:m-repro}
 
-\paragraph{Data availability.}
-Population grid: GHS-POP R2023A \citep{schiavina2023ghspop}. Facilities
-and street networks: OpenStreetMap. Census strata: Eurostat Census 2021
-grid. Per-city and cross-city result tables, per-city maps and
-sensitivity sweeps are persisted on the study repository's results
-branch.
+The pipeline is configuration-driven with provenance sidecars on every
+derived travel-time matrix, and no deprivation parameter is hard-coded:
+every value lives in the configuration with its literature source. All
+tables and figures trace to the persisted 67-city state, and every number
+quoted in the text is checked against its source table by an automated
+audit of 190 checks run in continuous integration; the main-text figures
+are drawn from the pack tables and the configuration by scripts in the
+study repository. Code, configuration, the full result tables, the
+per-city maps and the sensitivity sweeps are available in the study
+repository and its results branch. Population grid: GHS-POP R2023A
+\citep{schiavina2023ghspop}. Facilities and street networks:
+OpenStreetMap. Census strata: Eurostat Census 2021 grid and the German
+Zensus 2022 grid. City boundaries: Eurostat--OECD functional urban areas.
 
 % ==========================================================================
 \bibliographystyle{unsrtnat}
@@ -1175,7 +1363,7 @@ branch.
 % --------------------------------------------------------------------------
 \section{The robustness architecture in one view}\label{si:architecture}
 
-\begin{figure}[h]
+\begin{figure}[H]
 \centering
 \includegraphics[width=\textwidth]{robustness_architecture.png}
 \caption{The robustness architecture (contribution claim 5). One view of
@@ -1276,7 +1464,7 @@ Form swap (Layer 2)            & 0.035 & 0.649 & 0.009 \\
 
 \subsection{What the results change for theory}\label{sec:theory}
 
-\begin{figure}[h]
+\begin{figure}[H]
 \centering
 \includegraphics[width=.95\textwidth]{specification_curve.png}
 \caption{Specification curve of the inequality-scaling slopes. Top:
@@ -1293,7 +1481,7 @@ polynomial escalation, rising only under exponential escalation
 \label{fig:si-speccurve}
 \end{figure}
 
-\begin{figure}[h]
+\begin{figure}[H]
 \centering
 \includegraphics[width=.9\textwidth]{rho_ranked.png}
 \caption{Coupling of the two deprivation surfaces across the 67 cities.
@@ -1367,7 +1555,7 @@ cities ($r = 0.12$, $p = 0.32$).
 % --------------------------------------------------------------------------
 \section{Size gradient of the divergence measures}\label{si:sizegradient}
 
-\begin{figure}[h]
+\begin{figure}[H]
 \centering
 \includegraphics[width=.85\textwidth]{size_gradient.png}
 \caption{The divergence gap (emergency Gini minus everyday Gini) against
@@ -1386,7 +1574,7 @@ size gradient (\texttt{size\_gradient.csv}).
 % --------------------------------------------------------------------------
 \section{Deprivation vs access: exact values}\label{si:depvsaccess}
 
-\begin{table}[h]
+\begin{table}[H]
 \centering
 \caption{Size elasticities of deprivation-based and minutes-based
 outcomes (log-log, country-clustered SEs, 67 cities; cross-sectional
@@ -1451,7 +1639,7 @@ runs.
 % --------------------------------------------------------------------------
 \section{Indicator glossary}\label{si:glossary}
 
-\begin{table}[h]
+\begin{table}[H]
 \centering
 \caption{Compact glossary of the indicators used in this paper.}
 \label{tab:si-glossary}
