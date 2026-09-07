@@ -255,6 +255,12 @@ emergency facility, in multiples of the loss at the 15-minute
 emergency-medical-service (EMS) benchmark: a cell at 2.0 carries twice the
 deprivation of one whose ambulance arrives at the benchmark, and the cost
 keeps escalating beyond it. ``Cost'' here is welfare lost, never money.
+Deprivation throughout this paper is the welfare loss imposed by poor
+physical access to a service. It is distinct from the socioeconomic
+deprivation of income, employment or housing that composite deprivation
+indices measure, which enters the analysis only as an explanatory
+variable, through the vulnerability strata of
+Section~\ref{sec:compounding}.
 Both curves are anchored on external standards rather than fitted to the
 data: the 15-minute-city threshold for the everyday level, and the EMS
 response benchmarks for the emergency cost.
@@ -469,7 +475,16 @@ within cities rather than by comparing two separate regressions: a paired
 regime test (regime $\times$ log-population interaction, country-clustered)
 puts the everyday slope $0.137$ below the emergency slope (\pw{0.002}).
 Agglomeration benefits are therefore regime-specific, and no single
-exponent describes what city size does to service deprivation.
+exponent describes what city size does to service deprivation. Two
+qualifications belong here. The minimum detectable emergency elasticity
+at 80\,\% power is 0.12, so the design could have detected a gradient
+of the everyday magnitude. And the absence of a linear gradient does not
+make size irrelevant to emergency deprivation: a quadratic term is
+significant (wild $p = 0.001$; $p = 0.010$ with coverage-grade dummies),
+an inverted U in which the middle size strata carry the highest emergency
+deprivation cost and the four largest FUAs the lowest
+(SI~\ref{si:scaling-extra}). Because those four cities are the whole top
+stratum, we report the shape and do not headline it.
 
 Within-city inequality moves in the opposite direction
 (Fig.~\ref{fig:scaling}B). The Gini of everyday deprivation rises with
@@ -517,7 +532,7 @@ compare, never the levels. Everyday: elasticity $-0.196$, wild bootstrap
 $p = 0.0002$, $R^2 = 0.44$; emergency: $-0.059$, $p = 0.21$, bounded
 within $\pm 0.13$ by equivalence testing; paired slope difference
 $+0.137$, $p = 0.002$. (B) Within-city Gini of each surface against
-population: everyday slope $+0.062$ per ln population ($p = 0.0012$),
+population (log-log): everyday elasticity $+0.062$ ($p = 0.0012$),
 emergency $+0.004$ ($p = 0.84$), paired difference $-0.058$
 ($p = 0.029$). Fitted lines are the OLS fits the elasticities come from;
 inference is country-clustered. Gradients are cross-sectional
@@ -616,7 +631,12 @@ of the national emergency systems of Central-Eastern Europe. In the
 inequality plane (Fig.~\ref{fig:cityplane}) the five deserts are the five
 highest points on the emergency-Gini axis and the partial deserts fill the
 band below them, so the emergency-side inequality of a city is, to a first
-approximation, its coverage grade.
+approximation, its coverage grade. Across cities the two Ginis are
+uncorrelated ($r = 0.12$, $p = 0.32$; Table~\ref{tab:si-crossequation}):
+how unequally a city distributes everyday deprivation says nothing about
+how unequally it distributes emergency deprivation, which is the
+cross-city face of the two-regime claim and points at two different
+policy levers.
 
 \begin{figure}[t]
 \centering
@@ -909,8 +929,13 @@ flagged once and applies throughout. The analysis covers walking for
 everyday services and driving for emergency care; public transit is
 deliberately out of scope, and the everyday regime is walk-only by
 design. Free-flow civilian drive times anchor the emergency cost scale and
-are not literal response-time predictions; disruption itself is not
-modelled, so the emergency surface is the pre-disruption baseline. Census
+are not literal response-time predictions. The bias has a known direction:
+congestion lengthens drive times most in the largest and densest cities,
+so free-flow routing understates emergency deprivation there and pushes
+the emergency size elasticity toward a size benefit; the absence of a
+detectable emergency gradient is therefore a conservative finding.
+Disruption itself is not modelled, so the emergency surface is the
+pre-disruption baseline. Census
 strata arrive on a 1\,km grid broadcast to the 100\,m analysis grid, so
 they are neighbourhood attributes; employment is unreported in the census
 grid for Germany and France, so no harmonised SES slope exists there by
@@ -943,8 +968,9 @@ correspondingly overstated in those countries, so cross-country everyday
 Section~\ref{sec:coverage} (Spain and Greece above Italy and Portugal) is
 the visible consequence. The size gradients are unaffected: mapped GP
 density is uncorrelated with city size (log-log slope $+0.09$,
-country-clustered $p = 0.29$), and every scaling claim is
-country-clustered. Separately, eight cities have only one of the two
+country-clustered $p = 0.29$), every scaling claim is country-clustered,
+and adding mapped GP density as a control leaves the everyday elasticities
+in place (SI~\ref{si:scaling-extra}). Separately, eight cities have only one of the two
 emergency services mapped (Athina, Br\u{a}ila, Helsinki, Lahti,
 Norrk\"oping, Szeged, Talavera de la Reina, \v{Z}ilina); the composite
 renormalises weights over the services present, their median mean
@@ -971,8 +997,8 @@ The analysis grid is the GHS-POP 100\,m population grid
 from OpenStreetMap via Overpass queries with expiry-refreshed
 extractions; Table~\ref{tab:services} summarises the routed facility
 sets. Travel times are computed with the R5 routing engine via r5py
-\citep{fink2022r5py} over the OSM street network: walking for the
-everyday regime, driving for the emergency regime, with emergency
+\citep{fink2022r5py} over the OSM street network: walking at 4.8\,km/h for
+the everyday regime, driving for the emergency regime, with emergency
 matrices reverse-routed (station-to-cell, the substantively correct
 direction for ambulance response; measured car asymmetry median 1
 minute). A friction-surface engine \citep{weiss2020healthcare} is
@@ -1013,7 +1039,12 @@ logistic deprivation level function \citep{wang2017deprivation} with
 ceiling 1, inflection $t_0 = 15$ minutes (the 15-minute-city threshold
 \citep{moreno2021fifteenminute}) and steepness $k = 0.2$ per minute; the
 city surface is the weighted mean over the five service categories
-(school and green-space sub-types weigh 0.5 each). Cells with no network
+(school and green-space sub-types weigh 0.5 each). Because network
+walking time scales inversely with speed, the slower 3.5\,km/h often
+assumed for elderly and mobility-impaired residents is equivalent to
+lowering the inflection from 15 to about 11 minutes at the baseline speed,
+which the 10-minute inflection variant of the sensitivity grid covers.
+Cells with no network
 path to any facility are masked; routable cells beyond a service's
 cutoff receive a large finite time so they stay on the map at
 near-maximal deprivation.
@@ -1077,7 +1108,14 @@ diagnostics report silhouette \citep{rousseeuw1987silhouettes},
 bootstrap and cross-partition adjusted Rand indices
 \citep{hubert1985comparing} and a Gaussian silhouette null. Every
 headline elasticity carries leave-one-out, Cook's-distance, Huber and
-median-regression diagnostics.
+median-regression diagnostics. Because the everyday and emergency
+regressions share the same regressor, joint (seemingly unrelated)
+estimation coincides with equation-by-equation OLS; the cross-equation
+residual correlation, a Moran test of residual spatial dependence over the
+city coordinates, the elasticities with a mapped-facility-density
+control, non-linearity checks and the minimum detectable emergency
+elasticity are reported in SI~\ref{si:scaling-extra}
+(\texttt{paper/analysis\_scaling\_robustness.py}).
 
 \paragraph{Regional structure.}
 Three additive analyses characterise where the cross-city variance lies
@@ -1105,7 +1143,7 @@ The pipeline is config-driven with provenance sidecars on every derived
 matrix; all tables and figures in this paper trace to the persisted
 67-city state (main-text figures are drawn from the pack tables and the
 configuration by the \texttt{paper/make\_fig\_*.py} scripts) (every quoted number is checked against its source table
-by an automated audit of 171 checks run in CI). Code, configuration and
+by an automated audit of 190 checks run in CI). Code, configuration and
 the full result tables are available in the study repository.
 
 \paragraph{Data availability.}
@@ -1278,6 +1316,51 @@ the deprivation parameterisation.}
 \input{tables/regional_no_deserts}
 \input{tables/grade_by_region}
 \input{tables/south_split}
+
+\clearpage
+
+% --------------------------------------------------------------------------
+\section{Additional robustness of the size regressions}\label{si:scaling-extra}
+
+Table~\ref{tab:si-scaling-extra} re-estimates the four headline size
+regressions with checks suggested by an independent methods review.
+Residual spatial dependence is absent for the everyday level (Moran's
+$I = 0.06$, permutation $p = 0.41$) and present for the emergency level
+($I = 0.23$, $p = 0.0015$) and for both Ginis ($I = 0.20$ and $0.39$):
+cities close to one another share what size does not explain, which is
+the country and coverage structure of Section~\ref{sec:coverage}
+(Table~\ref{tab:si-variance}). The slope estimates are unaffected by that
+dependence; the inference on them is country-clustered throughout, and
+regional contrasts are tested by permuting countries, so the dependence
+enters the tests at the level at which it arises. Adding mapped GP
+density per 100k inhabitants, the completeness proxy of the limitations,
+as a control leaves the everyday elasticity at $-0.185$ (wild
+$p = 0.0002$) and the everyday-Gini elasticity at $+0.051$ ($p = 0.0006$);
+the control itself is significant in both everyday equations (more mapped
+practices, lower mean deprivation and higher within-city inequality) and
+in neither emergency equation. A centred quadratic in log population is
+not significant for the everyday level or for either Gini, and is
+significant for the emergency level ($-0.169$, wild $p = 0.001$; $-0.104$,
+$p = 0.010$ with coverage-grade dummies): the size-stratum means of the
+emergency deprivation cost are 1.15, 1.69, 1.56 and 0.70 multiples of
+\gref{} from the smallest to the largest stratum, an inverted U in which
+the middle strata, where the desert and partial-desert cities sit, carry
+the highest cost and the four FUAs above five million the lowest. With
+four cities in the top stratum we report the shape and do not headline
+it; the linear statement of Section~\ref{sec:scaling} stands, with a
+minimum detectable emergency elasticity of 0.12 at 80\,\% power, in line
+with the equivalence bound of $\pm 0.13$. Table~\ref{tab:si-crossequation}
+gives the cross-equation residual correlation: with identical regressors
+in both regime equations, joint (seemingly unrelated) estimation
+coincides with equation-by-equation OLS, and what it would add is the
+correlation of the residuals, $r = 0.51$ for the means (cities with more
+everyday deprivation than their size predicts also have more emergency
+deprivation, the city-level face of compounding) and $r = 0.19$ for the
+Ginis ($p = 0.13$). The two Ginis themselves are uncorrelated across
+cities ($r = 0.12$, $p = 0.32$).
+
+\input{tables/scaling_extra}
+\input{tables/scaling_crossequation}
 
 \clearpage
 

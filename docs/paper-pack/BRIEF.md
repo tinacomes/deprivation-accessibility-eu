@@ -367,6 +367,14 @@ is awaiting a rerun.
   reading only `cities_descriptives.csv` and the two clustering tables;
   country permutation as in `depacc.cityvector.inference`, 10,000 draws,
   study seed). Audited by `tools/audit_paper_pack.py`.
+- **Recomputed locally over that same state (revision 3, 2026-09-07)**:
+  `scaling_robustness_extra.csv` and `scaling_crossequation.csv`
+  (paper/analysis_scaling_robustness.py: residual Moran's I over
+  paper/city_coords.csv, facility-density control, quadratic and stratum
+  non-linearity checks, minimum detectable elasticity, cross-equation
+  residual correlation, cross-city Gini correlation; wild cluster
+  bootstrap via depacc.cityvector.inference). Audited by
+  `tools/audit_paper_pack.py`.
 - **Copied per city from `depacc-results`**: `figures/cities/<city>.png`,
   the median-split compounding map of each of the 67 cities, with an
   index in `figures/cities/README.md`. The percentile surfaces, the p75

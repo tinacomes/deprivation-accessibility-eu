@@ -23,6 +23,12 @@ paper/
 │                            revision-2 regional analyses (variance
 │                            decomposition, dispersion, no-desert re-test,
 │                            South split); writes five CSVs into the pack
+├── analysis_scaling_robustness.py
+│                            revision-3 robustness of the size regressions
+│                            (residual Moran's I, cross-equation residual
+│                            correlation, facility-density control,
+│                            non-linearity, minimum detectable effect);
+│                            writes two CSVs into the pack
 ├── _figstyle.py             shared style + data helpers for the figure scripts
 ├── make_fig_curves.py       Fig 1  the two deprivation functions (from config/)
 ├── make_fig_scaling.py      Fig 3  size vs mean deprivation and vs Gini
@@ -34,8 +40,10 @@ paper/
 ├── tables/
 │   ├── cities_descriptives.tex   SI per-city longtable (generated)
 │   ├── city_gallery.tex          SI 67-map gallery (generated)
-│   └── regional_*.tex, grade_by_region.tex, south_split.tex
-│                                 SI regional-structure tables (generated)
+│   ├── regional_*.tex, grade_by_region.tex, south_split.tex
+│   │                             SI regional-structure tables (generated)
+│   └── scaling_extra.tex, scaling_crossequation.tex
+│                                 SI size-regression robustness (generated)
 └── figures/
     ├── main/                the 9 main-text figures
     │   ├── deprivation_curves.png        Fig 1  the two deprivation functions
@@ -61,7 +69,7 @@ Figures `dep_vs_access`, `deprivation_curves`, `scaling_elasticity`,
 scripts from the pack tables (and `config/` for the curves); the others
 are verbatim copies from `docs/paper-pack/figures/` (drawn by CI from the
 final 67-city state). To refresh: re-run the pack, copy the CI figures,
-re-run `analysis_regional_structure.py`, the `make_fig_*.py` scripts and
+re-run `analysis_regional_structure.py`, `analysis_scaling_robustness.py`, the `make_fig_*.py` scripts and
 `make_includes.py`, then `make`.
 
 ## Build

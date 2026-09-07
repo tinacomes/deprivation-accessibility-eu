@@ -737,3 +737,35 @@ Implemented per the decisions above and the PI's follow-up message:
   the Copernicus May-2026 piece only; seasonal mortality estimates for
   2026 are not yet in a citable source.
 - New pack tables and audit checks: see BRIEF.md provenance.
+
+
+---
+
+## Round 3 addendum (2026-09-07): review of the external architecture document
+
+The PI supplied an independently generated architecture document for a
+72-city deprivation comparison tool and asked which of its statistical
+suggestions would strengthen the paper. Review outcome:
+
+- **Adopted, text only (tier 1):** the direction of the free-flow
+  drive-time bias (the emergency null is conservative); the distinction
+  between access-derived and socioeconomic deprivation; the equivalence
+  of a 3.5 km/h walking speed to the 10-minute inflection variant.
+- **Adopted, SI additions (tier 2):** Moran's I of the residuals of the
+  four size regressions over city coordinates; cross-equation residual
+  correlation (with identical regressors SUR equals OLS); the elasticities
+  with mapped GP density as a completeness control; non-linearity
+  (quadratic in log population, with and without coverage-grade dummies;
+  size-stratum dummies); the minimum detectable emergency elasticity; the
+  cross-city correlation of the two Ginis (main text, Section 2.3).
+- **Checked and not feasible:** a morphology (population-concentration)
+  control. The results branch persists per-city summaries and images only,
+  and the GHSL grid is unreachable from this environment, so no per-city
+  concentration measure can be built without re-running the pipeline.
+  Noted for a future revision; if built, it enters as an explanatory
+  robustness row, never as a normalisation of the outcome.
+- **Not adopted:** spatial SUR-SEM as the primary model (the dependence is
+  national, handled by country clustering and permutation); fire and
+  police stations in the emergency regime; latitude-based quadrants; the
+  1 km coarse pass; the tool architecture; a WHO-registry completeness
+  audit (remains a limitation).

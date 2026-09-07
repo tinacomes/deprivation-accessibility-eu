@@ -60,20 +60,23 @@ def main() -> None:
                            ("gini_emergency", C_EM, "s", "emergency")):
         bx.scatter(d["population"], d[col], color=c, marker=m, s=34,
                    alpha=0.85, zorder=3, label=lab, edgecolor="white", lw=0.5)
-        fit_line(bx, d["population"], d[col], c, log_y=False)
-    bx.set_xscale("log")
+        fit_line(bx, d["population"], d[col], c, log_y=True)
+    bx.set_xscale("log"); bx.set_yscale("log")
     g_ev, pg_ev = inf.loc["gini_everyday", ["elasticity", "p_wild_cluster_bootstrap"]]
     g_em, pg_em = inf.loc["gini_emergency", ["elasticity", "p_wild_cluster_bootstrap"]]
     bx.text(0.02, 0.05,
-            f"everyday: slope {g_ev:+.3f} per ln population, p = {pg_ev:.4f}\n"
-            f"emergency: slope {g_em:+.3f}, p = {pg_em:.2f}\n"
+            f"everyday: elasticity {g_ev:+.3f}, p = {pg_ev:.4f}\n"
+            f"emergency: elasticity {g_em:+.3f}, p = {pg_em:.2f}\n"
             f"difference {paired.loc['gini', 'gradient_difference_emergency']:+.3f}, "
             f"p = {paired.loc['gini', 'p_wild_cluster_bootstrap']:.3f}",
             transform=bx.transAxes, fontsize=8, va="bottom",
             bbox=dict(fc="white", ec="none", alpha=0.85))
     bx.set_xlabel("population of the functional urban area")
-    bx.set_ylabel("within-city Gini of deprivation")
-    bx.set_ylim(0.15, 0.85)
+    bx.set_ylabel("within-city Gini of deprivation (log scale)")
+    bx.set_ylim(0.2, 0.9)
+    bx.set_yticks([0.2, 0.3, 0.4, 0.5, 0.6, 0.8])
+    bx.set_yticklabels(["0.2", "0.3", "0.4", "0.5", "0.6", "0.8"])
+    bx.minorticks_off()
     bx.set_title("B   Inequality rises with size in the everyday regime only",
                  loc="left", fontsize=10)
     bx.legend(loc="upper right")

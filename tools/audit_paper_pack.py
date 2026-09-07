@@ -592,6 +592,38 @@ def run(data: Path) -> int:
         a.check(f"grade x region: {reg}", "coverage_grade_by_region",
                 (int(gr.loc[reg, "covered"]), int(gr.loc[reg, "partial desert"]),
                  int(gr.loc[reg, "desert"])), (cov, part, des))
+
+    # ---- scaling robustness extras (revision 3) ---------------------------
+    ex = a.table("scaling_robustness_extra").set_index("outcome")
+    for ind, col, exp, tol in (
+            ("mean_everyday", "moran_p_perm", 0.41, 0.02),
+            ("mean_emergency", "moran_I_resid", 0.23, 0.005),
+            ("mean_emergency", "moran_p_perm", 0.0015, 0.0006),
+            ("gini_emergency", "moran_I_resid", 0.39, 0.005),
+            ("mean_everyday", "elasticity_gp_control", -0.185, 0.0015),
+            ("mean_everyday", "p_wild_gp_control", 0.0002, 0.0002),
+            ("gini_everyday", "elasticity_gp_control", 0.051, 0.0015),
+            ("gini_everyday", "p_wild_gp_control", 0.0006, 0.0004),
+            ("mean_emergency", "elasticity_gp_control", -0.048, 0.0015),
+            ("mean_emergency", "mde_80pct_power", 0.119, 0.0015),
+            ("mean_emergency", "quadratic_coef", -0.169, 0.0015),
+            ("mean_emergency", "p_wild_quadratic", 0.001, 0.0006),
+            ("mean_everyday", "p_wild_quadratic", 0.24, 0.02),
+            ("mean_emergency", "quadratic_coef_grade_ctrl", -0.104, 0.0015),
+            ("mean_emergency", "p_wild_quadratic_grade_ctrl", 0.010, 0.0015)):
+        a.check(f"scaling extra: {ind} {col}", "scaling_robustness_extra",
+                float(ex.loc[ind, col]), exp, tol)
+    cq = a.table("scaling_crossequation").set_index("pair")
+    a.check("cross-equation residual r (means)", "scaling_crossequation",
+            round(float(cq.loc["residuals (means)", "pearson_r"]), 2), 0.51, 0.005)
+    a.check("cross-equation residual r (ginis)", "scaling_crossequation",
+            round(float(cq.loc["residuals (ginis)", "pearson_r"]), 2), 0.19, 0.005)
+    a.check("cross-city Gini correlation r", "scaling_crossequation",
+            round(float(cq.loc["gini_everyday vs gini_emergency (Pearson)",
+                               "pearson_r"]), 2), 0.12, 0.005)
+    a.check("cross-city Gini correlation p", "scaling_crossequation",
+            round(float(cq.loc["gini_everyday vs gini_emergency (Pearson)",
+                               "p"]), 2), 0.32, 0.005)
     return a.report()
 
 
