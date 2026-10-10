@@ -243,3 +243,9 @@ on the day of addition. Grouped by the claim each supports.
 | `larsen1993survival` | Survival falls by roughly 1--2 percentage points per minute of delay to CPR, defibrillation and advanced care: why value-of-time from routine travel is the wrong valuation for the emergency regime. |
 | `ec2025preparedness` | The Preparedness Union Strategy (72-hour household self-sufficiency; actions on hospitals, schools, transport): the policy address of the emergency regime. |
 | `eu2012charter`, `eu2017pillar` | Access to services of general economic interest (Charter Art. 36) and to essential services (Pillar principle 20): the legal comparability argument for a European sample. |
+
+### Added in revision round 3 (2026-10-10)
+
+| cite | supports |
+|---|---|
+| `pagancajigas2026acces` | AccES (Pagan-Cajigas and Guikema, Risk Analysis 2026): building-level prediction of post-hazard loss of access to essential services from a pre-hazard baseline of network distance to the nearest operational facility, with its own concession that distance captures one dimension of access. Cited in Discussion 3.1 (distance is not a welfare measure), 3.3 (our emergency surface is the pre-hazard baseline such frameworks perturb) and Limitations (disruption not modelled). Verified from the published PDF. |
