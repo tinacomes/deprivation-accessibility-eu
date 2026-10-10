@@ -94,3 +94,15 @@ Requires TeX Live (`texlive-latex-base`, `-recommended`, `-extra`,
 - The framing and phrasing rules in `BRIEF.md` (level vs cost, the
   conditional emergency-Gini statement, gradient-not-types, space-for-time,
   the prohibited claims list) are binding on any revision.
+
+## PNAS-format version (`pnas/`)
+
+`pnas/main.tex` is the 8-page-target article (two-column layout mimicking
+PNAS metrics; swap in `pnas-new.cls` at submission) and `pnas/si.tex` the
+SI Appendix holding the moved material. `pnas/make_figs_print.py` renders
+the five main figures at PNAS column widths from the pack tables and
+config (`pnas/figures/`, with a contact sheet at print size);
+`pnas/tables` and `pnas/figures/appendix` are symlinks to the full draft's
+generated tables and SI figures. Build with `make` inside `pnas/`. The
+full-length draft in this directory stays the master for revisions; edit
+there first and port to `pnas/`.

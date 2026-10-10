@@ -769,3 +769,13 @@ suggestions would strengthen the paper. Review outcome:
   police stations in the emergency regime; latitude-based quadrants; the
   1 km coarse pass; the tool architecture; a WHO-registry completeness
   audit (remains a limitation).
+
+
+## PNAS-format build (2026-10-10)
+
+`paper/pnas/` holds the condensed article and SI Appendix per the agreed
+cut list: five main figures re-rendered at column widths, Table 1
+single-column, Figs 5/7/8 and Table 2 of the full draft moved to the SI,
+Sections 2.2/2.3/2.4 and Limitations compressed with their detail moved to
+SI S3--S6, Methods kept at about 1,500 words with the extended methods in
+SI S1. No number changed; every moved paragraph is the full draft's text.
